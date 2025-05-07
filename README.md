@@ -1,4 +1,5 @@
-C:\Users\CC437236\Documents\file-manager>docker images -a
-REPOSITORY         TAG           IMAGE ID       CREATED         SIZE
-file-manager-app   latest        21369e430514   2 minutes ago   408MB
-openjdk            17-jdk-slim   37cb44321d04   3 years ago     408MB
+C:\Users\CC437236\Documents\file-manager>docker run -t file-manager-app
+no main manifest attribute, in app.jar
+
+C:\Users\CC437236\Documents\file-manager>docker run -t --rm file-manager-app java -jar app.jar
+no main manifest attribute, in app.jar
