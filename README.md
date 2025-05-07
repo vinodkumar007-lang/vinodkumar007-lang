@@ -1,5 +1,1 @@
-FROM openjdk:17-jdk-slim
-WORKDIR /app
-COPY target/file-manager.jar app.jar
-ENTRYPOINT ["java", "-jar", "app.jar"]
-EXPOSE 8080
+C:\Users\CC437236\jdk-17.0.12_windows-x64_bin\jdk-17.0.12\bin
