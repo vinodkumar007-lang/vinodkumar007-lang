@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
@@ -9,69 +8,58 @@
     <version>1.0-SNAPSHOT</version>
 
     <properties>
+        <java.version>17</java.version>
         <maven.compiler.source>17</maven.compiler.source>
         <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
     <repositories>
-
         <repository>
             <id>nexus-releases</id>
-            <!--<name>maven-group</name>-->
             <url>https://nexus.devops.nednet.co.za/repository/maven-group</url>
-        <snapshots>
-        <enabled>false</enabled>
-        </snapshots>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
         </repository>
-
     </repositories>
 
     <dependencyManagement>
         <dependencies>
+            <!-- Spring Boot BOM -->
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
-                <type>pom</type>
                 <version>3.0.0</version>
+                <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <!-- SLF4J BOM -->
             <dependency>
                 <groupId>org.slf4j</groupId>
                 <artifactId>slf4j-parent</artifactId>
-                <version>2.0.9</version> <!-- latest -->
+                <version>2.0.9</version>
                 <type>pom</type>
                 <scope>import</scope>
-            </dependency>
-            <dependency>
-                <groupId>io.projectreactor</groupId>
-                <artifactId>reactor-core</artifactId>
-                <version>3.4.13</version>  <!-- Ensure the latest version -->
-            </dependency>
-            <dependency>
-                <groupId>io.projectreactor.netty</groupId>
-                <artifactId>reactor-netty</artifactId>
-                <version>1.0.24</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
 
     <dependencies>
-        <!-- Kafka Dependencies for Spring Boot 3.x -->
+        <!-- Kafka Dependencies -->
         <dependency>
             <groupId>za.co.nedbank</groupId>
             <artifactId>spring-nedbank-kafka-sb3</artifactId>
             <version>1.0.0-RELEASE</version>
         </dependency>
 
-        <!-- Kafka client dependency -->
         <dependency>
             <groupId>org.springframework.kafka</groupId>
             <artifactId>spring-kafka</artifactId>
             <version>3.0.11</version>
         </dependency>
 
-        <!-- Spring Web for REST API -->
+        <!-- Spring Boot Web & Integration -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>
@@ -82,13 +70,13 @@
             <artifactId>spring-boot-starter-integration</artifactId>
         </dependency>
 
-        <!-- Spring Batch for Batch Processing -->
+        <!-- Spring Batch -->
         <dependency>
             <groupId>org.springframework.batch</groupId>
             <artifactId>spring-batch-core</artifactId>
         </dependency>
 
-        <!-- Spring for SOAP Web Service (for IBM FileNet integration) -->
+        <!-- Spring Web Services -->
         <dependency>
             <groupId>org.springframework.ws</groupId>
             <artifactId>spring-ws-core</artifactId>
@@ -110,43 +98,46 @@
                 </exclusion>
             </exclusions>
         </dependency>
+
+        <!-- Azure Core Libraries -->
         <dependency>
             <groupId>com.azure</groupId>
             <artifactId>azure-core</artifactId>
-            <version>1.14.0</version>  <!-- Update to the latest version -->
+            <version>1.14.0</version>
         </dependency>
-        <!-- Azure Key Vault Secrets SDK -->
+
         <dependency>
             <groupId>com.azure</groupId>
             <artifactId>azure-security-keyvault-secrets</artifactId>
-            <version>4.2.3</version>  <!-- Ensure the latest version -->
+            <version>4.2.3</version>
         </dependency>
 
-        <!-- Azure Identity SDK (for credentials) -->
         <dependency>
             <groupId>com.azure</groupId>
             <artifactId>azure-identity</artifactId>
-            <version>1.2.5</version>  <!-- Ensure the latest version -->
+            <version>1.2.5</version>
         </dependency>
 
-        <!-- Reactor Core Dependency -->
+        <!-- Explicitly include correct versions of Reactor -->
         <dependency>
             <groupId>io.projectreactor</groupId>
             <artifactId>reactor-core</artifactId>
-            <!-- Ensure the latest version -->
+            <version>3.4.13</version>
         </dependency>
-        <!-- Compatible reactor-netty -->
+
         <dependency>
             <groupId>io.projectreactor.netty</groupId>
             <artifactId>reactor-netty</artifactId>
+            <version>1.0.24</version>
         </dependency>
-        <!-- JSON processing library (Jackson or Gson) -->
+
+        <!-- JSON support -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <!--<version>2.12.5</version>-->
         </dependency>
     </dependencies>
+
     <build>
         <plugins>
             <plugin>
