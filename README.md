@@ -1,24 +1,6 @@
-16:02:22.175 [parallel-1] ERROR reactor.core.scheduler.Schedulers - Scheduler worker in group main failed with an uncaught exception
-java.lang.NoSuchMethodError: 'reactor.util.context.ContextView reactor.core.publisher.MonoSink.contextView()'
-	at reactor.netty.http.client.HttpClientConnect$HttpObserver.<init>(HttpClientConnect.java:329)
-	at reactor.netty.http.client.HttpClientConnect$MonoHttpConnect.lambda$subscribe$0(HttpClientConnect.java:259)
-	at reactor.core.publisher.MonoCreate.subscribe(MonoCreate.java:57)
-	at reactor.core.publisher.FluxRetryWhen.subscribe(FluxRetryWhen.java:77)
-	at reactor.core.publisher.MonoRetryWhen.subscribeOrReturn(MonoRetryWhen.java:46)
-	at reactor.core.publisher.InternalMonoOperator.subscribe(InternalMonoOperator.java:57)
-	at reactor.netty.http.client.HttpClientConnect$MonoHttpConnect.subscribe(HttpClientConnect.java:272)
-	at reactor.core.publisher.InternalMonoOperator.subscribe(InternalMonoOperator.java:64)
-	at reactor.core.publisher.MonoDefer.subscribe(MonoDefer.java:52)
-	at reactor.core.publisher.InternalMonoOperator.subscribe(InternalMonoOperator.java:64)
-	at reactor.core.publisher.MonoDelaySubscription.accept(MonoDelaySubscription.java:53)
-	at reactor.core.publisher.MonoDelaySubscription.accept(MonoDelaySubscription.java:34)
-	at reactor.core.publisher.FluxDelaySubscription$DelaySubscriptionOtherSubscriber.onNext(FluxDelaySubscription.java:131)
-	at reactor.core.publisher.MonoDelay$MonoDelayRunnable.propagateDelay(MonoDelay.java:271)
-	at reactor.core.publisher.MonoDelay$MonoDelayRunnable.run(MonoDelay.java:286)
-	at reactor.core.scheduler.SchedulerTask.call(SchedulerTask.java:68)
-	at reactor.core.scheduler.SchedulerTask.call(SchedulerTask.java:28)
-	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
-	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:304)
-	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
-	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
-	at java.base/java.lang.Thread.run(Thread.java:842)
+<Error>
+<Code>PublicAccessNotPermitted</Code>
+<Message>Public access is not permitted on this storage account. RequestId:8907c508-c01e-000c-1129-c03f9f000000 Time:2025-05-08T14:56:41.4964354Z</Message>
+</Error>
+
+https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/dummy-file.txt
