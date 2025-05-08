@@ -1,59 +1,10 @@
-package com.nedbank.kafka.filemanage.service;
-
-import com.azure.storage.blob.*;
-import com.azure.storage.blob.models.*;
-import com.azure.storage.common.sas.*;
-
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.time.OffsetDateTime;
-
-public class AzureBlobStorageService {
-
-    private static final String CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=nsndvextr01;AccountKey=<your_account_key>;EndpointSuffix=core.windows.net";
-    private static final String CONTAINER_NAME = "nsnakscontregecm001";
-    private static final String BLOB_NAME = "dummy-file.txt";
-
-    public static void main(String[] args) {
-        try {
-            uploadDummyFile();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static void uploadDummyFile() {
-        // Build the container client
-        BlobContainerClient containerClient = new BlobContainerClientBuilder()
-                .connectionString(CONNECTION_STRING)
-                .containerName(CONTAINER_NAME)
-                .buildClient();
-
-        // Create the blob client for a specific blob (file)
-        BlobClient blobClient = containerClient.getBlobClient(BLOB_NAME);
-
-        // Create dummy file content
-        String dummyFileContent = "This is a dummy file content uploaded to Azure Blob Storage.";
-        byte[] data = dummyFileContent.getBytes(StandardCharsets.UTF_8);
-        InputStream dataStream = new ByteArrayInputStream(data);
-
-        // Upload the file (overwrite = true)
-        blobClient.upload(dataStream, data.length, true);
-
-        System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
-
-        // Generate a SAS Token
-        BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
-                OffsetDateTime.now().plusHours(1), // Expiration time
-                new BlobSasPermission().setReadPermission(true) // Read-only access
-        );
-
-        // Generate SAS token and append to URL
-        String sasToken = blobClient.generateSas(sasValues);
-        String sasUrl = blobClient.getBlobUrl() + "?" + sasToken;
-
-        System.out.println("🔐 SAS URL (valid for 1 hour):");
-        System.out.println(sasUrl);
-    }
-}
+✅ File uploaded successfully to Azure Blob Storage: https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/dummy-file.txt
+17:24:13.187 [reactor-http-nio-2] DEBUG reactor.netty.ReactorNetty - [44214270, L:/10.74.132.11:58928 - R:nsndvextr01.blob.core.windows.net/172.23.117.66:443] Removed handler: azureReadTimeoutHandler, pipeline: DefaultChannelPipeline{(reactor.left.sslHandler = io.netty.handler.ssl.SslHandler), (reactor.left.httpCodec = io.netty.handler.codec.http.HttpClientCodec), (reactor.right.reactiveBridge = reactor.netty.channel.ChannelOperationsHandler)}
+17:24:13.188 [reactor-http-nio-2] DEBUG reactor.netty.ReactorNetty - [44214270, L:/10.74.132.11:58928 - R:nsndvextr01.blob.core.windows.net/172.23.117.66:443] Non Removed handler: azureWriteTimeoutHandler, context: null, pipeline: DefaultChannelPipeline{(reactor.left.sslHandler = io.netty.handler.ssl.SslHandler), (reactor.left.httpCodec = io.netty.handler.codec.http.HttpClientCodec), (reactor.right.reactiveBridge = reactor.netty.channel.ChannelOperationsHandler)}
+17:24:13.191 [reactor-http-nio-2] DEBUG reactor.netty.ReactorNetty - [44214270, L:/10.74.132.11:58928 - R:nsndvextr01.blob.core.windows.net/172.23.117.66:443] Non Removed handler: azureResponseTimeoutHandler, context: null, pipeline: DefaultChannelPipeline{(reactor.left.sslHandler = io.netty.handler.ssl.SslHandler), (reactor.left.httpCodec = io.netty.handler.codec.http.HttpClientCodec), (reactor.right.reactiveBridge = reactor.netty.channel.ChannelOperationsHandler)}
+17:24:13.192 [reactor-http-nio-2] DEBUG reactor.netty.ReactorNetty - [44214270, L:/10.74.132.11:58928 - R:nsndvextr01.blob.core.windows.net/172.23.117.66:443] Non Removed handler: azureReadTimeoutHandler, context: null, pipeline: DefaultChannelPipeline{(reactor.left.sslHandler = io.netty.handler.ssl.SslHandler), (reactor.left.httpCodec = io.netty.handler.codec.http.HttpClientCodec), (reactor.right.reactiveBridge = reactor.netty.channel.ChannelOperationsHandler)}
+17:24:13.192 [reactor-http-nio-2] DEBUG reactor.netty.resources.DefaultPooledConnectionProvider - [44214270, L:/10.74.132.11:58928 - R:nsndvextr01.blob.core.windows.net/172.23.117.66:443] onStateChange(PUT{uri=/nsnakscontregecm001/dummy-file.txt, connection=PooledConnection{channel=[id: 0x44214270, L:/10.74.132.11:58928 - R:nsndvextr01.blob.core.windows.net/172.23.117.66:443]}}, [disconnecting])
+17:24:13.192 [reactor-http-nio-2] DEBUG reactor.netty.resources.DefaultPooledConnectionProvider - [44214270, L:/10.74.132.11:58928 - R:nsndvextr01.blob.core.windows.net/172.23.117.66:443] Releasing channel
+17:24:13.197 [reactor-http-nio-2] DEBUG reactor.netty.resources.PooledConnectionProvider - [44214270, L:/10.74.132.11:58928 - R:nsndvextr01.blob.core.windows.net/172.23.117.66:443] Channel cleaned, now: 0 active connections, 1 inactive connections and 0 pending acquire requests.
+🔐 SAS URL (valid for 1 hour):
+https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/dummy-file.txt?sv=2020-04-08&se=2025-05-08T16%3A24%3A13Z&sr=b&sp=r&sig=yFzXstNSDK8UjtJ5jqWLZ%2BoP5NbKvdaF2Gl5OISa7lI%3D
