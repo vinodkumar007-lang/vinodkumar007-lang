@@ -1,7 +1,6 @@
 package com.nedbank.kafka.filemanage.service;
 
 import com.azure.storage.blob.BlobClient;
-import com.azure.storage.blob.BlobClientBuilder;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.BlobContainerClientBuilder;
 import com.azure.core.util.BinaryData;
@@ -38,7 +37,8 @@ public class AzureBlobStorageService {
         byte[] data = dummyFileContent.getBytes(StandardCharsets.UTF_8);
 
         // Upload the byte array to the blob storage (blocking API)
-        blobClient.upload(BinaryData.fromBytes(data), true);  // 'true' to overwrite if the file already exists
+        // The length of the data (in bytes) is passed as the second parameter
+        blobClient.upload(BinaryData.fromBytes(data), data.length, true);  // 'data.length' specifies the content length
 
         System.out.println("File uploaded successfully to Azure Blob Storage: " + BLOB_NAME);
     }
