@@ -1,32 +1,69 @@
-public void uploadDummyFile(String blobName) {
-    try {
-        // Create a BlobServiceClient
-        BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                .connectionString(CONNECTION_STRING)
-                .buildClient();
-
-        // Get or create container
-        BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(CONTAINER_NAME);
-        if (!containerClient.exists()) {
-            containerClient.create();
-        }
-
-        // Prepare dummy file content
-        String dummyContent = "This is a dummy file.\nCreated on: " + java.time.LocalDateTime.now();
-        byte[] contentBytes = dummyContent.getBytes(StandardCharsets.UTF_8);
-        InputStream dataStream = new ByteArrayInputStream(contentBytes);
-
-        // Upload as blob
-        BlobClient blobClient = containerClient.getBlobClient(blobName);
-        blobClient.upload(dataStream, contentBytes.length, true); // true = overwrite if exists
-
-        // ✅ Print the Blob URL
-        System.out.println("✅ Dummy file uploaded to Azure Blob Storage!");
-        System.out.println("📁 Blob Name: " + blobName);
-        System.out.println("🌐 Blob URL : " + blobClient.getBlobUrl());
-
-    } catch (Exception e) {
-        e.printStackTrace();
-        throw new RuntimeException("Failed to upload dummy file", e);
-    }
-}
+java.lang.IllegalArgumentException: Input byte array has incorrect ending byte at 88
+	at java.base/java.util.Base64$Decoder.decode0(Base64.java:876)
+	at java.base/java.util.Base64$Decoder.decode(Base64.java:566)
+	at java.base/java.util.Base64$Decoder.decode(Base64.java:589)
+	at com.azure.storage.common.implementation.StorageImplUtils.computeHMac256(StorageImplUtils.java:206)
+	at com.azure.storage.common.StorageSharedKeyCredential.generateAuthorizationHeader(StorageSharedKeyCredential.java:115)
+	at com.azure.storage.common.policy.StorageSharedKeyCredentialPolicy.process(StorageSharedKeyCredentialPolicy.java:38)
+	at com.azure.core.http.HttpPipelineNextPolicy.process(HttpPipelineNextPolicy.java:46)
+	at com.azure.storage.common.policy.MetadataValidationPolicy.process(MetadataValidationPolicy.java:48)
+	at com.azure.core.http.HttpPipelineNextPolicy.process(HttpPipelineNextPolicy.java:46)
+	at com.azure.core.http.policy.AddDatePolicy.lambda$process$0(AddDatePolicy.java:29)
+	at reactor.core.publisher.MonoDefer.subscribe(MonoDefer.java:44)
+	at reactor.core.publisher.InternalMonoOperator.subscribe(InternalMonoOperator.java:64)
+	at reactor.core.publisher.MonoDelaySubscription.accept(MonoDelaySubscription.java:53)
+	at reactor.core.publisher.MonoDelaySubscription.accept(MonoDelaySubscription.java:34)
+	at reactor.core.publisher.FluxDelaySubscription$DelaySubscriptionOtherSubscriber.onNext(FluxDelaySubscription.java:131)
+	at reactor.core.publisher.MonoDelay$MonoDelayRunnable.propagateDelay(MonoDelay.java:271)
+	at reactor.core.publisher.MonoDelay$MonoDelayRunnable.run(MonoDelay.java:286)
+	at reactor.core.scheduler.SchedulerTask.call(SchedulerTask.java:68)
+	at reactor.core.scheduler.SchedulerTask.call(SchedulerTask.java:28)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:304)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:842)
+	Suppressed: java.lang.Exception: #block terminated with an error
+		at reactor.core.publisher.BlockingSingleSubscriber.blockingGet(BlockingSingleSubscriber.java:99)
+		at reactor.core.publisher.Mono.block(Mono.java:1710)
+		at com.azure.storage.common.implementation.StorageImplUtils.blockWithOptionalTimeout(StorageImplUtils.java:131)
+		at com.azure.storage.blob.BlobContainerClient.existsWithResponse(BlobContainerClient.java:215)
+		at com.azure.storage.blob.BlobContainerClient.exists(BlobContainerClient.java:199)
+		at com.nedbank.kafka.filemanage.service.AzureBlobStorageService.uploadDummyFile(AzureBlobStorageService.java:28)
+		at com.nedbank.kafka.filemanage.service.AzureBlobStorageService.main(AzureBlobStorageService.java:51)
+Exception in thread "main" java.lang.RuntimeException: Failed to upload dummy file
+	at com.nedbank.kafka.filemanage.service.AzureBlobStorageService.uploadDummyFile(AzureBlobStorageService.java:45)
+	at com.nedbank.kafka.filemanage.service.AzureBlobStorageService.main(AzureBlobStorageService.java:51)
+Caused by: java.lang.IllegalArgumentException: Input byte array has incorrect ending byte at 88
+	at java.base/java.util.Base64$Decoder.decode0(Base64.java:876)
+	at java.base/java.util.Base64$Decoder.decode(Base64.java:566)
+	at java.base/java.util.Base64$Decoder.decode(Base64.java:589)
+	at com.azure.storage.common.implementation.StorageImplUtils.computeHMac256(StorageImplUtils.java:206)
+	at com.azure.storage.common.StorageSharedKeyCredential.generateAuthorizationHeader(StorageSharedKeyCredential.java:115)
+	at com.azure.storage.common.policy.StorageSharedKeyCredentialPolicy.process(StorageSharedKeyCredentialPolicy.java:38)
+	at com.azure.core.http.HttpPipelineNextPolicy.process(HttpPipelineNextPolicy.java:46)
+	at com.azure.storage.common.policy.MetadataValidationPolicy.process(MetadataValidationPolicy.java:48)
+	at com.azure.core.http.HttpPipelineNextPolicy.process(HttpPipelineNextPolicy.java:46)
+	at com.azure.core.http.policy.AddDatePolicy.lambda$process$0(AddDatePolicy.java:29)
+	at reactor.core.publisher.MonoDefer.subscribe(MonoDefer.java:44)
+	at reactor.core.publisher.InternalMonoOperator.subscribe(InternalMonoOperator.java:64)
+	at reactor.core.publisher.MonoDelaySubscription.accept(MonoDelaySubscription.java:53)
+	at reactor.core.publisher.MonoDelaySubscription.accept(MonoDelaySubscription.java:34)
+	at reactor.core.publisher.FluxDelaySubscription$DelaySubscriptionOtherSubscriber.onNext(FluxDelaySubscription.java:131)
+	at reactor.core.publisher.MonoDelay$MonoDelayRunnable.propagateDelay(MonoDelay.java:271)
+	at reactor.core.publisher.MonoDelay$MonoDelayRunnable.run(MonoDelay.java:286)
+	at reactor.core.scheduler.SchedulerTask.call(SchedulerTask.java:68)
+	at reactor.core.scheduler.SchedulerTask.call(SchedulerTask.java:28)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:304)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	at java.base/java.lang.Thread.run(Thread.java:842)
+	Suppressed: java.lang.Exception: #block terminated with an error
+		at reactor.core.publisher.BlockingSingleSubscriber.blockingGet(BlockingSingleSubscriber.java:99)
+		at reactor.core.publisher.Mono.block(Mono.java:1710)
+		at com.azure.storage.common.implementation.StorageImplUtils.blockWithOptionalTimeout(StorageImplUtils.java:131)
+		at com.azure.storage.blob.BlobContainerClient.existsWithResponse(BlobContainerClient.java:215)
+		at com.azure.storage.blob.BlobContainerClient.exists(BlobContainerClient.java:199)
+		at com.nedbank.kafka.filemanage.service.AzureBlobStorageService.uploadDummyFile(AzureBlobStorageService.java:28)
+		at com.nedbank.kafka.filemanage.service.AzureBlobStorageService.main(AzureBlobStorageService.java:51)
