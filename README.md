@@ -1,21 +1,47 @@
-I am currently exploring Azure Blob Storage functionality and have successfully uploaded a file using code.
+package com.nedbank.kafka.filemanage.service;
 
-However, when attempting to access the file via the following direct URL:
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.BlobContainerClientBuilder;
 
-🔗 https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/dummy-file.txt
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 
-I encountered the following error:
+public class AzureBlobStorageService {
 
-vbnet
-Copy
-Edit
-Status: PublicAccessNotPermitted  
-Message: Public access is not permitted on this storage account.  
-RequestId: 8907c508-c01e-000c-1129-c03f9f000000  
-Timestamp: 2025-05-08T14:56:41.4964354Z
-This error indicates that public (anonymous) access is disabled for the storage account, preventing access to the blob through unauthenticated requests.
+    private static final String CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=nsndvextr01;AccountKey=;EndpointSuffix=core.windows.net";
+    private static final String CONTAINER_NAME = "nsnakscontregecm001";
+    private static final String BLOB_NAME = "dummy-file.txt";
 
-Next Steps:
-I am trying to explore the option to provide a secure, time-limited SAS (Shared Access Signature) URL that will allow read-only access to the file. This approach maintains security while enabling access for validation or review purposes.
+    public static void main(String[] args) {
+        try {
+            uploadDummyFile();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
-Alternatively, if appropriate and in line with your organization’s security policies, public access can be enabled either at the container level or storage account level to allow direct access to blobs.
+    public static void uploadDummyFile() {
+        // Build the container client
+        BlobContainerClient containerClient = new BlobContainerClientBuilder()
+                .connectionString(CONNECTION_STRING)
+                .containerName(CONTAINER_NAME)
+                .buildClient();
+
+        // Create the blob client for a specific blob (file)
+        BlobClient blobClient = containerClient.getBlobClient(BLOB_NAME);
+
+        // Create dummy file content
+        String dummyFileContent = "This is a dummy file content uploaded to Azure Blob Storage.";
+        byte[] data = dummyFileContent.getBytes(StandardCharsets.UTF_8);
+
+        // Convert the byte array into InputStream
+        InputStream dataStream = new ByteArrayInputStream(data);
+
+        // Upload using blocking InputStream method
+        blobClient.upload(dataStream, data.length, true); // overwrite = true
+
+        System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
+    }
+}
