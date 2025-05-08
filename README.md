@@ -1,2 +1,3 @@
-C:\Users\CC437236\Documents\file-manager>docker load -i file-manager-app.tar
-error during connect: Post "http://%2F%2F.%2Fpipe%2FdockerDesktopLinuxEngine/v1.48/images/load?quiet=0": open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
+CC437236
+23dYaB@jEh45
+34dYaB@jEh56
