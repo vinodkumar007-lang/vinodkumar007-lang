@@ -1,1 +1,1 @@
-password=nbh_dev1
+String jsonBody = "{ \"password\": \"" + password + "\" }";
