@@ -1,110 +1,21 @@
-package com.nedbank.kafka.filemanage.service;
+package com.nedbank.kafka.filemanage.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nedbank.kafka.filemanage.model.*;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.web.bind.annotation.*;
 
-import java.util.*;
+@RestController
+@RequestMapping("/api/file")
+public class FileProcessingController {
 
-@Service
-public class KafkaListenerService {
+    private static final Logger logger = LoggerFactory.getLogger(FileProcessingController.class);
 
-    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+    // No REST endpoint needed if Kafka listener is doing the processing
+    // Keeping controller for future use or monitoring if needed
 
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final BlobStorageService blobStorageService;
-
-    @Value("${kafka.topic.input}")
-    private String inputTopic;
-
-    @Value("${kafka.topic.output}")
-    private String outputTopic;
-
-    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate, BlobStorageService blobStorageService) {
-        this.kafkaTemplate = kafkaTemplate;
-        this.blobStorageService = blobStorageService;
-    }
-
-    /**
-     * Kafka Listener that consumes messages from the input topic
-     * @param record the Kafka message record
-     */
-    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
-    public void consumeKafkaMessage(ConsumerRecord<String, String> record) {
-        String message = record.value();
-        logger.info("Received Kafka message: {}", message);
-
-        try {
-            // Extract necessary fields from the incoming Kafka message
-            String batchId = extractField(message, "ecpBatchGuid");  // Extracting ecpBatchGuid as batchId
-            String filePath = extractField(message, "blobInputId");
-
-            logger.info("Parsed batchId: {}, filePath: {}", batchId, filePath);
-
-            // Upload the file and generate the SAS URL
-            String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId);
-            logger.info("File uploaded to blob storage at URL: {}", blobUrl);
-
-            // Build and send the summary payload to the output Kafka topic
-            Map<String, Object> summaryPayload = buildSummaryPayload(batchId, blobUrl);
-            String summaryMessage = new ObjectMapper().writeValueAsString(summaryPayload);
-
-            kafkaTemplate.send(outputTopic, batchId, summaryMessage);
-            logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
-
-        } catch (Exception e) {
-            // Improved error handling with detailed logging
-            logger.error("Error processing Kafka message: {}. Error: {}", message, e.getMessage(), e);
-        }
-    }
-
-    /**
-     * Extracts a field from the Kafka message
-     * @param json the raw Kafka message in JSON format
-     * @param fieldName the field to extract from the JSON
-     * @return the value of the field
-     */
-    private String extractField(String json, String fieldName) {
-        ObjectMapper mapper = new ObjectMapper();
-        try {
-            return mapper.readTree(json).get(fieldName).asText();
-        } catch (Exception e) {
-            // Detailed logging for missing or incorrect fields
-            logger.error("Failed to extract field '{}'. Error: {}", fieldName, e.getMessage(), e);
-            throw new RuntimeException("Failed to extract " + fieldName + " from message: " + json, e);
-        }
-    }
-
-    /**
-     * Builds the summary payload to send to the output Kafka topic
-     * @param batchId the batch ID
-     * @param blobUrl the URL of the uploaded file in blob storage
-     * @return a map containing the summary payload
-     */
-    private Map<String, Object> buildSummaryPayload(String batchId, String blobUrl) {
-        // Creating the processed files list
-        List<ProcessedFileInfo> processedFiles = List.of(
-                new ProcessedFileInfo("C001", blobUrl + "/pdfs/C001_" + batchId + ".pdf"),
-                new ProcessedFileInfo("C002", blobUrl + "/pdfs/C002_" + batchId + ".pdf")
-        );
-
-        // Constructing the summary payload
-        SummaryPayload summary = new SummaryPayload();
-        summary.setBatchID(batchId);
-        summary.setHeader(new HeaderInfo()); // Populate header if required
-        summary.setMetadata(new MetadataInfo()); // Populate metadata if required
-        summary.setPayload(new PayloadInfo()); // Populate payload if required
-        summary.setProcessedFiles(processedFiles);
-        summary.setSummaryFileURL(blobUrl + "/summary/" + batchId + "_summary.json");
-
-        // Convert the summary to a Map for easy sending to Kafka
-        ObjectMapper mapper = new ObjectMapper();
-        return mapper.convertValue(summary, Map.class);
+    @GetMapping("/health")
+    public String healthCheck() {
+        logger.info("Health check endpoint hit.");
+        return "File Processing Service is up and running.";
     }
 }
