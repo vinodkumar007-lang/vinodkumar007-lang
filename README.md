@@ -1,21 +1,91 @@
-package com.nedbank.kafka.filemanage.controller;
+package com.nedbank.kafka.filemanage.config;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.web.bind.annotation.*;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.kafka.annotation.EnableKafka;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.core.*;
 
-@RestController
-@RequestMapping("/api/file")
-public class FileProcessingController {
+import java.util.HashMap;
+import java.util.Map;
 
-    private static final Logger logger = LoggerFactory.getLogger(FileProcessingController.class);
+@Configuration
+@EnableKafka
+public class KafkaConfig {
 
-    // No REST endpoint needed if Kafka listener is doing the processing
-    // Keeping controller for future use or monitoring if needed
+    @Value("${kafka.bootstrap.servers}")
+    private String bootstrapServers;
 
-    @GetMapping("/health")
-    public String healthCheck() {
-        logger.info("Health check endpoint hit.");
-        return "File Processing Service is up and running.";
+    @Value("${kafka.consumer.group.id}")
+    private String groupId;
+
+    @Value("${kafka.consumer.ssl.keystore.location}")
+    private String keystoreLocation;
+
+    @Value("${kafka.consumer.ssl.keystore.password}")
+    private String keystorePassword;
+
+    @Value("${kafka.consumer.ssl.key.password}")
+    private String keyPassword;
+
+    @Value("${kafka.consumer.ssl.truststore.location}")
+    private String truststoreLocation;
+
+    @Value("${kafka.consumer.ssl.truststore.password}")
+    private String truststorePassword;
+
+    @Value("${kafka.consumer.ssl.protocol}")
+    private String sslProtocol;
+
+    @Bean
+    public ConsumerFactory<String, String> consumerFactory() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put("security.protocol", "SSL");
+        props.put("ssl.keystore.location", keystoreLocation);
+        props.put("ssl.keystore.password", keystorePassword);
+        props.put("ssl.key.password", keyPassword);
+        props.put("ssl.truststore.location", truststoreLocation);
+        props.put("ssl.truststore.password", truststorePassword);
+        props.put("ssl.protocol", sslProtocol);
+        return new DefaultKafkaConsumerFactory<>(props);
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<String, String> factory =
+                new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
+        return factory;
+    }
+
+    @Bean
+    public ProducerFactory<String, String> producerFactory() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        props.put("security.protocol", "SSL");
+        props.put("ssl.keystore.location", keystoreLocation);
+        props.put("ssl.keystore.password", keystorePassword);
+        props.put("ssl.key.password", keyPassword);
+        props.put("ssl.truststore.location", truststoreLocation);
+        props.put("ssl.truststore.password", truststorePassword);
+        props.put("ssl.protocol", sslProtocol);
+        return new DefaultKafkaProducerFactory<>(props);
+    }
+
+    @Bean
+    public KafkaTemplate<String, String> kafkaTemplate() {
+        return new KafkaTemplate<>(producerFactory());
     }
 }
