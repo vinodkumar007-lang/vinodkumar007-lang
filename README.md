@@ -1,61 +1,67 @@
-package com.nedbank.kafka.filemanage.service;
+Request: curl --location --request GET 'https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200/v1/Store_Dev/10099' \
+--header 'x-vault-namespace: admin/espire' \
+--header 'x-vault-token: ' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "password": "nbh_dev1"
+ }'
 
-import com.azure.storage.blob.*;
-import com.azure.storage.blob.models.*;
-import com.azure.storage.blob.sas.BlobSasPermission;
-import com.azure.storage.blob.sas.BlobServiceSasSignatureValues;
-import com.azure.storage.common.sas.*;
+ response:
+ {
+    "request_id": "6d942d91-1e70-1cb7-3b8f-523745295748",
+    "lease_id": "",
+    "renewable": false,
+    "lease_duration": 3600,
+    "data": {
+        "account_key": "",
+        "account_name": "nsndvextr01",
+        "container_name": "nsnakscontregecm001",
+        "test": "test"
+    },
+    "wrap_info": null,
+    "warnings": null,
+    "auth": null,
+    "mount_type": "kv"
+}
 
-import java.io.ByteArrayInputStream;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
-import java.time.OffsetDateTime;
+Request authentication
+curl --location --request POST 'https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200/v1/auth/userpass/login/espire_dev' \
+--header 'x-vault-namespace: admin/espire' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "password": "Dev+Cred4#"
+ }'
 
-public class AzureBlobStorageService {
-
-    private static final String CONNECTION_STRING = "DefaultEndpointsProtocol=https;AccountName=nsndvextr01;AccountKey=;EndpointSuffix=core.windows.net";
-    private static final String CONTAINER_NAME = "nsnakscontregecm001";
-    private static final String BLOB_NAME = "dummy-file.txt";
-
-    public static void main(String[] args) {
-        try {
-            uploadDummyFile();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    public static void uploadDummyFile() {
-        // Build the container client
-        BlobContainerClient containerClient = new BlobContainerClientBuilder()
-                .connectionString(CONNECTION_STRING)
-                .containerName(CONTAINER_NAME)
-                .buildClient();
-
-        // Create the blob client for a specific blob (file)
-        BlobClient blobClient = containerClient.getBlobClient(BLOB_NAME);
-
-        // Create dummy file content
-        String dummyFileContent = "This is a dummy file content uploaded to Azure Blob Storage.";
-        byte[] data = dummyFileContent.getBytes(StandardCharsets.UTF_8);
-        InputStream dataStream = new ByteArrayInputStream(data);
-
-        // Upload the file (overwrite = true)
-        blobClient.upload(dataStream, data.length, true);
-
-        System.out.println("File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
-
-        // Generate a SAS Token
-        BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
-                OffsetDateTime.now().plusHours(24), // Expiration time
-                new BlobSasPermission().setReadPermission(true) // Read-only access
-        );
-
-        // Generate SAS token and append to URL
-        String sasToken = blobClient.generateSas(sasValues);
-        String sasUrl = blobClient.getBlobUrl() + "?" + sasToken;
-
-        System.out.println("SAS URL (valid for 24 hour):");
-        System.out.println(sasUrl);
-    }
+ Response authentication
+ {
+    "request_id": "fa09536a-a2fc-025f-950f-2afc9030e2fd",
+    "lease_id": "",
+    "renewable": false,
+    "lease_duration": 0,
+    "data": null,
+    "wrap_info": null,
+    "warnings": null,
+    "auth": {
+        "client_token": "",
+        "accessor": "LUVKK2UO9KBfznC3BsVaAATl.l3FZm",
+        "policies": [
+            "default",
+            "espire_dev"
+        ],
+        "token_policies": [
+            "default",
+            "espire_dev"
+        ],
+        "metadata": {
+            "username": "espire_dev"
+        },
+        "lease_duration": 1200,
+        "renewable": true,
+        "entity_id": "b1fbda3d-3e91-ca3a-dd4d-0bc5812b6e28",
+        "token_type": "service",
+        "orphan": true,
+        "mfa_requirement": null,
+        "num_uses": 0
+    },
+    "mount_type": ""
 }
