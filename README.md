@@ -1,13 +1,15 @@
- <!-- Apache HttpClient (for Vault HTTP requests) -->
-    <dependency>
-        <groupId>org.apache.httpcomponents</groupId>
-        <artifactId>httpclient</artifactId>
-        <version>4.5.13</version> <!-- Replace with the latest stable version -->
-    </dependency>
+private String getSecretFromVault(String key, String token) {
+        try (CloseableHttpClient client = HttpClients.createDefault()) {
+            HttpGet get = new HttpGet(VAULT_URL + "/v1/Store_Dev/10099");
+            get.setHeader("x-vault-namespace", VAULT_NAMESPACE);
+            get.setHeader("x-vault-token", token);
 
-    <!-- JSON Processing (for parsing Vault responses) -->
-    <dependency>
-        <groupId>org.json</groupId>
-        <artifactId>json</artifactId>
-        <version>20210307</version> <!-- Replace with the latest stable version -->
-    </dependency>
+            try (CloseableHttpResponse response = client.execute(get)) {
+                String jsonResponse = EntityUtils.toString(response.getEntity());
+                JSONObject jsonObject = new JSONObject(jsonResponse);
+                return jsonObject.getJSONObject("data").getString(key);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("❌ Failed to retrieve secret from Vault", e);
+        }
+    }
