@@ -1,89 +1,34 @@
-package com.nedbank.kafka.filemanage.service;
+package com.nedbank.kafka.filemanage.controller;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nedbank.kafka.filemanage.model.*;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
+import com.nedbank.kafka.filemanage.service.KafkaListenerService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
 
-import java.util.*;
+@RestController
+@RequestMapping("/api/file")
+public class FileProcessingController {
 
-@Service
-public class KafkaListenerService {
+    private static final Logger logger = LoggerFactory.getLogger(FileProcessingController.class);
 
-    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+    @Autowired
+    private KafkaListenerService kafkaListenerService;
 
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final BlobStorageService blobStorageService;
-
-    @Value("${kafka.topic.input}")
-    private String inputTopic;
-
-    @Value("${kafka.topic.output}")
-    private String outputTopic;
-
-    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate, BlobStorageService blobStorageService) {
-        this.kafkaTemplate = kafkaTemplate;
-        this.blobStorageService = blobStorageService;
-    }
-
-    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
-    public void consumeKafkaMessage(ConsumerRecord<String, String> record) {
-        String message = record.value();
-        logger.info("📩 Received Kafka message: {}", message);
+    // Endpoint to manually trigger the Kafka message processing
+    @PostMapping("/process")
+    public String processFile(@RequestBody String message) {
+        logger.info("Received request to process file with message: {}", message);
 
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(message);
-
-            JsonNode payloadNode = root.path("payload");
-
-            String batchId = payloadNode.path("ecpBatchGuid").asText(null);
-            String filePath = payloadNode.path("blobInputId").asText(null);
-
-            if (batchId == null || filePath == null) {
-                throw new IllegalArgumentException("❗ Missing required fields: 'ecpBatchGuid' or 'blobInputId' in payload.");
-            }
-
-            logger.info("✅ Extracted batchId: {}, filePath: {}", batchId, filePath);
-
-            String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId);
-            logger.info("📤 File uploaded to blob storage at URL: {}", blobUrl);
-
-            Map<String, Object> summaryPayload = buildSummaryPayload(batchId, blobUrl);
-            String summaryMessage = mapper.writeValueAsString(summaryPayload);
-
-            kafkaTemplate.send(outputTopic, batchId, summaryMessage);
-            logger.info("📦 Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
-
+            // Manually consume the message, upload the file, and send URL to Kafka
+            kafkaListenerService.consumeMessageAndStoreFile(message);
+            logger.info("File processed successfully for message: {}", message);
+            return "File processing triggered successfully!";
         } catch (Exception e) {
-            logger.error("❌ Error processing Kafka message: {}", message, e);
+            logger.error("Error processing file for message: {}. Error: {}", message, e.getMessage());
+            return "Error processing file: " + e.getMessage();
         }
     }
-
-    private Map<String, Object> buildSummaryPayload(String batchId, String blobUrl) {
-        HeaderInfo header = new HeaderInfo();
-        MetadataInfo metadata = new MetadataInfo();
-        PayloadInfo payload = new PayloadInfo();
-
-        List<ProcessedFileInfo> processedFiles = List.of(
-                new ProcessedFileInfo("C001", blobUrl + "/pdfs/C001_" + batchId + ".pdf"),
-                new ProcessedFileInfo("C002", blobUrl + "/pdfs/C002_" + batchId + ".pdf")
-        );
-
-        SummaryPayload summary = new SummaryPayload();
-        summary.setBatchID(batchId);
-        summary.setHeader(header);
-        summary.setMetadata(metadata);
-        summary.setPayload(payload);
-        summary.setProcessedFiles(processedFiles);
-        summary.setSummaryFileURL(blobUrl + "/summary/" + batchId + "_summary.json");
-
-        return new ObjectMapper().convertValue(summary, Map.class);
-    }
 }
+
