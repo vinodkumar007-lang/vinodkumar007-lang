@@ -1,15 +1,17 @@
 package com.nedbank.kafka.filemanage.service;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nedbank.kafka.filemanage.model.*;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.util.*;
 
 @Service
@@ -34,34 +36,51 @@ public class KafkaListenerService {
     @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
     public void consumeKafkaMessage(ConsumerRecord<String, String> record) {
         String message = record.value();
-        logger.info("Received Kafka message: {}", message);
+        logger.info("✅ Received Kafka message: {}", message);
 
         try {
-            String batchId = extractField(message, "batchId");
-            String filePath = extractField(message, "filePath");
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(message);
 
-            logger.info("Parsed batchId: {}, filePath: {}", batchId, filePath);
+            // Extract from nested payload
+            JsonNode payload = root.path("payload");
+            String batchId = extractJsonField(payload, "ecpBatchGuid");
+            String filePath = extractJsonField(payload, "blobInputId"); // You can map this appropriately
+
+            logger.info("🔍 Parsed batchId: {}, filePath: {}", batchId, filePath);
+
+            validateInput(batchId, filePath);
 
             String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId);
-            logger.info("File uploaded to blob storage at URL: {}", blobUrl);
+            logger.info("✅ File uploaded to blob storage at URL: {}", blobUrl);
 
             Map<String, Object> summaryPayload = buildSummaryPayload(batchId, blobUrl);
-            String summaryMessage = new ObjectMapper().writeValueAsString(summaryPayload);
+            String summaryMessage = mapper.writeValueAsString(summaryPayload);
 
             kafkaTemplate.send(outputTopic, batchId, summaryMessage);
-            logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
+            logger.info("📤 Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
 
         } catch (Exception e) {
-            logger.error("Error processing Kafka message: {}", e.getMessage(), e);
+            logger.error("❌ Error processing Kafka message: {}", message, e);
         }
     }
 
-    private String extractField(String json, String fieldName) {
-        ObjectMapper mapper = new ObjectMapper();
-        try {
-            return mapper.readTree(json).get(fieldName).asText();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to extract " + fieldName + " from message: " + json, e);
+    private String extractJsonField(JsonNode node, String fieldName) {
+        JsonNode value = node.get(fieldName);
+        if (value == null || value.isNull() || value.asText().isEmpty()) {
+            throw new IllegalArgumentException("Missing or empty field: " + fieldName);
+        }
+        return value.asText();
+    }
+
+    private void validateInput(String batchId, String filePath) {
+        if (batchId == null || batchId.isBlank()) {
+            throw new IllegalArgumentException("❗ batchId is missing or blank");
+        }
+
+        File file = new File(filePath);
+        if (!file.exists()) {
+            throw new IllegalArgumentException("❗ File does not exist at path: " + filePath);
         }
     }
 
@@ -87,6 +106,7 @@ public class KafkaListenerService {
         return mapper.convertValue(summary, Map.class);
     }
 
+    // For testing from a controller or elsewhere
     public void consumeMessageAndStoreFile(String message) {
         consumeKafkaMessage(new ConsumerRecord<>("manual", 0, 0, null, message));
     }
