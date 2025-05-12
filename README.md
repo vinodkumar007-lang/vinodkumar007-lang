@@ -1,2 +1,1 @@
--Djava.net.useSystemProxies=true
--Djavax.net.debug=all
+curl https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200/v1/sys/health
