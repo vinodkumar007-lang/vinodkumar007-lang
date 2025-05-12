@@ -1,3 +1,1 @@
-[[-Dhttp.proxyHost=your.proxy.host -Dhttp.proxyPort=8080 -Dhttps.proxyHost=your.proxy.host -Dhttps.proxyPort=8080
-](http://webproxy.africa.nedcor.net:9001/proxy2.pac)
-](http://webproxy.africa.nedcor.net:9001/proxy2.pac)
+-Dhttp.proxyHost=webproxy.africa.nedcor.net -Dhttp.proxyPort=9001 -Dhttps.proxyHost=webproxy.africa.nedcor.net -Dhttps.proxyPort=9001
