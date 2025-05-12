@@ -1,1 +1,1 @@
-telnet webproxy.africa.nedcor.net 9001
+-Djava.net.useSystemProxies=true
