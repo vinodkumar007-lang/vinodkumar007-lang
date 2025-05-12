@@ -1,3 +1,6 @@
+proxy.host=webproxy.africa.nedcor.net
+proxy.port=9001
+
 package com.nedbank.kafka.filemanage.service;
 
 import com.azure.storage.blob.*;
@@ -32,8 +35,22 @@ public class BlobStorageService {
     @Value("${vault.hashicorp.passwordNbhDev}")
     private String passwordNbhDev;
 
+    // Proxy settings
+    @Value("${proxy.host}")
+    private String proxyHost;
+
+    @Value("${proxy.port}")
+    private int proxyPort;
+
     public String uploadFileAndGenerateSasUrl(String filePath, String batchId, String objectId) {
         try {
+            // Set system properties for proxy
+            System.setProperty("http.proxyHost", proxyHost);
+            System.setProperty("http.proxyPort", String.valueOf(proxyPort));
+            System.setProperty("https.proxyHost", proxyHost);
+            System.setProperty("https.proxyPort", String.valueOf(proxyPort));
+            System.setProperty("java.net.useSystemProxies", "true");
+
             String vaultToken = getVaultToken();
 
             String accountKey = getSecretFromVault("account_key", vaultToken);
