@@ -1,8 +1,4 @@
-2025-05-12T09:30:24.887+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Successfully joined group with generation Generation{generationId=21, memberId='consumer-str-ecp-batch-1-e05ff880-6b5c-425d-adc1-43d89858a6ea', protocol='range'}
-2025-05-12T09:30:24.891+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Finished assignment for group at generation 21: {consumer-str-ecp-batch-1-e05ff880-6b5c-425d-adc1-43d89858a6ea=Assignment(partitions=[str-ecp-batch-composition-0])}
-2025-05-12T09:30:24.904+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Successfully synced group in generation Generation{generationId=21, memberId='consumer-str-ecp-batch-1-e05ff880-6b5c-425d-adc1-43d89858a6ea', protocol='range'}
-2025-05-12T09:30:24.905+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Notifying assignor about the new Assignment(partitions=[str-ecp-batch-composition-0])
-2025-05-12T09:30:24.910+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Adding newly assigned partitions: str-ecp-batch-composition-0
-2025-05-12T09:30:24.936+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Setting offset for partition str-ecp-batch-composition-0 to the committed offset FetchPosition{offset=21, offsetEpoch=Optional.empty, currentLeader=LeaderAndEpoch{leader=Optional[nsnxeteelpka03.nednet.co.za:9093 (id: 2 rack: null)], epoch=16}}
-2025-05-12T09:30:24.939+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : str-ecp-batch: partitions assigned: [str-ecp-batch-composition-0]
-2025-05-12T09:39:24.871+02:00  INFO 4424 --- [ntainer#0-0-C-1] org.apache.kafka.clients.NetworkClient   : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Node -1 disconnected.
+@KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
+    public void consumeKafkaMessage(ConsumerRecord<String, String> record) {
+        String message = record.value();
+        logger.info("Received Kafka message: {}", message);
