@@ -1,43 +1,139 @@
-@KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
-public void consumeKafkaMessage(ConsumerRecord<String, String> record) {
-    logger.info("Kafka listener method entered.");
-    String message = record.value();
-    logger.info("Received Kafka message: {}", message);
+package com.nedbank.kafka.filemanage.service;
 
-    try {
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.*;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.*;
+
+@Service
+public class KafkaListenerService {
+
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final BlobStorageService blobStorageService;
+
+    @Value("${kafka.topic.input}")
+    private String inputTopic;
+
+    @Value("${kafka.topic.output}")
+    private String outputTopic;
+
+    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate, BlobStorageService blobStorageService) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.blobStorageService = blobStorageService;
+    }
+
+    /**
+     * Kafka Listener that consumes messages from the input topic
+     * @param record the Kafka message record
+     */
+    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
+    public void consumeKafkaMessage(ConsumerRecord<String, String> record) {
+        logger.info("Kafka listener method entered.");
+        String message = record.value();
+        logger.info("Received Kafka message: {}", message);
+
+        try {
+            // Parse the incoming Kafka message
+            JsonNode root = new ObjectMapper().readTree(message);
+
+            // Extract necessary fields from the incoming Kafka message
+            String batchId = extractField(root, "consumerReference");  // Using consumerReference as batchId
+            String filePath = extractField(root, "batchFiles");
+
+            logger.info("Parsed batchId: {}, filePath: {}", batchId, filePath);
+
+            // Upload the file and generate the SAS URL
+            String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId);
+            logger.info("File uploaded to blob storage at URL: {}", blobUrl);
+
+            // Build and send the summary payload to the output Kafka topic
+            Map<String, Object> summaryPayload = buildSummaryPayload(batchId, blobUrl, root.get("batchFiles"));
+            String summaryMessage = new ObjectMapper().writeValueAsString(summaryPayload);
+
+            kafkaTemplate.send(outputTopic, batchId, summaryMessage);
+            logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
+
+        } catch (Exception e) {
+            // Improved error handling with detailed logging
+            logger.error("Error processing Kafka message: {}. Error: {}", message, e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Extracts a field from the Kafka message
+     * @param json the raw Kafka message in JSON format
+     * @param fieldName the field to extract from the JSON
+     * @return the value of the field
+     */
+    private String extractField(JsonNode json, String fieldName) {
+        try {
+            JsonNode fieldNode = json.get(fieldName);
+            if (fieldNode != null) {
+                return fieldNode.asText();
+            } else {
+                logger.warn("Field '{}' not found in the message", fieldName);
+                return null;
+            }
+        } catch (Exception e) {
+            // Detailed logging for missing or incorrect fields
+            logger.error("Failed to extract field '{}'. Error: {}", fieldName, e.getMessage(), e);
+            throw new RuntimeException("Failed to extract " + fieldName + " from message", e);
+        }
+    }
+
+    /**
+     * Builds the summary payload to send to the output Kafka topic
+     * @param batchId the batch ID
+     * @param blobUrl the URL of the uploaded file in blob storage
+     * @param batchFilesNode the batchFiles node from the Kafka message
+     * @return a map containing the summary payload
+     */
+    private Map<String, Object> buildSummaryPayload(String batchId, String blobUrl, JsonNode batchFilesNode) {
+        List<ProcessedFileInfo> processedFiles = new ArrayList<>();
+
+        for (JsonNode fileNode : batchFilesNode) {
+            String objectId = fileNode.get("ObjectId").asText();
+            String fileLocation = fileNode.get("fileLocation").asText();
+
+            String extension = getFileExtension(fileLocation);
+
+            String dynamicFileUrl = blobUrl + "/" + objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
+            processedFiles.add(new ProcessedFileInfo(objectId, dynamicFileUrl));
+        }
+
+        SummaryPayload summary = new SummaryPayload();
+        summary.setBatchID(batchId);
+        summary.setHeader(new HeaderInfo()); // Populate header if required
+        summary.setMetadata(new MetadataInfo()); // Populate metadata if required
+        summary.setPayload(new PayloadInfo()); // Populate payload if required
+        summary.setProcessedFiles(processedFiles);
+        summary.setSummaryFileURL(blobUrl + "/summary/" + batchId + "_summary.json");
+
         ObjectMapper mapper = new ObjectMapper();
-        JsonNode root = mapper.readTree(message);
+        return mapper.convertValue(summary, Map.class);
+    }
 
-        // Updated: Use "processReference" as batchId
-        String batchId = root.path("processReference").asText();
-        if (batchId == null || batchId.isEmpty()) {
-            throw new IllegalArgumentException("Missing 'processReference' field in message.");
+    /**
+     * Extracts the file extension from a file location URL
+     * @param fileLocation the file location URL
+     * @return the file extension
+     */
+    private String getFileExtension(String fileLocation) {
+        int lastDotIndex = fileLocation.lastIndexOf('.');
+        if (lastDotIndex > 0) {
+            return fileLocation.substring(lastDotIndex);
+        } else {
+            return ""; // Default to empty string if no extension is found
         }
-
-        // Updated: Get fileLocation from first entry in batchFiles[]
-        JsonNode batchFiles = root.path("batchFiles");
-        if (!batchFiles.isArray() || batchFiles.isEmpty()) {
-            throw new IllegalArgumentException("Missing or empty 'batchFiles' array in message.");
-        }
-
-        String filePath = batchFiles.get(0).path("fileLocation").asText();
-        if (filePath == null || filePath.isEmpty()) {
-            throw new IllegalArgumentException("Missing 'fileLocation' in first batchFiles entry.");
-        }
-
-        logger.info("Parsed batchId: {}, filePath: {}", batchId, filePath);
-
-        // Upload to blob and send summary
-        String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId);
-        logger.info("File uploaded to blob storage at URL: {}", blobUrl);
-
-        Map<String, Object> summaryPayload = buildSummaryPayload(batchId, blobUrl);
-        String summaryMessage = mapper.writeValueAsString(summaryPayload);
-
-        kafkaTemplate.send(outputTopic, batchId, summaryMessage);
-        logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
-
-    } catch (Exception e) {
-        logger.error("Error processing Kafka message: {}. Error: {}", message, e.getMessage(), e);
     }
 }
