@@ -37,6 +37,8 @@ public class BlobStorageService {
         try {
             // Configure proxy settings
             ProxySetup.configureProxy(); // This will configure the system-wide proxy settings
+            System.out.println("Proxy Host: " + System.getProperty("http.proxyHost"));
+            System.out.println("Proxy Port: " + System.getProperty("http.proxyPort"));
 
             String vaultToken = getVaultToken();
 
@@ -86,8 +88,8 @@ public class BlobStorageService {
         try {
             // Create a custom RequestConfig to increase timeouts
             RequestConfig requestConfig = RequestConfig.custom()
-                    .setConnectTimeout(20000)  // 20 seconds connection timeout
-                    .setSocketTimeout(20000)   // 20 seconds socket timeout
+                    .setConnectTimeout(60000)  // 60 seconds connection timeout
+                    .setSocketTimeout(60000)   // 60 seconds socket timeout
                     .build();
 
             CloseableHttpClient client = HttpClients.custom()
