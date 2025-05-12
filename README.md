@@ -1,1 +1,1 @@
--Dhttp.proxyHost=webproxy.africa.nedcor.net -Dhttp.proxyPort=9001 -Dhttps.proxyHost=webproxy.africa.nedcor.net -Dhttps.proxyPort=9001
+telnet webproxy.africa.nedcor.net 9001
