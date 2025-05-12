@@ -48,16 +48,26 @@ public class KafkaListenerService {
 
             // Extract necessary fields from the incoming Kafka message
             String batchId = extractField(root, "consumerReference");  // Using consumerReference as batchId
-            String filePath = extractField(root, "batchFiles");
+            JsonNode batchFilesNode = root.get("batchFiles");
 
-            logger.info("Parsed batchId: {}, filePath: {}", batchId, filePath);
+            if (batchFilesNode == null || !batchFilesNode.isArray() || batchFilesNode.isEmpty()) {
+                logger.warn("No batch files found in the message.");
+                return;
+            }
+
+            // For now, take the first file entry for blob upload
+            JsonNode firstFile = batchFilesNode.get(0);
+            String filePath = firstFile.get("fileLocation").asText();
+            String objectId = firstFile.get("ObjectId").asText();
+
+            logger.info("Parsed batchId: {}, filePath: {}, objectId: {}", batchId, filePath, objectId);
 
             // Upload the file and generate the SAS URL
-            String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId);
+            String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
             logger.info("File uploaded to blob storage at URL: {}", blobUrl);
 
             // Build and send the summary payload to the output Kafka topic
-            Map<String, Object> summaryPayload = buildSummaryPayload(batchId, blobUrl, root.get("batchFiles"));
+            Map<String, Object> summaryPayload = buildSummaryPayload(batchId, blobUrl, batchFilesNode);
             String summaryMessage = new ObjectMapper().writeValueAsString(summaryPayload);
 
             kafkaTemplate.send(outputTopic, batchId, summaryMessage);
@@ -85,7 +95,6 @@ public class KafkaListenerService {
                 return null;
             }
         } catch (Exception e) {
-            // Detailed logging for missing or incorrect fields
             logger.error("Failed to extract field '{}'. Error: {}", fieldName, e.getMessage(), e);
             throw new RuntimeException("Failed to extract " + fieldName + " from message", e);
         }
@@ -104,7 +113,6 @@ public class KafkaListenerService {
         for (JsonNode fileNode : batchFilesNode) {
             String objectId = fileNode.get("ObjectId").asText();
             String fileLocation = fileNode.get("fileLocation").asText();
-
             String extension = getFileExtension(fileLocation);
 
             String dynamicFileUrl = blobUrl + "/" + objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
