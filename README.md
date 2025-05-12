@@ -1,42 +1,19 @@
-# Kafka Consumer Configuration
-kafka.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
-kafka.consumer.group.id=str-ecp-batch
-kafka.consumer.auto.offset.reset=earliest
-
-# SSL Configuration
-kafka.consumer.security.protocol=SSL
-kafka.consumer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
-kafka.consumer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
-kafka.consumer.ssl.key.password=3dX7y3Yz9Jv6L4F
-kafka.consumer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
-kafka.consumer.ssl.truststore.password=nedbank1
-kafka.consumer.ssl.protocol=TLSv1.2
-
-# Kafka Consumer Deserialization
-kafka.consumer.key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
-kafka.consumer.value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
-
-# Kafka Producer Configuration (to send Summary File URL)
-kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
-kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
-kafka.producer.security.protocol=SSL
-kafka.producer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
-kafka.producer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
-kafka.producer.ssl.key.password=3dX7y3Yz9Jv6L4F
-kafka.producer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
-kafka.producer.ssl.truststore.password=nedbank1
-kafka.producer.ssl.protocol=TLSv1.2
-kafka.producer.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
-
-azure.keyvault.uri=https://nsn-dev-ecm-kva-001.vault.azure.net/secrets
-
-logging.level.com.azure.spring=DEBUG
-
-kafka.topic.input=str-ecp-batch-composition
-kafka.topic.output=ecp-batch-composition-complete
-
-vault.hashicorp.url=https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200
-vault.hashicorp.namespace =admin/espire
-
-vault.hashicorp.passwordDev=Dev+Cred4#
-vault.hashicorp.passwordNbhDev=nbh_dev1
+2025-05-12T09:30:23.754+02:00  INFO 4424 --- [           main] o.a.kafka.common.utils.AppInfoParser     : Kafka version: 3.3.1
+2025-05-12T09:30:23.757+02:00  INFO 4424 --- [           main] o.a.kafka.common.utils.AppInfoParser     : Kafka commitId: e23c59d00e687ff5
+2025-05-12T09:30:23.758+02:00  INFO 4424 --- [           main] o.a.kafka.common.utils.AppInfoParser     : Kafka startTimeMs: 1747035023751
+2025-05-12T09:30:23.762+02:00  INFO 4424 --- [           main] o.a.k.clients.consumer.KafkaConsumer     : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Subscribed to topic(s): str-ecp-batch-composition
+2025-05-12T09:30:23.791+02:00  INFO 4424 --- [           main] c.nedbank.kafka.filemanage.Application   : Started Application in 6.042 seconds (process running for 21.376)
+2025-05-12T09:30:24.765+02:00  INFO 4424 --- [ntainer#0-0-C-1] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Resetting the last seen epoch of partition str-ecp-batch-composition-0 to 16 since the associated topicId changed from null to MwBBZLPpRK6MmJMBo7pw8g
+2025-05-12T09:30:24.771+02:00  INFO 4424 --- [ntainer#0-0-C-1] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Cluster ID: y0ml4PnGSeO_hhGMyIz-pA
+2025-05-12T09:30:24.774+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Discovered group coordinator nsnxeteelpka01.nednet.co.za:9093 (id: 2147483647 rack: null)
+2025-05-12T09:30:24.778+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] (Re-)joining group
+2025-05-12T09:30:24.869+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Request joining group due to: need to re-join with the given member-id: consumer-str-ecp-batch-1-e05ff880-6b5c-425d-adc1-43d89858a6ea
+2025-05-12T09:30:24.870+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Request joining group due to: rebalance failed due to 'The group member needs to have a valid member id before actually entering a consumer group.' (MemberIdRequiredException)
+2025-05-12T09:30:24.870+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] (Re-)joining group
+2025-05-12T09:30:24.887+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Successfully joined group with generation Generation{generationId=21, memberId='consumer-str-ecp-batch-1-e05ff880-6b5c-425d-adc1-43d89858a6ea', protocol='range'}
+2025-05-12T09:30:24.891+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Finished assignment for group at generation 21: {consumer-str-ecp-batch-1-e05ff880-6b5c-425d-adc1-43d89858a6ea=Assignment(partitions=[str-ecp-batch-composition-0])}
+2025-05-12T09:30:24.904+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Successfully synced group in generation Generation{generationId=21, memberId='consumer-str-ecp-batch-1-e05ff880-6b5c-425d-adc1-43d89858a6ea', protocol='range'}
+2025-05-12T09:30:24.905+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Notifying assignor about the new Assignment(partitions=[str-ecp-batch-composition-0])
+2025-05-12T09:30:24.910+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Adding newly assigned partitions: str-ecp-batch-composition-0
+2025-05-12T09:30:24.936+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Setting offset for partition str-ecp-batch-composition-0 to the committed offset FetchPosition{offset=21, offsetEpoch=Optional.empty, currentLeader=LeaderAndEpoch{leader=Optional[nsnxeteelpka03.nednet.co.za:9093 (id: 2 rack: null)], epoch=16}}
+2025-05-12T09:30:24.939+02:00  INFO 4424 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : str-ecp-batch: partitions assigned: [str-ecp-batch-composition-0]
