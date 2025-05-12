@@ -1,139 +1,122 @@
 package com.nedbank.kafka.filemanage.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nedbank.kafka.filemanage.model.*;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
+import com.azure.storage.blob.*;
+import com.azure.storage.blob.sas.*;
+import com.azure.storage.common.sas.*;
+import org.apache.http.client.methods.*;
+import org.apache.http.impl.client.*;
+import org.apache.http.entity.*;
+import org.apache.http.util.*;
+import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.time.OffsetDateTime;
 
 @Service
-public class KafkaListenerService {
+public class BlobStorageService {
 
-    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+    @Value("${vault.hashicorp.url}")
+    private String VAULT_URL;
 
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final BlobStorageService blobStorageService;
+    @Value("${vault.hashicorp.namespace}")
+    private String VAULT_NAMESPACE;
 
-    @Value("${kafka.topic.input}")
-    private String inputTopic;
+    @Value("${vault.hashicorp.passwordDev}")
+    private String passwordDev;
 
-    @Value("${kafka.topic.output}")
-    private String outputTopic;
-
-    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate, BlobStorageService blobStorageService) {
-        this.kafkaTemplate = kafkaTemplate;
-        this.blobStorageService = blobStorageService;
-    }
-
-    /**
-     * Kafka Listener that consumes messages from the input topic
-     * @param record the Kafka message record
-     */
-    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
-    public void consumeKafkaMessage(ConsumerRecord<String, String> record) {
-        logger.info("Kafka listener method entered.");
-        String message = record.value();
-        logger.info("Received Kafka message: {}", message);
-
+    @Value("${vault.hashicorp.passwordNbhDev}")
+    private String passwordNbhDev;
+   /* private static final String VAULT_URL = "https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200";
+    private static final String VAULT_NAMESPACE = "admin/espire";
+*/
+    public String uploadFileAndGenerateSasUrl(String filePath, String batchId) {
         try {
-            // Parse the incoming Kafka message
-            JsonNode root = new ObjectMapper().readTree(message);
+            String vaultToken = getVaultToken();
 
-            // Extract necessary fields from the incoming Kafka message
-            String batchId = extractField(root, "consumerReference");  // Using consumerReference as batchId
-            String filePath = extractField(root, "batchFiles");
+            String accountKey = getSecretFromVault("account_key", vaultToken);
+            String accountName = getSecretFromVault("account_name", vaultToken);
+            String containerName = getSecretFromVault("container_name", vaultToken);
 
-            logger.info("Parsed batchId: {}, filePath: {}", batchId, filePath);
+            String connectionString = String.format(
+                    "DefaultEndpointsProtocol=https;AccountName=%s;AccountKey=%s;EndpointSuffix=core.windows.net",
+                    accountName, accountKey
+            );
 
-            // Upload the file and generate the SAS URL
-            String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId);
-            logger.info("File uploaded to blob storage at URL: {}", blobUrl);
+            BlobContainerClient containerClient = new BlobContainerClientBuilder()
+                    .connectionString(connectionString)
+                    .containerName(containerName)
+                    .buildClient();
 
-            // Build and send the summary payload to the output Kafka topic
-            Map<String, Object> summaryPayload = buildSummaryPayload(batchId, blobUrl, root.get("batchFiles"));
-            String summaryMessage = new ObjectMapper().writeValueAsString(summaryPayload);
+            BlobClient blobClient = containerClient.getBlobClient("dummy-file.txt");
 
-            kafkaTemplate.send(outputTopic, batchId, summaryMessage);
-            logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
+            // Create dummy file content
+            String dummyFileContent = "This is a dummy file content uploaded to Azure Blob Storage.";
+            byte[] data = dummyFileContent.getBytes(StandardCharsets.UTF_8);
+            InputStream dataStream = new ByteArrayInputStream(data);
 
+            // Upload the file (overwrite = true)
+            blobClient.upload(dataStream, data.length, true);
+
+            System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
+
+            // Generate a SAS Token valid for 24 hours
+            BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
+                    OffsetDateTime.now().plusHours(24),
+                    new BlobSasPermission().setReadPermission(true)
+            );
+
+            String sasToken = blobClient.generateSas(sasValues);
+            String sasUrl = blobClient.getBlobUrl() + "?" + sasToken;
+
+            System.out.println("🔐 SAS URL (valid for 24 hours):");
+            System.out.println(sasUrl);
+
+            return sasUrl;
         } catch (Exception e) {
-            // Improved error handling with detailed logging
-            logger.error("Error processing Kafka message: {}. Error: {}", message, e.getMessage(), e);
+            throw new RuntimeException("❌ Error uploading to Azure Blob or generating SAS URL", e);
         }
     }
 
-    /**
-     * Extracts a field from the Kafka message
-     * @param json the raw Kafka message in JSON format
-     * @param fieldName the field to extract from the JSON
-     * @return the value of the field
-     */
-    private String extractField(JsonNode json, String fieldName) {
-        try {
-            JsonNode fieldNode = json.get(fieldName);
-            if (fieldNode != null) {
-                return fieldNode.asText();
-            } else {
-                logger.warn("Field '{}' not found in the message", fieldName);
-                return null;
+    private String getVaultToken() {
+        try (CloseableHttpClient client = HttpClients.createDefault()) {
+            HttpPost post = new HttpPost(VAULT_URL + "/v1/auth/userpass/login/espire_dev");
+            post.setHeader("x-vault-namespace", VAULT_NAMESPACE);
+            post.setHeader("Content-Type", "application/json");
+
+            StringEntity entity = new StringEntity("{ \"password\": \"\" + passwordDev + \"\" }");
+            post.setEntity(entity);
+
+            try (CloseableHttpResponse response = client.execute(post)) {
+                String jsonResponse = EntityUtils.toString(response.getEntity());
+                JSONObject jsonObject = new JSONObject(jsonResponse);
+                return jsonObject.getJSONObject("auth").getString("client_token");
             }
         } catch (Exception e) {
-            // Detailed logging for missing or incorrect fields
-            logger.error("Failed to extract field '{}'. Error: {}", fieldName, e.getMessage(), e);
-            throw new RuntimeException("Failed to extract " + fieldName + " from message", e);
+            throw new RuntimeException("❌ Failed to obtain Vault token", e);
         }
     }
 
-    /**
-     * Builds the summary payload to send to the output Kafka topic
-     * @param batchId the batch ID
-     * @param blobUrl the URL of the uploaded file in blob storage
-     * @param batchFilesNode the batchFiles node from the Kafka message
-     * @return a map containing the summary payload
-     */
-    private Map<String, Object> buildSummaryPayload(String batchId, String blobUrl, JsonNode batchFilesNode) {
-        List<ProcessedFileInfo> processedFiles = new ArrayList<>();
+    private String getSecretFromVault(String key, String token) {
+        try (CloseableHttpClient client = HttpClients.createDefault()) {
+            HttpPost post = new HttpPost(VAULT_URL + "/v1/Store_Dev/10099");
+            post.setHeader("x-vault-namespace", VAULT_NAMESPACE);
+            post.setHeader("x-vault-token", token);
+            post.setHeader("Content-Type", "application/json");
 
-        for (JsonNode fileNode : batchFilesNode) {
-            String objectId = fileNode.get("ObjectId").asText();
-            String fileLocation = fileNode.get("fileLocation").asText();
+            // Add body with password
+            StringEntity entity = new StringEntity("{ \"password\": \"\" + passwordNbhDev + \"\" }");
+            post.setEntity(entity);
 
-            String extension = getFileExtension(fileLocation);
-
-            String dynamicFileUrl = blobUrl + "/" + objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
-            processedFiles.add(new ProcessedFileInfo(objectId, dynamicFileUrl));
-        }
-
-        SummaryPayload summary = new SummaryPayload();
-        summary.setBatchID(batchId);
-        summary.setHeader(new HeaderInfo()); // Populate header if required
-        summary.setMetadata(new MetadataInfo()); // Populate metadata if required
-        summary.setPayload(new PayloadInfo()); // Populate payload if required
-        summary.setProcessedFiles(processedFiles);
-        summary.setSummaryFileURL(blobUrl + "/summary/" + batchId + "_summary.json");
-
-        ObjectMapper mapper = new ObjectMapper();
-        return mapper.convertValue(summary, Map.class);
-    }
-
-    /**
-     * Extracts the file extension from a file location URL
-     * @param fileLocation the file location URL
-     * @return the file extension
-     */
-    private String getFileExtension(String fileLocation) {
-        int lastDotIndex = fileLocation.lastIndexOf('.');
-        if (lastDotIndex > 0) {
-            return fileLocation.substring(lastDotIndex);
-        } else {
-            return ""; // Default to empty string if no extension is found
+            try (CloseableHttpResponse response = client.execute(post)) {
+                String jsonResponse = EntityUtils.toString(response.getEntity());
+                JSONObject jsonObject = new JSONObject(jsonResponse);
+                return jsonObject.getJSONObject("data").getString(key);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("❌ Failed to retrieve secret from Vault", e);
         }
     }
 }
