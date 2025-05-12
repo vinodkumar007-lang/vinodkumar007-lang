@@ -1,8 +1,8 @@
 package com.nedbank.kafka.filemanage.service;
 
 import com.azure.storage.blob.*;
-import com.azure.storage.blob.sas.*;
-import com.azure.storage.common.sas.*;
+import com.azure.storage.blob.models.*;
+import com.azure.storage.common.StorageSharedKeyCredential;
 import org.apache.http.client.methods.*;
 import org.apache.http.impl.client.*;
 import org.apache.http.entity.*;
@@ -29,16 +29,17 @@ public class BlobStorageService {
 
     @Value("${vault.hashicorp.passwordNbhDev}")
     private String passwordNbhDev;
-   /* private static final String VAULT_URL = "https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200";
-    private static final String VAULT_NAMESPACE = "admin/espire";
-*/
-    public String uploadFileAndGenerateSasUrl(String filePath, String batchId) {
+
+    public String uploadFileAndGenerateSasUrl(String filePath, String batchId, String objectId) {
         try {
             String vaultToken = getVaultToken();
 
             String accountKey = getSecretFromVault("account_key", vaultToken);
             String accountName = getSecretFromVault("account_name", vaultToken);
             String containerName = getSecretFromVault("container_name", vaultToken);
+
+            String extension = getFileExtension(filePath);
+            String blobName = objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
 
             String connectionString = String.format(
                     "DefaultEndpointsProtocol=https;AccountName=%s;AccountKey=%s;EndpointSuffix=core.windows.net",
@@ -50,19 +51,14 @@ public class BlobStorageService {
                     .containerName(containerName)
                     .buildClient();
 
-            BlobClient blobClient = containerClient.getBlobClient("dummy-file.txt");
+            BlobClient blobClient = containerClient.getBlobClient(blobName);
 
-            // Create dummy file content
-            String dummyFileContent = "This is a dummy file content uploaded to Azure Blob Storage.";
-            byte[] data = dummyFileContent.getBytes(StandardCharsets.UTF_8);
-            InputStream dataStream = new ByteArrayInputStream(data);
+            File file = new File(filePath);
+            try (InputStream dataStream = new FileInputStream(file)) {
+                blobClient.upload(dataStream, file.length(), true);
+                System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
+            }
 
-            // Upload the file (overwrite = true)
-            blobClient.upload(dataStream, data.length, true);
-
-            System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
-
-            // Generate a SAS Token valid for 24 hours
             BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
                     OffsetDateTime.now().plusHours(24),
                     new BlobSasPermission().setReadPermission(true)
@@ -86,7 +82,7 @@ public class BlobStorageService {
             post.setHeader("x-vault-namespace", VAULT_NAMESPACE);
             post.setHeader("Content-Type", "application/json");
 
-            StringEntity entity = new StringEntity("{ \"password\": \"\" + passwordDev + \"\" }");
+            StringEntity entity = new StringEntity("{ \"password\": \"" + passwordDev + "\" }");
             post.setEntity(entity);
 
             try (CloseableHttpResponse response = client.execute(post)) {
@@ -106,8 +102,7 @@ public class BlobStorageService {
             post.setHeader("x-vault-token", token);
             post.setHeader("Content-Type", "application/json");
 
-            // Add body with password
-            StringEntity entity = new StringEntity("{ \"password\": \"\" + passwordNbhDev + \"\" }");
+            StringEntity entity = new StringEntity("{ \"password\": \"" + passwordNbhDev + "\" }");
             post.setEntity(entity);
 
             try (CloseableHttpResponse response = client.execute(post)) {
@@ -117,6 +112,15 @@ public class BlobStorageService {
             }
         } catch (Exception e) {
             throw new RuntimeException("❌ Failed to retrieve secret from Vault", e);
+        }
+    }
+
+    private String getFileExtension(String fileLocation) {
+        int lastDotIndex = fileLocation.lastIndexOf('.');
+        if (lastDotIndex > 0) {
+            return fileLocation.substring(lastDotIndex);
+        } else {
+            return ""; // Default to empty string if no extension is found
         }
     }
 }
