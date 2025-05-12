@@ -1,42 +1,57 @@
-# Kafka Consumer Configuration
-kafka.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
-kafka.consumer.group.id=str-ecp-batch
-kafka.consumer.auto.offset.reset=earliest
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 
-# SSL Configuration
-kafka.consumer.security.protocol=SSL
-kafka.consumer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
-kafka.consumer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
-kafka.consumer.ssl.key.password=3dX7y3Yz9Jv6L4F
-kafka.consumer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
-kafka.consumer.ssl.truststore.password=nedbank1
-kafka.consumer.ssl.protocol=TLSv1.2
+import java.time.Duration;
+import java.util.Collections;
+import java.util.Properties;
 
-# Kafka Consumer Deserialization
-kafka.consumer.key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
-kafka.consumer.value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+public class SecureKafkaConsumer {
+    public static void main(String[] args) {
+        Properties props = new Properties();
 
-# Kafka Producer Configuration (to send Summary File URL)
-kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
-kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
-kafka.producer.security.protocol=SSL
-kafka.producer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
-kafka.producer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
-kafka.producer.ssl.key.password=3dX7y3Yz9Jv6L4F
-kafka.producer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
-kafka.producer.ssl.truststore.password=nedbank1
-kafka.producer.ssl.protocol=TLSv1.2
-kafka.producer.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
+        // Kafka bootstrap servers
+        props.put("bootstrap.servers", "nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093");
 
-azure.keyvault.uri=https://nsn-dev-ecm-kva-001.vault.azure.net/secrets
+        // Consumer group
+        props.put("group.id", "str-ecp-batch");
 
-logging.level.org.springframework.kafka=DEBUG
+        // SSL Configuration
+        props.put("security.protocol", "SSL");
+        props.put("ssl.keystore.location", "C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks");
+        props.put("ssl.keystore.password", "3dX7y3Yz9Jv6L4F");
+        props.put("ssl.key.password", "3dX7y3Yz9Jv6L4F");
+        props.put("ssl.truststore.location", "C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks");
+        props.put("ssl.truststore.password", "nedbank1");
+        props.put("ssl.protocol", "TLSv1.2");
 
-kafka.topic.input=str-ecp-batch-composition
-kafka.topic.output=ecp-batch-composition-complete
+        // Deserializers
+        props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
 
-vault.hashicorp.url=https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200
-vault.hashicorp.namespace =admin/espire
+        // Offset reset
+        props.put("auto.offset.reset", "earliest");
 
-vault.hashicorp.passwordDev=Dev+Cred4#
-vault.hashicorp.passwordNbhDev=nbh_dev1
+        // Create consumer and subscribe
+        KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
+        consumer.subscribe(Collections.singletonList("str-ecp-batch-composition"));
+
+        System.out.println("✅ Listening for messages on topic: str-ecp-batch-composition...");
+
+        try {
+            while (true) {
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+                for (ConsumerRecord<String, String> record : records) {
+                    System.out.printf("🟢 Received: key=%s, value=%s, offset=%d, partition=%d%n",
+                            record.key(), record.value(), record.offset(), record.partition());
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("❌ Error during consumption: " + e.getMessage());
+            e.printStackTrace();
+        } finally {
+            consumer.close();
+            System.out.println("🔒 Kafka consumer closed.");
+        }
+    }
+}
