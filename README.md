@@ -1,44 +1,87 @@
-2025-05-14T00:13:50.732+02:00 ERROR 19064 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Stopping container due to an Error
+package com.nedbank.kafka.filemanage.service;
 
-java.lang.NoClassDefFoundError: reactor/netty/tcp/ProxyProvider$TypeSpec
-	at com.azure.core.http.netty.NettyAsyncHttpClientBuilder.lambda$build$7(NettyAsyncHttpClientBuilder.java:139) ~[azure-core-http-netty-1.6.3.jar:na]
-	at reactor.netty.http.client.HttpClient.tcpConfiguration(HttpClient.java:1536) ~[reactor-netty-http-1.1.11.jar:1.1.11]
-	at com.azure.core.http.netty.NettyAsyncHttpClientBuilder.build(NettyAsyncHttpClientBuilder.java:121) ~[azure-core-http-netty-1.6.3.jar:na]
-	at com.azure.core.http.netty.implementation.ReactorNettyClientProvider.createInstance(ReactorNettyClientProvider.java:14) ~[azure-core-http-netty-1.6.3.jar:na]
-	at com.azure.core.implementation.http.HttpClientProviders.createInstance(HttpClientProviders.java:51) ~[azure-core-1.14.0.jar:na]
-	at com.azure.core.http.HttpClient.createDefault(HttpClient.java:50) ~[azure-core-1.14.0.jar:na]
-	at com.azure.core.http.HttpClient.createDefault(HttpClient.java:40) ~[azure-core-1.14.0.jar:na]
-	at com.azure.core.http.HttpPipelineBuilder.build(HttpPipelineBuilder.java:62) ~[azure-core-1.14.0.jar:na]
-	at com.azure.storage.blob.implementation.util.BuilderHelper.buildPipeline(BuilderHelper.java:133) ~[azure-storage-blob-12.10.0.jar:na]
-	at com.azure.storage.blob.BlobContainerClientBuilder.buildAsyncClient(BlobContainerClientBuilder.java:127) ~[azure-storage-blob-12.10.0.jar:na]
-	at com.azure.storage.blob.BlobContainerClientBuilder.buildClient(BlobContainerClientBuilder.java:96) ~[azure-storage-blob-12.10.0.jar:na]
-	at com.nedbank.kafka.filemanage.service.BlobStorageService.uploadFileAndGenerateSasUrl(BlobStorageService.java:51) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.consumeKafkaMessage(KafkaListenerService.java:66) ~[classes/:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
-	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:169) ~[spring-messaging-6.0.2.jar:6.0.2]
-	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.invoke(InvocableHandlerMethod.java:119) ~[spring-messaging-6.0.2.jar:6.0.2]
-	at org.springframework.kafka.listener.adapter.HandlerAdapter.invoke(HandlerAdapter.java:56) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.invokeHandler(MessagingMessageListenerAdapter.java:375) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:92) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:53) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeOnMessage(KafkaMessageListenerContainer.java:2873) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeOnMessage(KafkaMessageListenerContainer.java:2854) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.lambda$doInvokeRecordListener$57(KafkaMessageListenerContainer.java:2772) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at io.micrometer.observation.Observation.observe(Observation.java:559) ~[micrometer-observation-1.10.2.jar:1.10.2]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeRecordListener(KafkaMessageListenerContainer.java:2770) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeWithRecords(KafkaMessageListenerContainer.java:2622) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeRecordListener(KafkaMessageListenerContainer.java:2508) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeListener(KafkaMessageListenerContainer.java:2150) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeIfHaveRecords(KafkaMessageListenerContainer.java:1505) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.pollAndInvoke(KafkaMessageListenerContainer.java:1469) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.run(KafkaMessageListenerContainer.java:1344) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804) ~[na:na]
-	at java.base/java.lang.Thread.run(Thread.java:842) ~[na:na]
-Caused by: java.lang.ClassNotFoundException: reactor.netty.tcp.ProxyProvider$TypeSpec
-	at java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641) ~[na:na]
-	at java.base/jdk.internal.loader.ClassLoaders$AppClassLoader.loadClass(ClassLoaders.java:188) ~[na:na]
-	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:525) ~[na:na]
-	... 36 common frames omitted
+import com.azure.storage.blob.*;
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.sas.BlobSasPermission;
+import com.azure.storage.blob.sas.BlobServiceSasSignatureValues;
+import com.nedbank.kafka.filemanage.config.ProxySetup;
+import org.springframework.stereotype.Service;
+
+import java.io.*;
+import java.time.OffsetDateTime;
+
+@Service
+public class BlobStorageService {
+
+    private final VaultClientService vaultClient;
+    private final ProxySetup proxySetup;
+
+    public BlobStorageService(VaultClientService vaultClient, ProxySetup proxySetup) {
+        this.vaultClient = vaultClient;
+        this.proxySetup = proxySetup;
+    }
+
+    public String uploadFileAndGenerateSasUrl(String filePath, String batchId, String objectId) {
+        try {
+            // Configure proxy if needed
+            proxySetup.configureProxy();
+            System.out.println("Proxy Host: " + System.getProperty("http.proxyHost"));
+            System.out.println("Proxy Port: " + System.getProperty("http.proxyPort"));
+
+            // Authenticate with Vault and retrieve secrets
+            String vaultToken = vaultClient.getVaultToken();
+            String accountKey = vaultClient.getSecret("Store_Dev/10099", "account_key", vaultToken);
+            String accountName = vaultClient.getSecret("Store_Dev/10099", "account_name", vaultToken);
+            String containerName = vaultClient.getSecret("Store_Dev/10099", "container_name", vaultToken);
+
+            // Construct blob name
+            String extension = getFileExtension(filePath);
+            String blobName = objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
+
+            // Build Azure connection string
+            String connectionString = String.format(
+                    "DefaultEndpointsProtocol=https;AccountName=%s;AccountKey=%s;EndpointSuffix=core.windows.net",
+                    accountName, accountKey
+            );
+
+            // Upload the file to Azure Blob Storage
+            BlobContainerClient containerClient = new BlobContainerClientBuilder()
+                    .connectionString(connectionString)
+                    .containerName(containerName)
+                    .buildClient();
+
+            BlobClient blobClient = containerClient.getBlobClient(blobName);
+
+            File file = new File(filePath);
+            try (InputStream dataStream = new FileInputStream(file)) {
+                blobClient.upload(dataStream, file.length(), true);
+                System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
+            }
+
+            // Generate SAS token
+            BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
+                    OffsetDateTime.now().plusHours(24),
+                    new BlobSasPermission().setReadPermission(true)
+            );
+
+            String sasToken = blobClient.generateSas(sasValues);
+            String sasUrl = blobClient.getBlobUrl() + "?" + sasToken;
+
+            System.out.println("🔐 SAS URL (valid for 24 hours):");
+            System.out.println(sasUrl);
+
+            return sasUrl;
+        } catch (Exception e) {
+            throw new RuntimeException("❌ Error uploading to Azure Blob or generating SAS URL", e);
+        }
+    }
+
+    private String getFileExtension(String fileLocation) {
+        int lastDotIndex = fileLocation.lastIndexOf('.');
+        if (lastDotIndex > 0) {
+            return fileLocation.substring(lastDotIndex);
+        } else {
+            return "";
+        }
+    }
+}
