@@ -1,1 +1,2 @@
-curl -x http://proxyprod.africa.nedcor.net:80 https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200/v1/sys/health
+C:\>curl -x http://proxyprod.africa.nedcor.net:80 https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200/v1/sys/health
+{"initialized":true,"sealed":false,"standby":true,"performance_standby":true,"replication_performance_mode":"disabled","replication_dr_mode":"disabled","server_time_utc":1747118795,"version":"1.18.4+ent","enterprise":true,"cluster_name":"ca5012a3-68e3-4b29-ab44-dc12be06bd82","cluster_id":"814be235-c399-6748-76e7-f0df2356ad27","license":{"state":"autoloaded","expiry_time":"2025-06-23T21:25:10Z","terminated":false},"echo_duration_ms":0,"clock_skew_ms":0,"replication_primary_canary_age_ms":900}
