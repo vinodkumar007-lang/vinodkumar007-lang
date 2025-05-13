@@ -1,24 +1,52 @@
-Enable SSL certificate verification
-Verify SSL certificates when sending a request. Verification failures will result in the request being aborted.
-Automatically follow redirects
-Follow HTTP 3xx responses as redirects.
-Follow original HTTP Method
-Redirect with the original HTTP method instead of the default behavior of redirecting with GET.
-Follow Authorization header
-Retain authorization header when a redirect happens to a different hostname.
-Remove referer header on redirect
-Remove the referer header when a redirect happens.
-Encode URL automatically
-Encode the URL's path, query parameters, and authentication fields.
-Disable cookie jar
-Prevent cookies used in this request from being stored in the cookie jar. Existing cookies in the cookie jar will not be added as headers for this request.
-Use server cipher suite during handshake
-Use the server's cipher suite order instead of the client's during handshake.
-Maximum number of redirects
-Set a cap on the maximum number of redirects to follow.
-10
-Protocols disabled during handshake
-Specify the SSL and TLS protocol versions to be disabled during handshake. All other protocols will be enabled.
-Cipher suite selection
-Order of cipher suites that the SSL server profile uses to establish a secure connection.
-Enter cipher suites
+public class VaultTester {
+
+    public static void main(String[] args) throws Exception {
+        // Proxy settings
+        System.setProperty("http.proxyHost", "webproxy.africa.nedcor.net");
+        System.setProperty("http.proxyPort", "9001");
+        System.setProperty("https.proxyHost", "webproxy.africa.nedcor.net");
+        System.setProperty("https.proxyPort", "9001");
+        System.setProperty("java.net.useSystemProxies", "true");
+
+        Authenticator.setDefault(new Authenticator() {
+            protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication("yourUsername", "yourPassword".toCharArray());
+            }
+        });
+
+        // Trust all certificates if needed (for testing only, not production)
+        SSLContext sslContext = SSLContexts.custom()
+                .loadTrustMaterial(null, (chain, authType) -> true)
+                .build();
+
+        SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(sslContext);
+
+        // Configure client
+        RequestConfig requestConfig = RequestConfig.custom()
+                .setConnectTimeout(20000)
+                .setSocketTimeout(20000)
+                .setRedirectsEnabled(true)
+                .setMaxRedirects(10)
+                .build();
+
+        CloseableHttpClient client = HttpClients.custom()
+                .setDefaultRequestConfig(requestConfig)
+                .setSSLSocketFactory(sslsf)
+                .setRedirectStrategy(new LaxRedirectStrategy()) // retains original method
+                .disableCookieManagement()
+                .build();
+
+        HttpGet request = new HttpGet("https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200/v1/sys/health");
+        request.setHeader("Accept", "application/json");
+
+        try (CloseableHttpResponse response = client.execute(request)) {
+            System.out.println("Status Code: " + response.getStatusLine().getStatusCode());
+            String responseBody = new BufferedReader(new InputStreamReader(response.getEntity().getContent()))
+                    .lines().collect(Collectors.joining("\n"));
+            System.out.println(responseBody);
+        } catch (Exception e) {
+            System.err.println("❌ Error during connection:");
+            e.printStackTrace();
+        }
+    }
+}
