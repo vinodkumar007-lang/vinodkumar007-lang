@@ -1,87 +1,196 @@
-package com.nedbank.kafka.filemanage.service;
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
 
-import com.azure.storage.blob.*;
-import com.azure.storage.blob.BlobClient;
-import com.azure.storage.blob.sas.BlobSasPermission;
-import com.azure.storage.blob.sas.BlobServiceSasSignatureValues;
-import com.nedbank.kafka.filemanage.config.ProxySetup;
-import org.springframework.stereotype.Service;
+    <groupId>com.org.filemanager</groupId>
+    <artifactId>file-manager</artifactId>
+    <version>1.0-SNAPSHOT</version>
 
-import java.io.*;
-import java.time.OffsetDateTime;
+    <properties>
+        <java.version>17</java.version>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
 
-@Service
-public class BlobStorageService {
+    <repositories>
+        <repository>
+            <id>nexus-releases</id>
+            <url>https://nexus.devops.nednet.co.za/repository/maven-group</url>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
 
-    private final VaultClientService vaultClient;
-    private final ProxySetup proxySetup;
+    <dependencyManagement>
+        <dependencies>
+            <!-- Spring Boot BOM -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>3.0.0</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- SLF4J BOM -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-parent</artifactId>
+                <version>2.0.9</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
+                <groupId>io.projectreactor.netty</groupId>
+                <artifactId>reactor-netty</artifactId>
+                <version>1.1.11</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
-    public BlobStorageService(VaultClientService vaultClient, ProxySetup proxySetup) {
-        this.vaultClient = vaultClient;
-        this.proxySetup = proxySetup;
-    }
+    <dependencies>
+        <!-- Kafka Dependencies -->
+        <dependency>
+            <groupId>za.co.nedbank</groupId>
+            <artifactId>spring-nedbank-kafka-sb3</artifactId>
+            <version>1.0.0-RELEASE</version>
+        </dependency>
 
-    public String uploadFileAndGenerateSasUrl(String filePath, String batchId, String objectId) {
-        try {
-            // Configure proxy if needed
-            proxySetup.configureProxy();
-            System.out.println("Proxy Host: " + System.getProperty("http.proxyHost"));
-            System.out.println("Proxy Port: " + System.getProperty("http.proxyPort"));
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+            <version>3.0.11</version>
+        </dependency>
 
-            // Authenticate with Vault and retrieve secrets
-            String vaultToken = vaultClient.getVaultToken();
-            String accountKey = vaultClient.getSecret("Store_Dev/10099", "account_key", vaultToken);
-            String accountName = vaultClient.getSecret("Store_Dev/10099", "account_name", vaultToken);
-            String containerName = vaultClient.getSecret("Store_Dev/10099", "container_name", vaultToken);
+        <!-- Spring Boot Web & Integration -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
 
-            // Construct blob name
-            String extension = getFileExtension(filePath);
-            String blobName = objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-integration</artifactId>
+        </dependency>
 
-            // Build Azure connection string
-            String connectionString = String.format(
-                    "DefaultEndpointsProtocol=https;AccountName=%s;AccountKey=%s;EndpointSuffix=core.windows.net",
-                    accountName, accountKey
-            );
+        <!-- Spring Batch -->
+        <dependency>
+            <groupId>org.springframework.batch</groupId>
+            <artifactId>spring-batch-core</artifactId>
+        </dependency>
 
-            // Upload the file to Azure Blob Storage
-            BlobContainerClient containerClient = new BlobContainerClientBuilder()
-                    .connectionString(connectionString)
-                    .containerName(containerName)
-                    .buildClient();
+        <!-- Spring Web Services -->
+        <dependency>
+            <groupId>org.springframework.ws</groupId>
+            <artifactId>spring-ws-core</artifactId>
+        </dependency>
 
-            BlobClient blobClient = containerClient.getBlobClient(blobName);
+        <!-- Azure Blob Storage -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-storage-blob</artifactId>
+            <version>12.10.0</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.projectreactor.netty</groupId>
+                    <artifactId>reactor-netty</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.projectreactor</groupId>
+                    <artifactId>reactor-core</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
 
-            File file = new File(filePath);
-            try (InputStream dataStream = new FileInputStream(file)) {
-                blobClient.upload(dataStream, file.length(), true);
-                System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
-            }
+        <!-- Azure Core Libraries -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-core</artifactId>
+            <version>1.14.0</version>
+        </dependency>
 
-            // Generate SAS token
-            BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
-                    OffsetDateTime.now().plusHours(24),
-                    new BlobSasPermission().setReadPermission(true)
-            );
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-security-keyvault-secrets</artifactId>
+            <version>4.2.3</version>
+        </dependency>
 
-            String sasToken = blobClient.generateSas(sasValues);
-            String sasUrl = blobClient.getBlobUrl() + "?" + sasToken;
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <version>1.2.5</version>
+        </dependency>
 
-            System.out.println("🔐 SAS URL (valid for 24 hours):");
-            System.out.println(sasUrl);
+        <!-- Explicitly include correct versions of Reactor -->
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+            <version>3.4.28</version>
+        </dependency>
 
-            return sasUrl;
-        } catch (Exception e) {
-            throw new RuntimeException("❌ Error uploading to Azure Blob or generating SAS URL", e);
-        }
-    }
+        <dependency>
+            <groupId>io.projectreactor.netty</groupId>
+            <artifactId>reactor-netty</artifactId>
+            <version>1.1.11</version>
+        </dependency>
 
-    private String getFileExtension(String fileLocation) {
-        int lastDotIndex = fileLocation.lastIndexOf('.');
-        if (lastDotIndex > 0) {
-            return fileLocation.substring(lastDotIndex);
-        } else {
-            return "";
-        }
-    }
-}
+        <dependency>
+            <groupId>io.projectreactor.netty</groupId>
+            <artifactId>reactor-netty-http</artifactId>
+            <version>1.1.11</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-core-http-netty</artifactId>
+            <version>1.6.3</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.projectreactor.netty</groupId>
+                    <artifactId>reactor-netty</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-core-http-okhttp</artifactId>
+            <version>1.12.8</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpclient</artifactId>
+            <version>4.5.13</version> <!-- Replace with the latest stable version -->
+        </dependency>
+
+        <!-- JSON Processing (for parsing Vault responses) -->
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20210307</version> <!-- Replace with the latest stable version -->
+        </dependency>
+
+        <!-- JSON support -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>3.0.0</version>
+            </plugin>
+        </plugins>
+    </build>
+</project>
