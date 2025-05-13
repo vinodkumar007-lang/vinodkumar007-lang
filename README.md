@@ -1,105 +1,187 @@
-package com.nedbank.kafka.filemanage.config;
+package com.nedbank.kafka.filemanage.service;
 
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
+import com.azure.storage.blob.*;
+import com.azure.storage.blob.sas.BlobSasPermission;
+import com.azure.storage.blob.sas.BlobServiceSasSignatureValues;
+import com.nedbank.kafka.filemanage.config.ProxySetup;
+import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
-@Component
-@ConfigurationProperties(prefix = "proxy")
-public class ProxyProperties {
+import java.io.*;
+import java.time.OffsetDateTime;
+import java.util.HashMap;
+import java.util.Map;
 
-    private String host;
-    private String port;
-    private String username;
-    private String password;
+@Service public class BlobStorageService {
 
-    // Getters and Setters
+    private final RestTemplate restTemplate;
+    private final ProxySetup proxySetup;
 
-    public String getHost() {
-        return host;
+    @Value("${vault.hashicorp.url}")
+    private String VAULT_URL;
+
+    @Value("${vault.hashicorp.namespace}")
+    private String VAULT_NAMESPACE;
+
+    @Value("${vault.hashicorp.passwordDev}")
+    private String passwordDev;
+
+    @Value("${vault.hashicorp.passwordNbhDev}")
+    private String passwordNbhDev;
+
+    public BlobStorageService(RestTemplate restTemplate, ProxySetup proxySetup) {
+        this.restTemplate = restTemplate;
+        this.proxySetup = proxySetup;
     }
 
-    public void setHost(String host) {
-        this.host = host;
-    }
+    public String uploadFileAndGenerateSasUrl(String filePath, String batchId, String objectId) {
+        try {
+            proxySetup.configureProxy(); // Configure proxy
+            System.out.println("Proxy Host: " + System.getProperty("http.proxyHost"));
+            System.out.println("Proxy Port: " + System.getProperty("http.proxyPort"));
 
-    public String getPort() {
-        return port;
-    }
+            String vaultToken = getVaultToken();
 
-    public void setPort(String port) {
-        this.port = port;
-    }
+            String accountKey = getSecretFromVault("account_key", vaultToken);
+            String accountName = getSecretFromVault("account_name", vaultToken);
+            String containerName = getSecretFromVault("container_name", vaultToken);
 
-    public String getUsername() {
-        return username;
-    }
+            String extension = getFileExtension(filePath);
+            String blobName = objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
 
-    public void setUsername(String username) {
-        this.username = username;
-    }
+            String connectionString = String.format(
+                    "DefaultEndpointsProtocol=https;AccountName=%s;AccountKey=%s;EndpointSuffix=core.windows.net",
+                    accountName, accountKey
+            );
 
-    public String getPassword() {
-        return password;
-    }
+            BlobContainerClient containerClient = new BlobContainerClientBuilder()
+                    .connectionString(connectionString)
+                    .containerName(containerName)
+                    .buildClient();
 
-    public void setPassword(String password) {
-        this.password = password;
-    }
-}
+            BlobClient blobClient = containerClient.getBlobClient(blobName);
 
-package com.nedbank.kafka.filemanage.config;
+            File file = new File(filePath);
+            try (InputStream dataStream = new FileInputStream(file)) {
+                blobClient.upload(dataStream, file.length(), true);
+                System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
+            }
 
-import org.springframework.stereotype.Component;
+            BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
+                    OffsetDateTime.now().plusHours(24),
+                    new BlobSasPermission().setReadPermission(true)
+            );
 
-import java.net.*;
+            String sasToken = blobClient.generateSas(sasValues);
+            String sasUrl = blobClient.getBlobUrl() + "?" + sasToken;
 
-@Component
-public class ProxySetup {
+            System.out.println("🔐 SAS URL (valid for 24 hours):");
+            System.out.println(sasUrl);
 
-    private final ProxyProperties proxyProperties;
-    private static boolean configured = false;
-
-    public ProxySetup(ProxyProperties proxyProperties) {
-        this.proxyProperties = proxyProperties;
-    }
-
-    public void configureProxy() {
-        if (configured) return;
-
-        String host = proxyProperties.getHost();
-        String port = proxyProperties.getPort();
-        String username = proxyProperties.getUsername();
-        String password = proxyProperties.getPassword();
-
-        if (host == null || port == null || host.isEmpty() || port.isEmpty()) {
-            System.err.println("⚠️ Proxy settings are missing. Proxy not configured.");
-            return;
+            return sasUrl;
+        } catch (Exception e) {
+            throw new RuntimeException("❌ Error uploading to Azure Blob or generating SAS URL", e);
         }
+    }
 
-        System.setProperty("http.proxyHost", host);
-        System.setProperty("http.proxyPort", port);
-        System.setProperty("https.proxyHost", host);
-        System.setProperty("https.proxyPort", port);
-        System.setProperty("java.net.useSystemProxies", "true");
+    private String getVaultToken() {
+        try {
+            proxySetup.configureProxy();
 
-        if (username != null && password != null && !username.isEmpty() && !password.isEmpty()) {
-            Authenticator.setDefault(new Authenticator() {
-                @Override
-                protected PasswordAuthentication getPasswordAuthentication() {
-                    return new PasswordAuthentication(username, password.toCharArray());
-                }
-            });
+            String url = VAULT_URL + "/v1/auth/userpass/login/espire_dev";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("x-vault-namespace", VAULT_NAMESPACE);
+
+            Map<String, String> body = new HashMap<>();
+            body.put("password", passwordDev);
+
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
+
+            JSONObject json = new JSONObject(response.getBody());
+            return json.getJSONObject("auth").getString("client_token");
+
+        } catch (Exception e) {
+            throw new RuntimeException("❌ Failed to obtain Vault token", e);
         }
+    }
 
-        System.out.println("🔧 Proxy configured from ProxyProperties: " + host + ":" + port);
-        configured = true;
+    private String getSecretFromVault(String key, String token) {
+        try {
+            proxySetup.configureProxy();
+
+            String url = VAULT_URL + "/v1/Store_Dev/10099";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("x-vault-namespace", VAULT_NAMESPACE);
+            headers.set("x-vault-token", token);
+
+            Map<String, String> body = new HashMap<>();
+            body.put("password", passwordNbhDev);
+
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
+
+            JSONObject json = new JSONObject(response.getBody());
+            return json.getJSONObject("data").getString(key);
+
+        } catch (Exception e) {
+            throw new RuntimeException("❌ Failed to retrieve secret from Vault", e);
+        }
+    }
+
+    private String getFileExtension(String fileLocation) {
+        int lastDotIndex = fileLocation.lastIndexOf('.');
+        if (lastDotIndex > 0) {
+            return fileLocation.substring(lastDotIndex);
+        } else {
+            return "";
+        }
     }
 }
 
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.annotation.Configuration;
+Error: ❌ Error uploading to Azure Blob or generating SAS URL
 
-@Configuration
-@EnableConfigurationProperties(ProxyProperties.class)
-public class AppConfig {
-}
+java.lang.RuntimeException: ❌ Error uploading to Azure Blob or generating SAS URL
+	at com.nedbank.kafka.filemanage.service.BlobStorageService.uploadFileAndGenerateSasUrl(BlobStorageService.java:86) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.consumeKafkaMessage(KafkaListenerService.java:66) ~[classes/:na]
+	at jdk.internal.reflect.GeneratedMethodAccessor5.invoke(Unknown Source) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:169) ~[spring-messaging-6.0.2.jar:6.0.2]
+	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.invoke(InvocableHandlerMethod.java:119) ~[spring-messaging-6.0.2.jar:6.0.2]
+	at org.springframework.kafka.listener.adapter.HandlerAdapter.invoke(HandlerAdapter.java:56) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.invokeHandler(MessagingMessageListenerAdapter.java:375) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:92) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:53) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeOnMessage(KafkaMessageListenerContainer.java:2873) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeOnMessage(KafkaMessageListenerContainer.java:2854) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.lambda$doInvokeRecordListener$57(KafkaMessageListenerContainer.java:2772) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at io.micrometer.observation.Observation.observe(Observation.java:559) ~[micrometer-observation-1.10.2.jar:1.10.2]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeRecordListener(KafkaMessageListenerContainer.java:2770) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeWithRecords(KafkaMessageListenerContainer.java:2622) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeRecordListener(KafkaMessageListenerContainer.java:2508) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeListener(KafkaMessageListenerContainer.java:2150) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeIfHaveRecords(KafkaMessageListenerContainer.java:1505) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.pollAndInvoke(KafkaMessageListenerContainer.java:1469) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.run(KafkaMessageListenerContainer.java:1344) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:842) ~[na:na]
+Caused by: java.lang.RuntimeException: ❌ Failed to retrieve secret from Vault
+	at com.nedbank.kafka.filemanage.service.BlobStorageService.getSecretFromVault(BlobStorageService.java:137) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.service.BlobStorageService.uploadFileAndGenerateSasUrl(BlobStorageService.java:48) ~[classes/:na]
+	... 23 common frames omitted
+Caused by: java.lang.NullPointerException: Cannot invoke "String.length()" because "s" is null
+	at java.base/java.io.StringReader.<init>(StringReader.java:51) ~[na:na]
+	at org.json.JSONTokener.<init>(JSONTokener.java:94) ~[json-20210307.jar:na]
+	at org.json.JSONObject.<init>(JSONObject.java:406) ~[json-20210307.jar:na]
+	at com.nedbank.kafka.filemanage.service.BlobStorageService.getSecretFromVault(BlobStorageService.java:133) ~[classes/:na]
+	... 24 common frames omitted
