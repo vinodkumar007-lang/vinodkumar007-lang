@@ -1,32 +1,38 @@
-package com.nedbank.kafka.filemanage.config;
+import org.apache.http.HttpHost;
+import org.apache.http.auth.AuthScope;
+import org.apache.http.auth.NTCredentials;
+import org.apache.http.client.CredentialsProvider;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.*;
 
-import java.net.*;
-import java.util.*;
+import java.net.InetAddress;
 
-public class ProxySetup {
-    public static void configureProxy() {
-        String proxyHost = "webproxy.africa.nedcor.net";  // Proxy host
-        String proxyPort = "9001";  // Proxy port
-        String proxyUsername = "CC437236";  // Proxy username (if needed)
-        String proxyPassword = "34dYaB@jEh56";  // Proxy password (if needed)
+public class ProxyAccessExample {
+    public static void main(String[] args) throws Exception {
+        String proxyHost = "webproxy.africa.nedcor.net";
+        int proxyPort = 9001;
+        String username = "CC437236";
+        String password = "34dYaB@jEh56";
+        String domain = "NEDCORE";
+        String workstation = InetAddress.getLocalHost().getHostName();
 
-        // Set the HTTP/HTTPS proxy system properties
-        System.setProperty("http.proxyHost", proxyHost);
-        System.setProperty("http.proxyPort", proxyPort);
-        System.setProperty("https.proxyHost", proxyHost);
-        System.setProperty("https.proxyPort", proxyPort);
+        CredentialsProvider credsProvider = new BasicCredentialsProvider();
+        credsProvider.setCredentials(
+            new AuthScope(proxyHost, proxyPort),
+            new NTCredentials(username, password, workstation, domain)
+        );
 
-        // If proxy requires authentication, you can set up authentication as follows
-        if (proxyUsername != null && proxyPassword != null) {
-            Authenticator.setDefault(new Authenticator() {
-                @Override
-                public PasswordAuthentication getPasswordAuthentication() {
-                    return new PasswordAuthentication(proxyUsername, proxyPassword.toCharArray());
-                }
-            });
+        CloseableHttpClient httpClient = HttpClients.custom()
+            .setDefaultCredentialsProvider(credsProvider)
+            .setProxy(new HttpHost(proxyHost, proxyPort))
+            .build();
+
+        HttpGet request = new HttpGet("https://www.hashicorp.com");
+        request.setHeader("User-Agent", "Mozilla/5.0"); // Optional: helps with corporate proxies
+
+        try (CloseableHttpResponse response = httpClient.execute(request)) {
+            System.out.println("Status: " + response.getStatusLine());
         }
-
-        // Use system-wide proxy settings (optional)
-        System.setProperty("java.net.useSystemProxies", "true");
     }
 }
