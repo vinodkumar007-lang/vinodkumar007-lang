@@ -1,5 +1,90 @@
 package com.nedbank.kafka.filemanage.service;
 
+import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Service
+public class VaultClientService {
+
+    private final RestTemplate restTemplate;
+
+    @Value("${vault.hashicorp.url}")
+    private String VAULT_URL;
+
+    @Value("${vault.hashicorp.namespace}")
+    private String VAULT_NAMESPACE;
+
+    @Value("${vault.hashicorp.passwordDev}")
+    private String passwordDev;
+
+    @Value("${vault.hashicorp.passwordNbhDev}")
+    private String passwordNbhDev;
+
+    public VaultClientService(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
+
+    public String getVaultToken() {
+        try {
+            String url = VAULT_URL + "/v1/auth/userpass/login/espire_dev";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("x-vault-namespace", VAULT_NAMESPACE);
+
+            Map<String, String> body = new HashMap<>();
+            body.put("password", passwordDev);
+
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                JSONObject json = new JSONObject(response.getBody());
+                return json.getJSONObject("auth").getString("client_token");
+            } else {
+                throw new RuntimeException("Vault login failed with status: " + response.getStatusCode());
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException("❌ Failed to obtain Vault token", e);
+        }
+    }
+
+    public String getSecret(String path, String key, String token) {
+        try {
+            String url = VAULT_URL + "/v1/" + path;
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("x-vault-namespace", VAULT_NAMESPACE);
+            headers.set("x-vault-token", token);
+
+            Map<String, String> body = new HashMap<>();
+            body.put("password", passwordNbhDev);
+
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
+
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                JSONObject json = new JSONObject(response.getBody());
+                return json.getJSONObject("data").getString(key);
+            } else {
+                throw new RuntimeException("Vault secret fetch failed with status: " + response.getStatusCode());
+            }
+
+        } catch (Exception e) {
+            throw new RuntimeException("❌ Failed to retrieve secret from Vault", e);
+        }
+    }
+}
+package com.nedbank.kafka.filemanage.service;
+
 import com.azure.storage.blob.*;
 import com.azure.storage.blob.models.BlobClient;
 import com.azure.storage.blob.sas.BlobSasPermission;
@@ -82,92 +167,6 @@ public class BlobStorageService {
             return fileLocation.substring(lastDotIndex);
         } else {
             return "";
-        }
-    }
-}
-
-package com.nedbank.kafka.filemanage.service;
-
-import org.json.JSONObject;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-
-import java.util.HashMap;
-import java.util.Map;
-
-@Service
-public class VaultClientService {
-
-    private final RestTemplate restTemplate;
-
-    @Value("${vault.hashicorp.url}")
-    private String VAULT_URL;
-
-    @Value("${vault.hashicorp.namespace}")
-    private String VAULT_NAMESPACE;
-
-    @Value("${vault.hashicorp.passwordDev}")
-    private String passwordDev;
-
-    @Value("${vault.hashicorp.passwordNbhDev}")
-    private String passwordNbhDev;
-
-    public VaultClientService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
-    }
-
-    public String getVaultToken() {
-        try {
-            String url = VAULT_URL + "/v1/auth/userpass/login/espire_dev";
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("x-vault-namespace", VAULT_NAMESPACE);
-
-            Map<String, String> body = new HashMap<>();
-            body.put("password", passwordDev);
-
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                JSONObject json = new JSONObject(response.getBody());
-                return json.getJSONObject("auth").getString("client_token");
-            } else {
-                throw new RuntimeException("Vault login failed with status: " + response.getStatusCode());
-            }
-
-        } catch (Exception e) {
-            throw new RuntimeException("❌ Failed to obtain Vault token", e);
-        }
-    }
-
-    public String getSecret(String path, String key, String token) {
-        try {
-            String url = VAULT_URL + "/v1/" + path;
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("x-vault-namespace", VAULT_NAMESPACE);
-            headers.set("x-vault-token", token);
-
-            Map<String, String> body = new HashMap<>();
-            body.put("password", passwordNbhDev);
-
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
-
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                JSONObject json = new JSONObject(response.getBody());
-                return json.getJSONObject("data").getString(key);
-            } else {
-                throw new RuntimeException("Vault secret fetch failed with status: " + response.getStatusCode());
-            }
-
-        } catch (Exception e) {
-            throw new RuntimeException("❌ Failed to retrieve secret from Vault", e);
         }
     }
 }
