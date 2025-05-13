@@ -1,42 +1,34 @@
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.client.config.RequestConfig;
-import java.io.IOException;
-
-public class VaultProxyBypassTest {
-
-    public static void main(String[] args) {
-
-        // 🚫 Disable proxy settings explicitly
-        System.clearProperty("http.proxyHost");
-        System.clearProperty("http.proxyPort");
-        System.clearProperty("https.proxyHost");
-        System.clearProperty("https.proxyPort");
-        System.setProperty("java.net.useSystemProxies", "false");
-
-        // 🕒 Optional: set longer timeout
-        RequestConfig config = RequestConfig.custom()
-                .setConnectTimeout(20000)
-                .setSocketTimeout(20000)
-                .build();
-
-        try (CloseableHttpClient client = HttpClients.custom()
-                .setDefaultRequestConfig(config)
-                .build()) {
-
-            HttpGet request = new HttpGet("https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200/v1/sys/health");
-
-            System.out.println("🔍 Attempting direct connection to Vault...");
-
-            try (CloseableHttpResponse response = client.execute(request)) {
-                System.out.println("✅ Response Code: " + response.getStatusLine().getStatusCode());
-            }
-
-        } catch (IOException e) {
-            System.err.println("❌ Connection failed:");
-            e.printStackTrace();
-        }
-    }
-}
+🔍 Attempting direct connection to Vault...
+06:08:19.800 [main] DEBUG org.apache.http.client.protocol.RequestAddCookies - CookieSpec selected: default
+06:08:19.819 [main] DEBUG org.apache.http.client.protocol.RequestAuthCache - Auth cache not set in the context
+06:08:19.820 [main] DEBUG org.apache.http.impl.conn.PoolingHttpClientConnectionManager - Connection request: [route: {s}->https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200][total available: 0; route allocated: 0 of 2; total allocated: 0 of 20]
+06:08:19.841 [main] DEBUG org.apache.http.impl.conn.PoolingHttpClientConnectionManager - Connection leased: [id: 0][route: {s}->https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200][total available: 0; route allocated: 1 of 2; total allocated: 1 of 20]
+06:08:19.842 [main] DEBUG org.apache.http.impl.execchain.MainClientExec - Opening connection {s}->https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200
+06:08:20.049 [main] DEBUG org.apache.http.impl.conn.DefaultHttpClientConnectionOperator - Connecting to vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud/40.68.97.112:8200
+06:08:20.049 [main] DEBUG org.apache.http.conn.ssl.SSLConnectionSocketFactory - Connecting socket to vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud/40.68.97.112:8200 with timeout 20000
+06:08:40.054 [main] DEBUG org.apache.http.impl.conn.DefaultManagedHttpClientConnection - http-outgoing-0: Shutdown connection
+06:08:40.054 [main] DEBUG org.apache.http.impl.execchain.MainClientExec - Connection discarded
+06:08:40.054 [main] DEBUG org.apache.http.impl.conn.PoolingHttpClientConnectionManager - Connection released: [id: 0][route: {s}->https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200][total available: 0; route allocated: 0 of 2; total allocated: 0 of 20]
+06:08:40.054 [main] DEBUG org.apache.http.impl.conn.PoolingHttpClientConnectionManager - Connection manager is shutting down
+06:08:40.057 [main] DEBUG org.apache.http.impl.conn.PoolingHttpClientConnectionManager - Connection manager shut down
+❌ Connection failed:
+org.apache.http.conn.ConnectTimeoutException: Connect to vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200 [vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud/40.68.97.112] failed: Connect timed out
+	at org.apache.http.impl.conn.DefaultHttpClientConnectionOperator.connect(DefaultHttpClientConnectionOperator.java:151)
+	at org.apache.http.impl.conn.PoolingHttpClientConnectionManager.connect(PoolingHttpClientConnectionManager.java:376)
+	at org.apache.http.impl.execchain.MainClientExec.establishRoute(MainClientExec.java:393)
+	at org.apache.http.impl.execchain.MainClientExec.execute(MainClientExec.java:236)
+	at org.apache.http.impl.execchain.ProtocolExec.execute(ProtocolExec.java:186)
+	at org.apache.http.impl.execchain.RetryExec.execute(RetryExec.java:89)
+	at org.apache.http.impl.execchain.RedirectExec.execute(RedirectExec.java:110)
+	at org.apache.http.impl.client.InternalHttpClient.doExecute(InternalHttpClient.java:185)
+	at org.apache.http.impl.client.CloseableHttpClient.execute(CloseableHttpClient.java:83)
+	at org.apache.http.impl.client.CloseableHttpClient.execute(CloseableHttpClient.java:108)
+	at com.nedbank.kafka.filemanage.service.VaultProxyBypassTest.main(VaultProxyBypassTest.java:35)
+Caused by: java.net.SocketTimeoutException: Connect timed out
+	at java.base/sun.nio.ch.NioSocketImpl.timedFinishConnect(NioSocketImpl.java:551)
+	at java.base/sun.nio.ch.NioSocketImpl.connect(NioSocketImpl.java:602)
+	at java.base/java.net.SocksSocketImpl.connect(SocksSocketImpl.java:327)
+	at java.base/java.net.Socket.connect(Socket.java:633)
+	at org.apache.http.conn.ssl.SSLConnectionSocketFactory.connectSocket(SSLConnectionSocketFactory.java:368)
+	at org.apache.http.impl.conn.DefaultHttpClientConnectionOperator.connect(DefaultHttpClientConnectionOperator.java:142)
+	... 10 more
