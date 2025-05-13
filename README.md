@@ -1,61 +1,57 @@
-public String uploadFileAndGenerateSasUrl(String fileLocation, String batchId, String objectId) {
-    try {
-        // Setup Proxy if needed
-        proxySetup.configureProxy();
-
-        // Get secrets from Vault
-        String vaultToken = getVaultToken();
-        String accountKey = getSecretFromVault("account_key", vaultToken);
-        String accountName = getSecretFromVault("account_name", vaultToken);
-        String containerName = getSecretFromVault("container_name", vaultToken);
-
-        // Extract the file extension from the URL (if any)
-        String extension = getFileExtension(fileLocation);
-        String blobName = objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
-
-        // Build BlobServiceClient using the account credentials
-        BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                .httpClient(new OkHttpAsyncHttpClientBuilder().build())
-                .buildClient();
-
-        // Get the BlobContainerClient to interact with the container
-        BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
-
-        // Get BlobClient for the given blob name (we'll use this to check if it exists and upload)
-        BlobClient blobClient = containerClient.getBlobClient(blobName);
-
-        // Check if the blob already exists (based on the blob name)
-        if (blobClient.exists()) {
-            System.out.println("The file already exists in Azure Blob Storage. Updating the content...");
-        }
-
-        // ⬇️ Download the file from the provided file location (URL from Kafka)
-        try (InputStream inputStream = new URL(fileLocation).openStream()) {
-            // Upload or overwrite the file to Azure Blob Storage
-            blobClient.upload(inputStream, inputStream.available(), true); // Overwrite if exists
-            System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
-        } catch (IOException e) {
-            throw new RuntimeException("❌ Error downloading the file from the provided URL", e);
-        }
-
-        // 🔐 Generate SAS Token with 24-hour read access
-        BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
-                OffsetDateTime.now().plusHours(24),
-                new BlobSasPermission().setReadPermission(true)
-        );
-
-        // Generate the SAS token for the blob
-        String sasToken = blobClient.generateSas(sasValues);
-        String sasUrl = blobClient.getBlobUrl() + "?" + sasToken;
-
-        System.out.println("🔐 SAS URL (valid for 24 hours): " + sasUrl);
-        return sasUrl;
-
-    } catch (Exception e) {
-        // Log the exception for debugging
-        e.printStackTrace();
-        throw new RuntimeException("❌ Error uploading to Azure Blob or generating SAS URL", e);
-    }
-}
+2025-05-14T01:49:48.290+02:00  INFO 11888 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : Parsed batchId: 12345, filePath: https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv, objectId: {1037A096-0000-CE1A-A484-3290CA7938C2}
+reactor.core.Exceptions$ReactiveException: java.io.IOException: Failed to authenticate with proxy
+	at reactor.core.Exceptions.propagate(Exceptions.java:408)
+	at reactor.core.publisher.BlockingSingleSubscriber.blockingGet(BlockingSingleSubscriber.java:97)
+	at reactor.core.publisher.Mono.block(Mono.java:1710)
+	at com.azure.storage.common.implementation.StorageImplUtils.blockWithOptionalTimeout(StorageImplUtils.java:131)
+	at com.azure.storage.blob.specialized.BlobClientBase.existsWithResponse(BlobClientBase.java:308)
+	at com.azure.storage.blob.specialized.BlobClientBase.exists(BlobClientBase.java:291)
+	at com.nedbank.kafka.filemanage.service.BlobStorageService.uploadFileAndGenerateSasUrl(BlobStorageService.java:80)
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.consumeKafkaMessage(KafkaListenerService.java:66)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568)
+	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:169)
+	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.invoke(InvocableHandlerMethod.java:119)
+	at org.springframework.kafka.listener.adapter.HandlerAdapter.invoke(HandlerAdapter.java:56)
+	at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.invokeHandler(MessagingMessageListenerAdapter.java:375)
+	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:92)
+	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:53)
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeOnMessage(KafkaMessageListenerContainer.java:2873)
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeOnMessage(KafkaMessageListenerContainer.java:2854)
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.lambda$doInvokeRecordListener$57(KafkaMessageListenerContainer.java:2772)
+	at io.micrometer.observation.Observation.observe(Observation.java:559)
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeRecordListener(KafkaMessageListenerContainer.java:2770)
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeWithRecords(KafkaMessageListenerContainer.java:2622)
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeRecordListener(KafkaMessageListenerContainer.java:2508)
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeListener(KafkaMessageListenerContainer.java:2150)
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeIfHaveRecords(KafkaMessageListenerContainer.java:1505)
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.pollAndInvoke(KafkaMessageListenerContainer.java:1469)
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.run(KafkaMessageListenerContainer.java:1344)
+	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804)
+	at java.base/java.lang.Thread.run(Thread.java:842)
+	Suppressed: java.lang.Exception: #block terminated with an error
+		at reactor.core.publisher.BlockingSingleSubscriber.blockingGet(BlockingSingleSubscriber.java:99)
+		... 29 more
+Caused by: java.io.IOException: Failed to authenticate with proxy
+	at okhttp3.internal.connection.RealConnection.createTunnel(RealConnection.kt:476)
+	at okhttp3.internal.connection.RealConnection.connectTunnel(RealConnection.kt:262)
+	at okhttp3.internal.connection.RealConnection.connect(RealConnection.kt:201)
+	at okhttp3.internal.connection.ExchangeFinder.findConnection(ExchangeFinder.kt:226)
+	at okhttp3.internal.connection.ExchangeFinder.findHealthyConnection(ExchangeFinder.kt:106)
+	at okhttp3.internal.connection.ExchangeFinder.find(ExchangeFinder.kt:74)
+	at okhttp3.internal.connection.RealCall.initExchange$okhttp(RealCall.kt:255)
+	at okhttp3.internal.connection.ConnectInterceptor.intercept(ConnectInterceptor.kt:32)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.cache.CacheInterceptor.intercept(CacheInterceptor.kt:95)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.BridgeInterceptor.intercept(BridgeInterceptor.kt:83)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.http.RetryAndFollowUpInterceptor.intercept(RetryAndFollowUpInterceptor.kt:76)
+	at okhttp3.internal.http.RealInterceptorChain.proceed(RealInterceptorChain.kt:109)
+	at okhttp3.internal.connection.RealCall.getResponseWithInterceptorChain$okhttp(RealCall.kt:201)
+	at okhttp3.internal.connection.RealCall$AsyncCall.run(RealCall.kt:517)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635)
+	... 1 more
