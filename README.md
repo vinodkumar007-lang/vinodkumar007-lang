@@ -1,11 +1,13 @@
-java.util.concurrent.CompletionException: java.lang.NoClassDefFoundError: com/azure/core/util/logging/ClientLogger
+2025-05-14T00:52:32.457+02:00 ERROR 14708 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Error while stopping the container
+
+java.util.concurrent.CompletionException: java.lang.NoClassDefFoundError: com/azure/core/implementation/util/HttpUtils
 	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:315) ~[na:na]
 	at java.base/java.util.concurrent.CompletableFuture.completeThrowable(CompletableFuture.java:320) ~[na:na]
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1807) ~[na:na]
 	at java.base/java.lang.Thread.run(Thread.java:842) ~[na:na]
-Caused by: java.lang.NoClassDefFoundError: com/azure/core/util/logging/ClientLogger
-	at com.azure.storage.blob.BlobServiceClientBuilder.<init>(BlobServiceClientBuilder.java:51) ~[azure-storage-blob-12.10.0.jar:na]
-	at com.nedbank.kafka.filemanage.service.BlobStorageService.uploadFileAndGenerateSasUrl(BlobStorageService.java:58) ~[classes/:na]
+Caused by: java.lang.NoClassDefFoundError: com/azure/core/implementation/util/HttpUtils
+	at com.azure.core.http.okhttp.OkHttpAsyncHttpClientBuilder.build(OkHttpAsyncHttpClientBuilder.java:366) ~[azure-core-http-okhttp-1.12.8.jar:1.12.8]
+	at com.nedbank.kafka.filemanage.service.BlobStorageService.uploadFileAndGenerateSasUrl(BlobStorageService.java:61) ~[classes/:na]
 	at com.nedbank.kafka.filemanage.service.KafkaListenerService.consumeKafkaMessage(KafkaListenerService.java:66) ~[classes/:na]
 	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
 	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
@@ -30,7 +32,7 @@ Caused by: java.lang.NoClassDefFoundError: com/azure/core/util/logging/ClientLog
 	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.run(KafkaMessageListenerContainer.java:1344) ~[spring-kafka-3.0.11.jar:3.0.11]
 	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804) ~[na:na]
 	... 1 common frames omitted
-Caused by: java.lang.ClassNotFoundException: com.azure.core.util.logging.ClientLogger
+Caused by: java.lang.ClassNotFoundException: com.azure.core.implementation.util.HttpUtils
 	at java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641) ~[na:na]
 	at java.base/jdk.internal.loader.ClassLoaders$AppClassLoader.loadClass(ClassLoaders.java:188) ~[na:na]
 	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:525) ~[na:na]
