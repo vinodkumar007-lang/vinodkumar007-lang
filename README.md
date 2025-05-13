@@ -1,8 +1,9 @@
+2025-05-13T15:59:59.413+02:00 ERROR 1216 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Error while stopping the container
+
 java.util.concurrent.CompletionException: java.lang.NoClassDefFoundError: reactor/netty/tcp/ProxyProvider$TypeSpec
 	at java.base/java.util.concurrent.CompletableFuture.encodeThrowable(CompletableFuture.java:315) ~[na:na]
 	at java.base/java.util.concurrent.CompletableFuture.completeThrowable(CompletableFuture.java:320) ~[na:na]
-	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run$$$capture(CompletableFuture.java:1807) ~[na:na]
-	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java) ~[na:na]
+	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1807) ~[na:na]
 	at java.base/java.lang.Thread.run(Thread.java:842) ~[na:na]
 Caused by: java.lang.NoClassDefFoundError: reactor/netty/tcp/ProxyProvider$TypeSpec
 	at com.azure.core.http.netty.NettyAsyncHttpClientBuilder.lambda$build$7(NettyAsyncHttpClientBuilder.java:139) ~[azure-core-http-netty-1.6.3.jar:na]
@@ -39,10 +40,10 @@ Caused by: java.lang.NoClassDefFoundError: reactor/netty/tcp/ProxyProvider$TypeS
 	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeIfHaveRecords(KafkaMessageListenerContainer.java:1505) ~[spring-kafka-3.0.11.jar:3.0.11]
 	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.pollAndInvoke(KafkaMessageListenerContainer.java:1469) ~[spring-kafka-3.0.11.jar:3.0.11]
 	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.run(KafkaMessageListenerContainer.java:1344) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run$$$capture(CompletableFuture.java:1804) ~[na:na]
-	... 2 common frames omitted
+	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804) ~[na:na]
+	... 1 common frames omitted
 Caused by: java.lang.ClassNotFoundException: reactor.netty.tcp.ProxyProvider$TypeSpec
 	at java.base/jdk.internal.loader.BuiltinClassLoader.loadClass(BuiltinClassLoader.java:641) ~[na:na]
 	at java.base/jdk.internal.loader.ClassLoaders$AppClassLoader.loadClass(ClassLoaders.java:188) ~[na:na]
 	at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:525) ~[na:na]
-	... 37 common frames omitted
+	... 36 common frames omitted
