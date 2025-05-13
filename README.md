@@ -1,25 +1,145 @@
-Caused by: java.io.FileNotFoundException: https:\nsndvextr01.blob.core.windows.net\nsnakscontregecm001\DEBTMAN.csv (The filename, directory name, or volume label syntax is incorrect)
-	at java.base/java.io.FileInputStream.open0(Native Method) ~[na:na]
-	at java.base/java.io.FileInputStream.open(FileInputStream.java:216) ~[na:na]
-	at java.base/java.io.FileInputStream.<init>(FileInputStream.java:157) ~[na:na]
-	at com.nedbank.kafka.filemanage.service.BlobStorageService.uploadFileAndGenerateSasUrl(BlobStorageService.java:71) ~[classes/:na]
-	... 23 common frames omitted
+package com.nedbank.kafka.filemanage.service;
 
-2025-05-14T01:12:48.742+02:00 DEBUG 9432 --- [ntainer#0-0-C-1] .a.RecordMessagingMessageListenerAdapter : Processing [GenericMessage [payload=org.springframework.kafka.support.KafkaNull@6480b43f, headers={id=14ab38bc-7ec4-1589-82cf-dc120a868477, timestamp=1747177945024}]]
-2025-05-14T01:12:48.742+02:00  INFO 9432 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : Kafka listener method entered.
-2025-05-14T01:12:48.742+02:00  INFO 9432 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : Received Kafka message: {
-  "sourceSystem" : "DEBTMAN",
-  "timestamp" : 1747081341.014287800,
-  "batchFiles" : [ {
-    "fileLocation" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "validationStatus" : "valid",
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH"
-  } ],
-  "consumerReference" : "12345",
-  "processReference" : "Test12345",
-  "batchControlFileData" : null
+import com.azure.core.http.okhttp.OkHttpAsyncHttpClientBuilder;
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.BlobServiceClient;
+import com.azure.storage.blob.BlobServiceClientBuilder;
+import com.azure.storage.blob.models.BlobHttpHeaders;
+import com.azure.storage.blob.sas.BlobSasPermission;
+import com.azure.storage.blob.sas.BlobServiceSasSignatureValues;
+import com.azure.storage.common.StorageSharedKeyCredential;
+import com.nedbank.kafka.filemanage.config.ProxySetup;
+import org.json.JSONObject;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.*;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.io.*;
+import java.time.OffsetDateTime;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
+
+@Service
+public class BlobStorageService {
+
+    private final RestTemplate restTemplate;
+    private final ProxySetup proxySetup;
+
+    @Value("${vault.hashicorp.url}")
+    private String VAULT_URL;
+
+    @Value("${vault.hashicorp.namespace}")
+    private String VAULT_NAMESPACE;
+
+    @Value("${vault.hashicorp.passwordDev}")
+    private String passwordDev;
+
+    @Value("${vault.hashicorp.passwordNbhDev}")
+    private String passwordNbhDev;
+
+    public BlobStorageService(RestTemplate restTemplate, ProxySetup proxySetup) {
+        this.restTemplate = restTemplate;
+        this.proxySetup = proxySetup;
+    }
+
+    public String uploadFileAndGenerateSasUrl(String filePath, String batchId, String objectId) {
+        try {
+            proxySetup.configureProxy();
+
+            String vaultToken = getVaultToken();
+            String accountKey = getSecretFromVault("account_key", vaultToken);
+            String accountName = getSecretFromVault("account_name", vaultToken);
+            String containerName = getSecretFromVault("container_name", vaultToken);
+
+            String extension = getFileExtension(filePath);
+            String blobName = objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
+
+            // Build BlobServiceClient using OkHttp
+            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+                    .httpClient(new OkHttpAsyncHttpClientBuilder().build())
+                    .buildClient();
+
+            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
+            BlobClient blobClient = containerClient.getBlobClient(blobName);
+
+            File file = new File(filePath);
+            try (InputStream dataStream = new FileInputStream(file)) {
+                blobClient.upload(dataStream, file.length(), true);
+                System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
+            }
+
+            // Generate SAS Token
+            BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
+                    OffsetDateTime.now().plusHours(24),
+                    new BlobSasPermission().setReadPermission(true)
+            );
+
+            String sasToken = blobClient.generateSas(sasValues);
+            String sasUrl = blobClient.getBlobUrl() + "?" + sasToken;
+
+            System.out.println("🔐 SAS URL (valid for 24 hours):");
+            System.out.println(sasUrl);
+
+            return sasUrl;
+        } catch (Exception e) {
+            throw new RuntimeException("❌ Error uploading to Azure Blob or generating SAS URL", e);
+        }
+    }
+
+    private String getVaultToken() {
+        try {
+            proxySetup.configureProxy();
+
+            String url = VAULT_URL + "/v1/auth/userpass/login/espire_dev";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("x-vault-namespace", VAULT_NAMESPACE);
+
+            Map<String, String> body = new HashMap<>();
+            body.put("password", passwordDev);
+
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
+
+            JSONObject json = new JSONObject(Objects.requireNonNull(response.getBody()));
+            return json.getJSONObject("auth").getString("client_token");
+        } catch (Exception e) {
+            throw new RuntimeException("❌ Failed to obtain Vault token", e);
+        }
+    }
+
+    private String getSecretFromVault(String key, String token) {
+        try {
+            proxySetup.configureProxy();
+
+            String url = VAULT_URL + "/v1/Store_Dev/10099";
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("x-vault-namespace", VAULT_NAMESPACE);
+            headers.set("x-vault-token", token);
+
+            Map<String, String> body = new HashMap<>();
+            body.put("password", passwordNbhDev);
+
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, request, String.class);
+
+            JSONObject json = new JSONObject(response.getBody());
+            return json.getJSONObject("data").getString(key);
+        } catch (Exception e) {
+            throw new RuntimeException("❌ Failed to retrieve secret from Vault", e);
+        }
+    }
+
+    private String getFileExtension(String fileLocation) {
+        int lastDotIndex = fileLocation.lastIndexOf('.');
+        return lastDotIndex > 0 ? fileLocation.substring(lastDotIndex) : "";
+    }
 }
-2025-05-14T01:12:48.743+02:00  INFO 9432 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : Parsed batchId: 12345, filePath: https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv, objectId: {1037A096-0000-CE1A-A484-3290CA7938C2}
-
-Process finished with exit code -1
