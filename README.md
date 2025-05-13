@@ -1,29 +1,21 @@
-java.lang.NoClassDefFoundError: reactor/netty/tcp/ProxyProvider$TypeSpec
-	at com.azure.core.http.netty.NettyAsyncHttpClientBuilder.lambda$build$7(NettyAsyncHttpClientBuilder.java:139) ~[azure-core-http-netty-1.6.3.jar:na]
-	at reactor.netty.http.client.HttpClient.tcpConfiguration(HttpClient.java:1525) ~[reactor-netty-http-1.1.0.jar:1.1.0]
-	at com.azure.core.http.netty.NettyAsyncHttpClientBuilder.build(NettyAsyncHttpClientBuilder.java:121) ~[azure-core-http-netty-1.6.3.jar:na]
-	at com.azure.core.http.netty.implementation.ReactorNettyClientProvider.createInstance(ReactorNettyClientProvider.java:14) ~[azure-core-http-netty-1.6.3.jar:na]
-	at com.azure.core.implementation.http.HttpClientProviders.createInstance(HttpClientProviders.java:51) ~[azure-core-1.14.0.jar:na]
-	at com.azure.core.http.HttpClient.createDefault(HttpClient.java:50) ~[azure-core-1.14.0.jar:na]
-	at com.azure.core.http.HttpClient.createDefault(HttpClient.java:40) ~[azure-core-1.14.0.jar:na]
-	at com.azure.core.http.HttpPipelineBuilder.build(HttpPipelineBuilder.java:62) ~[azure-core-1.14.0.jar:na]
-	at com.azure.storage.blob.implementation.util.BuilderHelper.buildPipeline(BuilderHelper.java:133) ~[azure-storage-blob-12.10.0.jar:na]
-	at com.azure.storage.blob.BlobContainerClientBuilder.buildAsyncClient(BlobContainerClientBuilder.java:127) ~[azure-storage-blob-12.10.0.jar:na]
-	at com.azure.storage.blob.BlobContainerClientBuilder.buildClient(BlobContainerClientBuilder.java:96) ~[azure-storage-blob-12.10.0.jar:na]
-	at com.nedbank.kafka.filemanage.service.BlobStorageService.uploadFileAndGenerateSasUrl(BlobStorageService.java:63) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.consumeKafkaMessage(KafkaListenerService.java:66) ~[classes/:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
-	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:169) ~[spring-messaging-6.0.2.jar:6.0.2]
-	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.invoke(InvocableHandlerMethod.java:119) ~[spring-messaging-6.0.2.jar:6.0.2]
-	at org.springframework.kafka.listener.adapter.HandlerAdapter.invoke(HandlerAdapter.java:56) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.invokeHandler(MessagingMessageListenerAdapter.java:375) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:92) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:53) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeOnMessage(KafkaMessageListenerContainer.java:2873) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeOnMessage(KafkaMessageListenerContainer.java:2854) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.lambda$doInvokeRecordListener$57(KafkaMessageListenerContainer.java:2772) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at io.micrometer.observation.Observation.observe(Observation.java:559) ~[micrometer-observation-1.10.2.jar:1.10.2]
-	at org.springframework.kafka.lis
+<dependency>
+  <groupId>com.azure</groupId>
+  <artifactId>azure-core-http-netty</artifactId>
+  <version>1.6.3</version>
+  <exclusions>
+    <exclusion>
+      <groupId>io.projectreactor.netty</groupId>
+      <artifactId>reactor-netty</artifactId>
+    </exclusion>
+  </exclusions>
+</dependency>
+<dependency>
+  <groupId>com.azure</groupId>
+  <artifactId>azure-core-http-okhttp</artifactId>
+  <version>1.11.5</version>
+</dependency>
+
+BlobServiceClientBuilder builder = new BlobServiceClientBuilder()
+    .endpoint("<your-endpoint>")
+    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+    .httpClient(new OkHttpAsyncHttpClientBuilder().build());
