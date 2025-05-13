@@ -1,95 +1,3 @@
-package com.nedbank.kafka.filemanage.config;
-
-import java.net.*;
-import java.util.*;
-
-public class ProxySetup {
-    public static void configureProxy() {
-        String proxyHost = "proxyprod.africa.nedcor.net";//"webproxy.africa.nedcor.net";  // Proxy host
-        String proxyPort = "80";//"9001";  // Proxy port
-        String proxyUsername = "CC437236";  // Proxy username (if needed)
-        String proxyPassword = "34dYaB@jEh56";  // Proxy password (if needed)
-
-        // Set the HTTP/HTTPS proxy system properties
-        System.setProperty("http.proxyHost", proxyHost);
-        System.setProperty("http.proxyPort", proxyPort);
-        System.setProperty("https.proxyHost", proxyHost);
-        System.setProperty("https.proxyPort", proxyPort);
-
-        // If proxy requires authentication, you can set up authentication as follows
-        if (proxyUsername != null && proxyPassword != null) {
-            Authenticator.setDefault(new Authenticator() {
-                @Override
-                public PasswordAuthentication getPasswordAuthentication() {
-                    return new PasswordAuthentication(proxyUsername, proxyPassword.toCharArray());
-                }
-            });
-        }
-
-        // Use system-wide proxy settings (optional)
-        System.setProperty("java.net.useSystemProxies", "true");
-    }
-}
-package com.nedbank.kafka.filemanage.service;
-
-import org.springframework.http.*;
-import org.springframework.web.client.RestTemplate;
-
-import java.util.HashMap;
-import java.util.Map;
-
-public class VaultService {
-
-    private final RestTemplate restTemplate;
-
-    public VaultService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
-    }
-
-    public String loginToVault() {
-        String url = "https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200/v1/auth/userpass/login/espire_dev";
-
-        // Set HTTP headers
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("x-vault-namespace", "admin/espire");
-
-        // JSON payload
-        Map<String, String> body = new HashMap<>();
-        body.put("password", "Dev+Cred4#");  // Use your real password
-
-        HttpEntity<Map<String, String>> requestEntity = new HttpEntity<>(body, headers);
-
-        try {
-            ResponseEntity<String> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.POST,
-                    requestEntity,
-                    String.class
-            );
-            return response.getBody();
-        } catch (Exception e) {
-            e.printStackTrace();
-            return "Login failed: " + e.getMessage();
-        }
-    }
-
-    public static void main(String[] args) {
-        // Optional: Configure proxy
-        System.setProperty("http.proxyHost", "proxyprod.africa.nedcor.net");
-        System.setProperty("http.proxyPort", "80");
-        System.setProperty("https.proxyHost", "proxyprod.africa.nedcor.net");
-        System.setProperty("https.proxyPort", "80");
-
-        // Create and use service
-        RestTemplate restTemplate = new RestTemplate();
-        VaultService vaultService = new VaultService(restTemplate);
-
-        String loginResponse = vaultService.loginToVault();
-        System.out.println("Vault Login Response:\n" + loginResponse);
-    }
-}
-
 package com.nedbank.kafka.filemanage.service;
 
 import com.azure.storage.blob.*;
@@ -128,8 +36,8 @@ public class BlobStorageService {
 
     public String uploadFileAndGenerateSasUrl(String filePath, String batchId, String objectId) {
         try {
-            // Configure proxy settings
-            ProxySetup.configureProxy(); // This will configure the system-wide proxy settings
+            // 🔧 Configure proxy settings
+            ProxySetup.configureProxy();
             System.out.println("Proxy Host: " + System.getProperty("http.proxyHost"));
             System.out.println("Proxy Port: " + System.getProperty("http.proxyPort"));
 
@@ -179,10 +87,12 @@ public class BlobStorageService {
 
     private String getVaultToken() {
         try {
-            // Create a custom RequestConfig to increase timeouts
+            // 🔧 Configure proxy for Vault login
+            ProxySetup.configureProxy();
+
             RequestConfig requestConfig = RequestConfig.custom()
-                    .setConnectTimeout(60000)  // 60 seconds connection timeout
-                    .setSocketTimeout(60000)   // 60 seconds socket timeout
+                    .setConnectTimeout(60000)
+                    .setSocketTimeout(60000)
                     .build();
 
             CloseableHttpClient client = HttpClients.custom()
@@ -207,19 +117,24 @@ public class BlobStorageService {
     }
 
     private String getSecretFromVault(String key, String token) {
-        try (CloseableHttpClient client = HttpClients.createDefault()) {
-            HttpPost post = new HttpPost(VAULT_URL + "/v1/Store_Dev/10099");
-            post.setHeader("x-vault-namespace", VAULT_NAMESPACE);
-            post.setHeader("x-vault-token", token);
-            post.setHeader("Content-Type", "application/json");
+        try {
+            // 🔧 Configure proxy for Vault secret fetch
+            ProxySetup.configureProxy();
 
-            StringEntity entity = new StringEntity("{ \"password\": \"" + passwordNbhDev + "\" }");
-            post.setEntity(entity);
+            try (CloseableHttpClient client = HttpClients.createDefault()) {
+                HttpPost post = new HttpPost(VAULT_URL + "/v1/Store_Dev/10099");
+                post.setHeader("x-vault-namespace", VAULT_NAMESPACE);
+                post.setHeader("x-vault-token", token);
+                post.setHeader("Content-Type", "application/json");
 
-            try (CloseableHttpResponse response = client.execute(post)) {
-                String jsonResponse = EntityUtils.toString(response.getEntity());
-                JSONObject jsonObject = new JSONObject(jsonResponse);
-                return jsonObject.getJSONObject("data").getString(key);
+                StringEntity entity = new StringEntity("{ \"password\": \"" + passwordNbhDev + "\" }");
+                post.setEntity(entity);
+
+                try (CloseableHttpResponse response = client.execute(post)) {
+                    String jsonResponse = EntityUtils.toString(response.getEntity());
+                    JSONObject jsonObject = new JSONObject(jsonResponse);
+                    return jsonObject.getJSONObject("data").getString(key);
+                }
             }
         } catch (Exception e) {
             throw new RuntimeException("❌ Failed to retrieve secret from Vault", e);
@@ -235,4 +150,3 @@ public class BlobStorageService {
         }
     }
 }
-
