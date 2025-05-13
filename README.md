@@ -1,75 +1,56 @@
 package com.nedbank.kafka.filemanage.service;
 
-import com.azure.core.http.okhttp.OkHttpAsyncHttpClientBuilder;
 import com.azure.storage.blob.*;
+import com.azure.storage.blob.models.BlobClient;
 import com.azure.storage.blob.sas.BlobSasPermission;
 import com.azure.storage.blob.sas.BlobServiceSasSignatureValues;
-import com.azure.storage.common.StorageSharedKeyCredential;
 import com.nedbank.kafka.filemanage.config.ProxySetup;
-import org.json.JSONObject;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
 import java.io.*;
 import java.time.OffsetDateTime;
-import java.util.HashMap;
-import java.util.Map;
 
-@Service public class BlobStorageService {
+@Service
+public class BlobStorageService {
 
-    private final RestTemplate restTemplate;
+    private final VaultClientService vaultClient;
     private final ProxySetup proxySetup;
 
-    @Value("${vault.hashicorp.url}")
-    private String VAULT_URL;
-
-    @Value("${vault.hashicorp.namespace}")
-    private String VAULT_NAMESPACE;
-
-    @Value("${vault.hashicorp.passwordDev}")
-    private String passwordDev;
-
-    @Value("${vault.hashicorp.passwordNbhDev}")
-    private String passwordNbhDev;
-
-    public BlobStorageService(RestTemplate restTemplate, ProxySetup proxySetup) {
-        this.restTemplate = restTemplate;
+    public BlobStorageService(VaultClientService vaultClient, ProxySetup proxySetup) {
+        this.vaultClient = vaultClient;
         this.proxySetup = proxySetup;
     }
 
     public String uploadFileAndGenerateSasUrl(String filePath, String batchId, String objectId) {
         try {
-            proxySetup.configureProxy(); // Configure proxy
+            // Configure proxy if needed
+            proxySetup.configureProxy();
             System.out.println("Proxy Host: " + System.getProperty("http.proxyHost"));
             System.out.println("Proxy Port: " + System.getProperty("http.proxyPort"));
 
-            String vaultToken = getVaultToken();
+            // Authenticate with Vault and retrieve secrets
+            String vaultToken = vaultClient.getVaultToken();
+            String accountKey = vaultClient.getSecret("Store_Dev/10099", "account_key", vaultToken);
+            String accountName = vaultClient.getSecret("Store_Dev/10099", "account_name", vaultToken);
+            String containerName = vaultClient.getSecret("Store_Dev/10099", "container_name", vaultToken);
 
-            String accountKey = getSecretFromVault("account_key", vaultToken);
-            String accountName = getSecretFromVault("account_name", vaultToken);
-            String containerName = getSecretFromVault("container_name", vaultToken);
-
+            // Construct blob name
             String extension = getFileExtension(filePath);
             String blobName = objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
 
+            // Build Azure connection string
             String connectionString = String.format(
-                    "DefaultEndpointsProtocol=https;AccountName=%s;AccountKey=%s;EndpointSuffix=core.windows.net",
-                    accountName, accountKey
+                "DefaultEndpointsProtocol=https;AccountName=%s;AccountKey=%s;EndpointSuffix=core.windows.net",
+                accountName, accountKey
             );
 
-            /*BlobContainerClient containerClient = new BlobContainerClientBuilder()
+            // Upload the file to Azure Blob Storage
+            BlobContainerClient containerClient = new BlobContainerClientBuilder()
                     .connectionString(connectionString)
                     .containerName(containerName)
-                    .buildClient();*/
+                    .buildClient();
 
-            BlobServiceClientBuilder builder = new BlobServiceClientBuilder()
-                    .endpoint(connectionString)
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .httpClient(new OkHttpAsyncHttpClientBuilder().build());
-
-            BlobClient blobClient = builder.getBlobClient(blobName);
+            BlobClient blobClient = containerClient.getBlobClient(blobName);
 
             File file = new File(filePath);
             try (InputStream dataStream = new FileInputStream(file)) {
@@ -77,6 +58,7 @@ import java.util.Map;
                 System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
             }
 
+            // Generate SAS token
             BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
                     OffsetDateTime.now().plusHours(24),
                     new BlobSasPermission().setReadPermission(true)
@@ -91,57 +73,6 @@ import java.util.Map;
             return sasUrl;
         } catch (Exception e) {
             throw new RuntimeException("❌ Error uploading to Azure Blob or generating SAS URL", e);
-        }
-    }
-
-    private String getVaultToken() {
-        try {
-            proxySetup.configureProxy();
-
-            String url = VAULT_URL + "/v1/auth/userpass/login/espire_dev";
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("x-vault-namespace", VAULT_NAMESPACE);
-
-            Map<String, String> body = new HashMap<>();
-            body.put("password", passwordDev);
-
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
-
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
-
-            JSONObject json = new JSONObject(response.getBody());
-            return json.getJSONObject("auth").getString("client_token");
-
-        } catch (Exception e) {
-            throw new RuntimeException("❌ Failed to obtain Vault token", e);
-        }
-    }
-
-    private String getSecretFromVault(String key, String token) {
-        try {
-            proxySetup.configureProxy();
-
-            String url = VAULT_URL + "/v1/Store_Dev/10099";
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("x-vault-namespace", VAULT_NAMESPACE);
-            headers.set("x-vault-token", token);
-
-            Map<String, String> body = new HashMap<>();
-            body.put("password", passwordNbhDev);
-
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
-
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, request, String.class);
-
-            JSONObject json = new JSONObject(response.getBody());
-            return json.getJSONObject("data").getString(key);
-
-        } catch (Exception e) {
-            throw new RuntimeException("❌ Failed to retrieve secret from Vault", e);
         }
     }
 
