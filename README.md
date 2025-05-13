@@ -1,162 +1,35 @@
-package com.nedbank.kafka.filemanage.service;
-
-import com.azure.storage.blob.*;
-import com.azure.storage.blob.models.*;
-import com.azure.storage.blob.sas.BlobSasPermission;
-import com.azure.storage.blob.sas.BlobServiceSasSignatureValues;
-import com.nedbank.kafka.filemanage.config.ProxySetup;
-import org.json.JSONObject;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-
-import java.io.*;
-import java.time.OffsetDateTime;
-import java.util.HashMap;
-import java.util.Map;
-
-@Service
-public class BlobStorageService {
-
-    private final RestTemplate restTemplate;
-    private final ProxySetup proxySetup;
-
-    @Value("${vault.hashicorp.url}")
-    private String VAULT_URL;
-
-    @Value("${vault.hashicorp.namespace}")
-    private String VAULT_NAMESPACE;
-
-    @Value("${vault.hashicorp.passwordDev}")
-    private String passwordDev;
-
-    @Value("${vault.hashicorp.passwordNbhDev}")
-    private String passwordNbhDev;
-
-    public BlobStorageService(RestTemplate restTemplate, ProxySetup proxySetup) {
-        this.restTemplate = restTemplate;
-        this.proxySetup = proxySetup;
-    }
-
-    public String uploadFileAndGenerateSasUrl(String filePath, String batchId, String objectId) {
-        try {
-            proxySetup.configureProxy(); // Configure proxy
-            System.out.println("Proxy Host: " + System.getProperty("http.proxyHost"));
-            System.out.println("Proxy Port: " + System.getProperty("http.proxyPort"));
-
-            String vaultToken = getVaultToken();
-
-            String accountKey = getSecretFromVault("account_key", vaultToken);
-            String accountName = getSecretFromVault("account_name", vaultToken);
-            String containerName = getSecretFromVault("container_name", vaultToken);
-
-            String extension = getFileExtension(filePath);
-            String blobName = objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
-
-            String connectionString = String.format(
-                    "DefaultEndpointsProtocol=https;AccountName=%s;AccountKey=%s;EndpointSuffix=core.windows.net",
-                    accountName, accountKey
-            );
-
-            BlobContainerClient containerClient = new BlobContainerClientBuilder()
-                    .connectionString(connectionString)
-                    .containerName(containerName)
-                    .buildClient();
-
-            BlobClient blobClient = containerClient.getBlobClient(blobName);
-
-            File file = new File(filePath);
-            try (InputStream dataStream = new FileInputStream(file)) {
-                blobClient.upload(dataStream, file.length(), true);
-                System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
-            }
-
-            BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
-                    OffsetDateTime.now().plusHours(24),
-                    new BlobSasPermission().setReadPermission(true)
-            );
-
-            String sasToken = blobClient.generateSas(sasValues);
-            String sasUrl = blobClient.getBlobUrl() + "?" + sasToken;
-
-            System.out.println("🔐 SAS URL (valid for 24 hours):");
-            System.out.println(sasUrl);
-
-            return sasUrl;
-        } catch (Exception e) {
-            throw new RuntimeException("❌ Error uploading to Azure Blob or generating SAS URL", e);
-        }
-    }
-
-    private String getVaultToken() {
-        try {
-            proxySetup.configureProxy();
-
-            String url = VAULT_URL + "/v1/auth/userpass/login/espire_dev";
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("x-vault-namespace", VAULT_NAMESPACE);
-
-            Map<String, String> body = new HashMap<>();
-            body.put("password", passwordDev);
-
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
-
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
-
-            JSONObject json = new JSONObject(response.getBody());
-            return json.getJSONObject("auth").getString("client_token");
-
-        } catch (Exception e) {
-            throw new RuntimeException("❌ Failed to obtain Vault token", e);
-        }
-    }
-
-    private String getSecretFromVault(String key, String token) {
-        try {
-            proxySetup.configureProxy();
-
-            String url = VAULT_URL + "/v1/Store_Dev/10099";
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("x-vault-namespace", VAULT_NAMESPACE);
-            headers.set("x-vault-token", token);
-
-            Map<String, String> body = new HashMap<>();
-            body.put("password", passwordNbhDev);
-
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
-
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
-
-            JSONObject json = new JSONObject(response.getBody());
-            return json.getJSONObject("data").getString(key);
-
-        } catch (Exception e) {
-            throw new RuntimeException("❌ Failed to retrieve secret from Vault", e);
-        }
-    }
-
-    private String getFileExtension(String fileLocation) {
-        int lastDotIndex = fileLocation.lastIndexOf('.');
-        if (lastDotIndex > 0) {
-            return fileLocation.substring(lastDotIndex);
-        } else {
-            return "";
-        }
-    }
-}
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.web.client.RestTemplate;
-
-@Configuration
-public class AppConfig {
-    @Bean
-    public RestTemplate restTemplate() {
-        return new RestTemplate();
-    }
-}
+org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'proxySetup': Invocation of init method failed
+	at org.springframework.beans.factory.annotation.InitDestroyAnnotationBeanPostProcessor.postProcessBeforeInitialization(InitDestroyAnnotationBeanPostProcessor.java:195) ~[spring-beans-6.0.2.jar:6.0.2]
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.applyBeanPostProcessorsBeforeInitialization(AbstractAutowireCapableBeanFactory.java:420) ~[spring-beans-6.0.2.jar:6.0.2]
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.initializeBean(AbstractAutowireCapableBeanFactory.java:1743) ~[spring-beans-6.0.2.jar:6.0.2]
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:599) ~[spring-beans-6.0.2.jar:6.0.2]
+	at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:521) ~[spring-beans-6.0.2.jar:6.0.2]
+	at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:326) ~[spring-beans-6.0.2.jar:6.0.2]
+	at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:234) ~[spring-beans-6.0.2.jar:6.0.2]
+	at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:324) ~[spring-beans-6.0.2.jar:6.0.2]
+	at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:200) ~[spring-beans-6.0.2.jar:6.0.2]
+	at org.springframework.beans.factory.support.DefaultListableBeanFactory.preInstantiateSingletons(DefaultListableBeanFactory.java:961) ~[spring-beans-6.0.2.jar:6.0.2]
+	at org.springframework.context.support.AbstractApplicationContext.finishBeanFactoryInitialization(AbstractApplicationContext.java:915) ~[spring-context-6.0.2.jar:6.0.2]
+	at org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:584) ~[spring-context-6.0.2.jar:6.0.2]
+	at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.refresh(ServletWebServerApplicationContext.java:146) ~[spring-boot-3.0.0.jar:3.0.0]
+	at org.springframework.boot.SpringApplication.refresh(SpringApplication.java:730) ~[spring-boot-3.0.0.jar:3.0.0]
+	at org.springframework.boot.SpringApplication.refreshContext(SpringApplication.java:432) ~[spring-boot-3.0.0.jar:3.0.0]
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:308) ~[spring-boot-3.0.0.jar:3.0.0]
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1302) ~[spring-boot-3.0.0.jar:3.0.0]
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1291) ~[spring-boot-3.0.0.jar:3.0.0]
+	at com.nedbank.kafka.filemanage.Application.main(Application.java:14) ~[classes/:na]
+Caused by: java.lang.NullPointerException: null
+	at java.base/java.util.concurrent.ConcurrentHashMap.putVal(ConcurrentHashMap.java:1011) ~[na:na]
+	at java.base/java.util.concurrent.ConcurrentHashMap.put(ConcurrentHashMap.java:1006) ~[na:na]
+	at java.base/java.util.Properties.put(Properties.java:1301) ~[na:na]
+	at java.base/java.util.Properties.setProperty(Properties.java:229) ~[na:na]
+	at java.base/java.lang.System.setProperty(System.java:1000) ~[na:na]
+	at com.nedbank.kafka.filemanage.config.ProxySetup.configureProxy(ProxySetup.java:30) ~[classes/:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+	at org.springframework.beans.factory.annotation.InitDestroyAnnotationBeanPostProcessor$LifecycleElement.invoke(InitDestroyAnnotationBeanPostProcessor.java:424) ~[spring-beans-6.0.2.jar:6.0.2]
+	at org.springframework.beans.factory.annotation.InitDestroyAnnotationBeanPostProcessor$LifecycleMetadata.invokeInitMethods(InitDestroyAnnotationBeanPostProcessor.java:368) ~[spring-beans-6.0.2.jar:6.0.2]
+	at org.springframework.beans.factory.annotation.InitDestroyAnnotationBeanPostProcessor.postProcessBeforeInitialization(InitDestroyAnnotationBeanPostProcessor.java:192) ~[spring-beans-6.0.2.jar:6.0.2]
+	... 18 common frames omitted
