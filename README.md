@@ -147,3 +147,10 @@ import java.util.Map;
         }
     }
 }
+curl --location --request GET 'https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200/v1/Store_Dev/10099' \
+--header 'x-vault-namespace: admin/espire' \
+--header 'x-vault-token: ' \
+--header 'Content-Type: application/json' \
+--data-raw '{
+  "password": "nbh_dev1"
+ }'
