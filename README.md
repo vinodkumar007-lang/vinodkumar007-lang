@@ -1,4 +1,15 @@
-Hi Du Preez, V. (Victor), Docker desktop required license therefore it will take some time to sort out that, client suggested to go for open sources mean time, could you please help us to install any among from them Podman, Containerd, Buildah, Rancher Desktop,Docker.
+Hi Du Preez, V. (Victor),
 
-Hi Van Vuuren, L. (Lizelle),I can access https://dev.azure.com/Nedbank-Limited/, but I don't see ECM_Exstream project or repos.
-Could you please add me to the project and give me contributor access to the Git repo?
+I hope you're doing well.
+
+Due to Docker Desktop now requiring a license, there may be a slight delay in setting it up. In the meantime, the client has suggested exploring open-source alternatives. Could you kindly assist us in installing any of the following tools: Podman, Containerd, Buildah, Rancher Desktop, or Docker (if still feasible)?
+
+Your support in this matter would be greatly appreciated.
+
+Hi Van Vuuren, L. (Lizelle),
+
+I am able to access https://dev.azure.com/Nedbank-Limited/, but I don't see the ECM_Exstream project or its associated repositories.
+
+Could you please add me to the project and grant contributor access to the Git repository?
+
+Thank you both for your assistance.
