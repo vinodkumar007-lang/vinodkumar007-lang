@@ -16,7 +16,8 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.io.*;
+import java.io.InputStream;
+import java.net.URL;
 import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -67,9 +68,10 @@ public class BlobStorageService {
             BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
             BlobClient blobClient = containerClient.getBlobClient(blobName);
 
-            File file = new File(filePath);
-            try (InputStream dataStream = new FileInputStream(file)) {
-                blobClient.upload(dataStream, file.length(), true);
+            // ✅ Download file from URL instead of local file
+            URL url = new URL(filePath);
+            try (InputStream dataStream = url.openStream()) {
+                blobClient.upload(dataStream, -1, true);
                 System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
             }
 
