@@ -1,59 +1,48 @@
-package com.nedbank.kafka.filemanage.service;
+package com.nedbank.kafka.filemanage.config;
 
-import org.springframework.http.*;
-import org.springframework.web.client.RestTemplate;
+import jakarta.annotation.PostConstruct;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.net.*;
 
-public class VaultService {
+@Component
+public class ProxySetup {
 
-    private final RestTemplate restTemplate;
+    @Value("${proxy.host}")
+    private String proxyHost;
 
-    public VaultService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
-    }
+    @Value("${proxy.port}")
+    private String proxyPort;
 
-    public String loginToVault() {
-        String url = "https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200/v1/auth/userpass/login/espire_dev";
+    @Value("${proxy.username}")
+    private String proxyUsername;
 
-        // Set HTTP headers
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("x-vault-namespace", "admin/espire");
+    @Value("${proxy.password}")
+    private String proxyPassword;
 
-        // JSON payload
-        Map<String, String> body = new HashMap<>();
-        body.put("password", "Dev+Cred4#");  // Use your real password
+    private static boolean configured = false;
 
-        HttpEntity<Map<String, String>> requestEntity = new HttpEntity<>(body, headers);
+    @PostConstruct
+    public void configureProxy() {
+        if (configured) return;
 
-        try {
-            ResponseEntity<String> response = restTemplate.exchange(
-                    url,
-                    HttpMethod.POST,
-                    requestEntity,
-                    String.class
-            );
-            return response.getBody();
-        } catch (Exception e) {
-            e.printStackTrace();
-            return "Login failed: " + e.getMessage();
+        System.setProperty("http.proxyHost", proxyHost);
+        System.setProperty("http.proxyPort", proxyPort);
+        System.setProperty("https.proxyHost", proxyHost);
+        System.setProperty("https.proxyPort", proxyPort);
+        System.setProperty("java.net.useSystemProxies", "true");
+
+        if (proxyUsername != null && proxyPassword != null) {
+            Authenticator.setDefault(new Authenticator() {
+                @Override
+                protected PasswordAuthentication getPasswordAuthentication() {
+                    return new PasswordAuthentication(proxyUsername, proxyPassword.toCharArray());
+                }
+            });
         }
-    }
 
-    public static void main(String[] args) {
-        // Optional: Configure proxy
-        System.setProperty("http.proxyHost", "proxyprod.africa.nedcor.net");
-        System.setProperty("http.proxyPort", "80");
-        System.setProperty("https.proxyHost", "proxyprod.africa.nedcor.net");
-        System.setProperty("https.proxyPort", "80");
-
-        // Create and use service
-        RestTemplate restTemplate = new RestTemplate();
-        VaultService vaultService = new VaultService(restTemplate);
-
-        String loginResponse = vaultService.loginToVault();
-        System.out.println("Vault Login Response:\n" + loginResponse);
+        System.out.println("🔧 Proxy configured from application.properties: " + proxyHost + ":" + proxyPort);
+        configured = true;
     }
 }
