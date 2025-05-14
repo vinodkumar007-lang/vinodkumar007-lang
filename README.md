@@ -45,6 +45,9 @@ public class BlobStorageService {
     @Value("${vault.hashicorp.passwordNbhDev}")
     private String passwordNbhDev;
 
+    @Value("${use.proxy:false}")  // Flag to enable/disable proxy configuration
+    private boolean useProxy;
+
     public BlobStorageService(RestTemplate restTemplate, ProxySetup proxySetup) {
         this.restTemplate = restTemplate;
         this.proxySetup = proxySetup;
@@ -53,7 +56,9 @@ public class BlobStorageService {
     public String uploadFileAndGenerateSasUrl(String fileLocation, String batchId, String objectId) {
         try {
             // Setup Proxy if needed
-            proxySetup.configureProxy();
+            if (useProxy) {
+                proxySetup.configureProxy();
+            }
 
             // Get secrets from Vault
             String vaultToken = getVaultToken();
@@ -112,7 +117,9 @@ public class BlobStorageService {
 
     private String getVaultToken() {
         try {
-            proxySetup.configureProxy();
+            if (useProxy) {
+                proxySetup.configureProxy();
+            }
 
             String url = VAULT_URL + "/v1/auth/userpass/login/espire_dev";
 
@@ -136,7 +143,9 @@ public class BlobStorageService {
 
     private String getSecretFromVault(String key, String token) {
         try {
-            proxySetup.configureProxy();
+            if (useProxy) {
+                proxySetup.configureProxy();
+            }
 
             String url = VAULT_URL + "/v1/Store_Dev/10099";
 
