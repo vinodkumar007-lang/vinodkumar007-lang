@@ -1,18 +1,48 @@
-Subject: Request for Kafka Producer Access to Topic
+# Kafka Consumer Configuration
+kafka.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
+kafka.consumer.group.id=str-ecp-batch
+kafka.consumer.auto.offset.reset=earliest
 
-Hi [Recipient's Name],
+# SSL Configuration
+kafka.consumer.security.protocol=SSL
+kafka.consumer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
+kafka.consumer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
+kafka.consumer.ssl.key.password=3dX7y3Yz9Jv6L4F
+kafka.consumer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
+kafka.consumer.ssl.truststore.password=nedbank1
+kafka.consumer.ssl.protocol=TLSv1.2
 
-I hope you're doing well.
+# Kafka Consumer Deserialization
+kafka.consumer.key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+kafka.consumer.value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
 
-I’m writing to kindly request producer access to the Kafka topic:
-[your-topic-name] (please replace with the actual topic name).
+# Kafka Producer Configuration (to send Summary File URL)
+kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
+kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
+kafka.producer.security.protocol=SSL
+kafka.producer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
+kafka.producer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
+kafka.producer.ssl.key.password=3dX7y3Yz9Jv6L4F
+kafka.producer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
+kafka.producer.ssl.truststore.password=nedbank1
+kafka.producer.ssl.protocol=TLSv1.2
+kafka.producer.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
 
-We are currently able to consume messages from the topic successfully, thanks to your earlier assistance in granting us consumer access—much appreciated.
+azure.keyvault.uri=https://nsn-dev-ecm-kva-001.vault.azure.net/secrets
 
-Now, as part of the next phase of our integration, we need to produce/publish messages to the same topic from our file management service. This is essential for sending summary payloads after successful file uploads, which are required by downstream consumers in the [project/system name].
+logging.level.org.springframework.kafka=DEBUG
 
-At the moment, attempts to produce messages are failing due to authorization errors.
+kafka.topic.input=str-ecp-batch-composition
+kafka.topic.output=ecp-batch-composition-complete
 
-Please let me know if any additional information or approvals are needed from our side.
+vault.hashicorp.url=https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200
+vault.hashicorp.namespace =admin/espire
 
-Thank you again for your continued support.
+vault.hashicorp.passwordDev=Dev+Cred4#
+vault.hashicorp.passwordNbhDev=nbh_dev1
+
+proxy.host=proxyprod.africa.nedcor.net
+proxy.port=80
+proxy.username=CC437236
+proxy.password=34dYaB@jEh56
+use.proxy=false
