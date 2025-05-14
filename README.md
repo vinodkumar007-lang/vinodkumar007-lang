@@ -1,16 +1,16 @@
 package com.nedbank.kafka.filemanage.service;
 
-import com.azure.core.http.okhttp.OkHttpAsyncHttpClientBuilder;
 import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.BlobServiceClient;
 import com.azure.storage.blob.BlobServiceClientBuilder;
-import com.azure.storage.blob.models.BlobHttpHeaders;
 import com.azure.storage.blob.sas.BlobSasPermission;
 import com.azure.storage.blob.sas.BlobServiceSasSignatureValues;
 import com.azure.storage.common.StorageSharedKeyCredential;
 import com.nedbank.kafka.filemanage.config.ProxySetup;
 import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -27,6 +27,8 @@ import java.util.Objects;
 
 @Service
 public class BlobStorageService {
+
+    private static final Logger logger = LoggerFactory.getLogger(BlobStorageService.class);
 
     private final RestTemplate restTemplate;
     private final ProxySetup proxySetup;
@@ -67,7 +69,6 @@ public class BlobStorageService {
             BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
                     .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
                     .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .httpClient(new OkHttpAsyncHttpClientBuilder().build())
                     .buildClient();
 
             // Get the BlobContainerClient to interact with the container
@@ -78,16 +79,16 @@ public class BlobStorageService {
 
             // Check if the blob already exists (based on the blob name)
             if (blobClient.exists()) {
-                System.out.println("The file already exists in Azure Blob Storage. Updating the content...");
+                logger.info("The file already exists in Azure Blob Storage. Updating the content...");
             }
 
             // ⬇️ Download the file from the provided file location (URL from Kafka)
             try (InputStream inputStream = new URL(fileLocation).openStream()) {
                 // Upload or overwrite the file to Azure Blob Storage
                 blobClient.upload(inputStream, inputStream.available(), true); // Overwrite if exists
-                System.out.println("✅ File uploaded successfully to Azure Blob Storage: " + blobClient.getBlobUrl());
+                logger.info("✅ File uploaded successfully to Azure Blob Storage: {}", blobClient.getBlobUrl());
             } catch (IOException e) {
-                throw new RuntimeException("❌ Error downloading the file from the provided URL", e);
+                throw new IOException("❌ Error downloading the file from the provided URL", e);
             }
 
             // 🔐 Generate SAS Token with 24-hour read access
@@ -100,16 +101,15 @@ public class BlobStorageService {
             String sasToken = blobClient.generateSas(sasValues);
             String sasUrl = blobClient.getBlobUrl() + "?" + sasToken;
 
-            System.out.println("🔐 SAS URL (valid for 24 hours): " + sasUrl);
+            logger.info("🔐 SAS URL (valid for 24 hours): {}", sasUrl);
             return sasUrl;
 
-        } catch (Exception e) {
-            // Log the exception for debugging
-            e.printStackTrace();
+        } catch (IOException e) {
+            logger.error("Error during file upload or SAS URL generation: {}", e.getMessage());
             throw new RuntimeException("❌ Error uploading to Azure Blob or generating SAS URL", e);
         }
     }
-    
+
     private String getVaultToken() {
         try {
             proxySetup.configureProxy();
@@ -129,6 +129,7 @@ public class BlobStorageService {
             JSONObject json = new JSONObject(Objects.requireNonNull(response.getBody()));
             return json.getJSONObject("auth").getString("client_token");
         } catch (Exception e) {
+            logger.error("Error getting Vault token: {}", e.getMessage());
             throw new RuntimeException("❌ Failed to obtain Vault token", e);
         }
     }
@@ -153,6 +154,7 @@ public class BlobStorageService {
             JSONObject json = new JSONObject(response.getBody());
             return json.getJSONObject("data").getString(key);
         } catch (Exception e) {
+            logger.error("Error retrieving secret from Vault: {}", e.getMessage());
             throw new RuntimeException("❌ Failed to retrieve secret from Vault", e);
         }
     }
