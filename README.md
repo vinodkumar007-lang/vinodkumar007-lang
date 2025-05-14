@@ -49,77 +49,79 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
-        <dependencies>
-            <!-- Azure SDK -->
-            <dependency>
-                <groupId>com.azure</groupId>
-                <artifactId>azure-storage-blob</artifactId>
-                <version>12.10.0</version>
-                <exclusions>
-                    <exclusion>
-                        <groupId>io.projectreactor.netty</groupId>
-                        <artifactId>reactor-netty</artifactId>
-                    </exclusion>
-                </exclusions>
-            </dependency>
 
-            <dependency>
-                <groupId>com.azure</groupId>
-                <artifactId>azure-core</artifactId>
-                <version>1.14.0</version>
-            </dependency>
+    <dependencies>
+        <!-- Azure SDK -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-storage-blob</artifactId>
+            <version>12.10.0</version>
+        </dependency>
 
-            <dependency>
-                <groupId>com.azure</groupId>
-                <artifactId>azure-core-http-okhttp</artifactId>
-                <version>1.4.0</version>
-            </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-core</artifactId>
+            <version>1.14.0</version>
+        </dependency>
 
-            <!-- Optional, only if used -->
-            <dependency>
-                <groupId>com.azure</groupId>
-                <artifactId>azure-security-keyvault-secrets</artifactId>
-                <version>4.2.3</version>
-            </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-core-http-okhttp</artifactId>
+            <version>1.4.0</version>
+        </dependency>
 
-            <dependency>
-                <groupId>com.azure</groupId>
-                <artifactId>azure-identity</artifactId>
-                <version>1.2.5</version>
-            </dependency>
+        <!-- Optional, only if used -->
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-security-keyvault-secrets</artifactId>
+            <version>4.2.3</version>
+        </dependency>
 
-            <!-- Spring Boot and Kafka -->
-            <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-starter-web</artifactId>
-            </dependency>
+        <dependency>
+            <groupId>com.azure</groupId>
+            <artifactId>azure-identity</artifactId>
+            <version>1.2.5</version>
+        </dependency>
 
-            <dependency>
-                <groupId>org.springframework.kafka</groupId>
-                <artifactId>spring-kafka</artifactId>
-                <version>3.0.11</version>
-            </dependency>
+        <!-- Spring Boot and Kafka -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
 
-            <!-- Vault integration -->
-            <dependency>
-                <groupId>org.json</groupId>
-                <artifactId>json</artifactId>
-                <version>20210307</version>
-            </dependency>
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+            <version>3.0.11</version>
+        </dependency>
 
-            <!-- Jackson -->
-            <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-databind</artifactId>
-            </dependency>
+        <!-- Vault integration -->
+        <dependency>
+            <groupId>org.json</groupId>
+            <artifactId>json</artifactId>
+            <version>20210307</version>
+        </dependency>
 
-            <!-- Lombok -->
-            <dependency>
-                <groupId>org.projectlombok</groupId>
-                <artifactId>lombok</artifactId>
-                <scope>provided</scope>
-            </dependency>
-        </dependencies>
+        <!-- Jackson -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Reactor Core (to fix 'NoSuchMethodError' issue) -->
+        <dependency>
+            <groupId>io.projectreactor</groupId>
+            <artifactId>reactor-core</artifactId>
+            <version>3.4.25</version> <!-- Use a compatible version -->
+        </dependency>
+    </dependencies>
 
     <build>
         <plugins>
