@@ -3,6 +3,7 @@ package com.nedbank.kafka.filemanage.config;
 import org.springframework.stereotype.Component;
 
 import java.net.*;
+import java.util.Optional;
 
 @Component
 public class ProxySetup {
@@ -14,38 +15,48 @@ public class ProxySetup {
         this.proxyProperties = proxyProperties;
     }
 
-    public void configureProxy() {
-        if (configured) return;
+    public void configureProxy(boolean useProxy) {
+        if (useProxy && !configured) { // Only configure proxy if it's necessary
+            String host = proxyProperties.getHost();
+            String port = proxyProperties.getPort();
+            String username = proxyProperties.getUsername();
+            String password = proxyProperties.getPassword();
 
-        String host = proxyProperties.getHost();
-        String port = proxyProperties.getPort();
-        String username = proxyProperties.getUsername();
-        String password = proxyProperties.getPassword();
+            if (host == null || port == null || host.isEmpty() || port.isEmpty()) {
+                System.err.println("⚠️ Proxy settings are missing. Proxy not configured.");
+                return;
+            }
 
-        if (host == null || port == null || host.isEmpty() || port.isEmpty()) {
-            System.err.println("⚠️ Proxy settings are missing. Proxy not configured.");
-            return;
+            System.setProperty("http.proxyHost", host);
+            System.setProperty("http.proxyPort", port);
+            System.setProperty("https.proxyHost", host);
+            System.setProperty("https.proxyPort", port);
+            System.setProperty("java.net.useSystemProxies", "true");
+
+            if (username != null && password != null && !username.isEmpty() && !password.isEmpty()) {
+                Authenticator.setDefault(new Authenticator() {
+                    @Override
+                    protected PasswordAuthentication getPasswordAuthentication() {
+                        return new PasswordAuthentication(username, password.toCharArray());
+                    }
+                });
+            }
+
+            System.out.println("🔧 Proxy configured from ProxyProperties: " + host + ":" + port);
+            configured = true;
+        } else if (!useProxy) {
+            // Clear proxy settings if not using a proxy
+            System.clearProperty("http.proxyHost");
+            System.clearProperty("http.proxyPort");
+            System.clearProperty("https.proxyHost");
+            System.clearProperty("https.proxyPort");
+            System.clearProperty("java.net.useSystemProxies");
+            Authenticator.setDefault(null); // Reset authenticator
+            System.out.println("⚙️ Proxy configuration skipped.");
         }
-
-        System.setProperty("http.proxyHost", host);
-        System.setProperty("http.proxyPort", port);
-        System.setProperty("https.proxyHost", host);
-        System.setProperty("https.proxyPort", port);
-        System.setProperty("java.net.useSystemProxies", "true");
-
-        if (username != null && password != null && !username.isEmpty() && !password.isEmpty()) {
-            Authenticator.setDefault(new Authenticator() {
-                @Override
-                protected PasswordAuthentication getPasswordAuthentication() {
-                    return new PasswordAuthentication(username, password.toCharArray());
-                }
-            });
-        }
-
-        System.out.println("🔧 Proxy configured from ProxyProperties: " + host + ":" + port);
-        configured = true;
     }
 }
+
 package com.nedbank.kafka.filemanage.service;
 
 import com.azure.storage.blob.BlobClient;
@@ -103,10 +114,8 @@ public class BlobStorageService {
 
     public String uploadFileAndGenerateSasUrl(String fileLocation, String batchId, String objectId) {
         try {
-            // Setup Proxy if needed
-            if (useProxy) {
-                proxySetup.configureProxy();
-            }
+            // Configure proxy setup dynamically based on the useProxy flag
+            proxySetup.configureProxy(useProxy);
 
             // Get secrets from Vault
             String vaultToken = getVaultToken();
@@ -165,10 +174,6 @@ public class BlobStorageService {
 
     private String getVaultToken() {
         try {
-            if (useProxy) {
-                proxySetup.configureProxy();
-            }
-
             String url = VAULT_URL + "/v1/auth/userpass/login/espire_dev";
 
             HttpHeaders headers = new HttpHeaders();
@@ -191,10 +196,6 @@ public class BlobStorageService {
 
     private String getSecretFromVault(String key, String token) {
         try {
-            if (useProxy) {
-                proxySetup.configureProxy();
-            }
-
             String url = VAULT_URL + "/v1/Store_Dev/10099";
 
             HttpHeaders headers = new HttpHeaders();
