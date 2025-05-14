@@ -1,29 +1,18 @@
-private Map<String, Object> buildSummaryPayload(String batchId, String blobUrl, JsonNode batchFilesNode) {
-    List<ProcessedFileInfo> processedFiles = new ArrayList<>();
+Subject: Request for Kafka Producer Access to Topic
 
-    for (JsonNode fileNode : batchFilesNode) {
-        String objectId = fileNode.get("ObjectId").asText();
-        String fileLocation = fileNode.get("fileLocation").asText();
-        String extension = getFileExtension(fileLocation);
+Hi [Recipient's Name],
 
-        // Create a dynamic URL that includes both batchId and objectId
-        String dynamicFileUrl = blobUrl + "/" + objectId.replaceAll("[{}]", "") + "_" + batchId + "_" + objectId + extension;
+I hope you're doing well.
 
-        processedFiles.add(new ProcessedFileInfo(objectId, dynamicFileUrl));
-    }
+I’m writing to kindly request producer access to the Kafka topic:
+[your-topic-name] (please replace with the actual topic name).
 
-    // Create the summary object
-    SummaryPayload summary = new SummaryPayload();
-    summary.setBatchID(batchId);
-    summary.setHeader(new HeaderInfo()); // Populate header if required
-    summary.setMetadata(new MetadataInfo()); // Populate metadata if required
-    summary.setPayload(new PayloadInfo()); // Populate payload if required
-    summary.setProcessedFiles(processedFiles);
-    
-    // Optionally, include a summary file URL
-    summary.setSummaryFileURL(blobUrl + "/summary/" + batchId + "_summary.json");
+We are currently able to consume messages from the topic successfully, thanks to your earlier assistance in granting us consumer access—much appreciated.
 
-    // Convert to Map and return
-    ObjectMapper mapper = new ObjectMapper();
-    return mapper.convertValue(summary, Map.class);
-}
+Now, as part of the next phase of our integration, we need to produce/publish messages to the same topic from our file management service. This is essential for sending summary payloads after successful file uploads, which are required by downstream consumers in the [project/system name].
+
+At the moment, attempts to produce messages are failing due to authorization errors.
+
+Please let me know if any additional information or approvals are needed from our side.
+
+Thank you again for your continued support.
