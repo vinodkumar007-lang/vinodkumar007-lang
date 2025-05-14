@@ -1,52 +1,29 @@
-@KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
-public void consumeKafkaMessage(ConsumerRecord<String, String> record) {
-    logger.info("Kafka listener method entered.");
-    String message = record.value();
-    logger.info("Received Kafka message: {}", message);
+private Map<String, Object> buildSummaryPayload(String batchId, String blobUrl, JsonNode batchFilesNode) {
+    List<ProcessedFileInfo> processedFiles = new ArrayList<>();
 
-    Map<String, Object> summaryResponse = null;
+    for (JsonNode fileNode : batchFilesNode) {
+        String objectId = fileNode.get("ObjectId").asText();
+        String fileLocation = fileNode.get("fileLocation").asText();
+        String extension = getFileExtension(fileLocation);
 
-    try {
-        // Parse the incoming Kafka message
-        JsonNode root = new ObjectMapper().readTree(message);
+        // Create a dynamic URL that includes both batchId and objectId
+        String dynamicFileUrl = blobUrl + "/" + objectId.replaceAll("[{}]", "") + "_" + batchId + "_" + objectId + extension;
 
-        // Extract necessary fields from the incoming Kafka message
-        String batchId = extractField(root, "consumerReference");  // Using consumerReference as batchId
-        JsonNode batchFilesNode = root.get("batchFiles");
-
-        if (batchFilesNode == null || !batchFilesNode.isArray() || batchFilesNode.isEmpty()) {
-            logger.warn("No batch files found in the message.");
-            return;
-        }
-
-        // For now, take the first file entry for blob upload
-        JsonNode firstFile = batchFilesNode.get(0);
-        String filePath = firstFile.get("fileLocation").asText();
-        String objectId = firstFile.get("ObjectId").asText();
-
-        logger.info("Parsed batchId: {}, filePath: {}, objectId: {}", batchId, filePath, objectId);
-
-        // Upload the file and generate the SAS URL
-        String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
-        logger.info("File uploaded to blob storage at URL: {}", blobUrl);
-
-        // Build the summary payload to send to the output Kafka topic
-        summaryResponse = buildSummaryPayload(batchId, blobUrl, batchFilesNode);
-        String summaryMessage = new ObjectMapper().writeValueAsString(summaryResponse);
-
-        // Send the summary message to the Kafka output topic
-        kafkaTemplate.send(outputTopic, batchId, summaryMessage);
-        logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
-
-    } catch (Exception e) {
-        // Improved error handling with detailed logging
-        logger.error("Error processing Kafka message: {}. Error: {}", message, e.getMessage(), e);
+        processedFiles.add(new ProcessedFileInfo(objectId, dynamicFileUrl));
     }
 
-    // Return the summary response after processing
-    if (summaryResponse != null) {
-        logger.info("Returning summary response: {}", summaryResponse);
-    } else {
-        logger.warn("Summary response is null.");
-    }
+    // Create the summary object
+    SummaryPayload summary = new SummaryPayload();
+    summary.setBatchID(batchId);
+    summary.setHeader(new HeaderInfo()); // Populate header if required
+    summary.setMetadata(new MetadataInfo()); // Populate metadata if required
+    summary.setPayload(new PayloadInfo()); // Populate payload if required
+    summary.setProcessedFiles(processedFiles);
+    
+    // Optionally, include a summary file URL
+    summary.setSummaryFileURL(blobUrl + "/summary/" + batchId + "_summary.json");
+
+    // Convert to Map and return
+    ObjectMapper mapper = new ObjectMapper();
+    return mapper.convertValue(summary, Map.class);
 }
