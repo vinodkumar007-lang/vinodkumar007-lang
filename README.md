@@ -1,58 +1,35 @@
-public String uploadFileAndGenerateSasUrl(String fileLocation, String batchId, String objectId) {
-    try {
-        // Configure proxy setup dynamically based on the useProxy flag
-        proxySetup.configureProxy(useProxy);
-
-        // Get secrets from Vault (temporarily using hardcoded/test values for now)
-        // String vaultToken = getVaultToken();
-        String accountKey = ""; // getSecretFromVault("account_key", vaultToken);
-        String accountName = "nsndvextr01"; // getSecretFromVault("account_name", vaultToken);
-        String containerName = "nsnakscontregecm001"; // getSecretFromVault("container_name", vaultToken);
-
-        // Extract the file extension from the URL
-        String extension = getFileExtension(fileLocation);
-        String blobName = objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
-
-        // Build BlobServiceClient
-        BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                .buildClient();
-
-        BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
-        BlobClient blobClient = containerClient.getBlobClient(blobName);
-
-        // Log if blob already exists
-        if (blobClient.exists()) {
-            logger.warn("⚠️ Blob already exists. It will be overwritten: {}", blobName);
-        }
-
-        // ⬇️ Download the file from the URL and upload to Azure Blob
-        try (InputStream inputStream = new URL(fileLocation).openStream()) {
-            blobClient.upload(inputStream, inputStream.available(), true); // ✅ Overwrite if exists
-            logger.info("✅ File uploaded successfully to Azure Blob Storage: {}", blobClient.getBlobUrl());
-        } catch (IOException e) {
-            logger.error("❌ Error downloading the file from the provided URL: {}", fileLocation);
-            throw new IOException("❌ Error downloading the file from the provided URL", e);
-        }
-
-        // 🔐 Generate SAS URL with read permission valid for 24 hours
-        BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
-                OffsetDateTime.now().plusHours(24),
-                new BlobSasPermission().setReadPermission(true)
-        );
-
-        String sasToken = blobClient.generateSas(sasValues);
-        String sasUrl = blobClient.getBlobUrl() + "?" + sasToken;
-
-        logger.info("🔐 SAS URL (valid for 24 hours): {}", sasUrl);
-        return sasUrl;
-
-    } catch (IOException e) {
-        logger.error("❌ Error during file upload or SAS URL generation: {}", e.getMessage(), e);
-        throw new RuntimeException("❌ Error uploading to Azure Blob or generating SAS URL", e);
-    } catch (Exception e) {
-        logger.error("❌ Unexpected error in Blob operation: {}", e.getMessage(), e);
-        throw new RuntimeException("❌ Unexpected error in Blob upload or SAS URL generation", e);
-    }
-}
+java.lang.RuntimeException: ❌ Error uploading to Azure Blob or generating SAS URL
+	at com.nedbank.kafka.filemanage.service.BlobStorageService.uploadFileAndGenerateSasUrl(BlobStorageService.java:108) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.consumeKafkaMessage(KafkaListenerService.java:66) ~[classes/:na]
+	at jdk.internal.reflect.GeneratedMethodAccessor5.invoke(Unknown Source) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:169) ~[spring-messaging-6.0.2.jar:6.0.2]
+	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.invoke(InvocableHandlerMethod.java:119) ~[spring-messaging-6.0.2.jar:6.0.2]
+	at org.springframework.kafka.listener.adapter.HandlerAdapter.invoke(HandlerAdapter.java:56) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.invokeHandler(MessagingMessageListenerAdapter.java:375) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:92) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:53) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeOnMessage(KafkaMessageListenerContainer.java:2873) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeOnMessage(KafkaMessageListenerContainer.java:2854) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.lambda$doInvokeRecordListener$57(KafkaMessageListenerContainer.java:2772) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at io.micrometer.observation.Observation.observe(Observation.java:559) ~[micrometer-observation-1.10.2.jar:1.10.2]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeRecordListener(KafkaMessageListenerContainer.java:2770) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeWithRecords(KafkaMessageListenerContainer.java:2622) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeRecordListener(KafkaMessageListenerContainer.java:2508) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeListener(KafkaMessageListenerContainer.java:2150) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeIfHaveRecords(KafkaMessageListenerContainer.java:1505) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.pollAndInvoke(KafkaMessageListenerContainer.java:1469) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.run(KafkaMessageListenerContainer.java:1344) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:842) ~[na:na]
+Caused by: java.io.IOException: ❌ Error downloading the file from the provided URL
+	at com.nedbank.kafka.filemanage.service.BlobStorageService.uploadFileAndGenerateSasUrl(BlobStorageService.java:91) ~[classes/:na]
+	... 23 common frames omitted
+Caused by: java.io.IOException: Server returned HTTP response code: 409 for URL: https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream0(HttpURLConnection.java:2018) ~[na:na]
+	at java.base/sun.net.www.protocol.http.HttpURLConnection.getInputStream(HttpURLConnection.java:1610) ~[na:na]
+	at java.base/sun.net.www.protocol.https.HttpsURLConnectionImpl.getInputStream(HttpsURLConnectionImpl.java:224) ~[na:na]
+	at java.base/java.net.URL.openStream(URL.java:1161) ~[na:na]
+	at com.nedbank.kafka.filemanage.service.BlobStorageService.uploadFileAndGenerateSasUrl(BlobStorageService.java:86) ~[classes/:na]
+	... 23 common frames omitted
