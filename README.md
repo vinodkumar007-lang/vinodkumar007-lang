@@ -1,13 +1,18 @@
-  "sourceSystem" : "DEBTMAN",
-  "timestamp" : 1747086241.053381400,
-  "batchFiles" : [ {
-    "fileLocation" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "validationStatus" : "valid",
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH"
-  } ],
-  "consumerReference" : "12345",
-  "processReference" : "Test12345",
-  "batchControlFileData" : null
-}
+package com.nedbank.kafka.filemanage.controller;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/file")
+public class FileProcessingController {
+
+    private static final Logger logger = LoggerFactory.getLogger(FileProcessingController.class);
+    // Keeping controller for future use or monitoring if needed
+    @GetMapping("/health")
+    public String healthCheck() {
+        logger.info("Health check endpoint hit.");
+        return "File Processing Service is up and running.";
+    }
+}
