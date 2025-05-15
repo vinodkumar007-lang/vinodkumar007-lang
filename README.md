@@ -8,9 +8,8 @@ import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -24,6 +23,7 @@ public class KafkaListenerService {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final BlobStorageService blobStorageService;
     private final ConsumerFactory<String, String> consumerFactory;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${kafka.topic.input}")
     private String inputTopic;
@@ -39,7 +39,7 @@ public class KafkaListenerService {
         this.consumerFactory = consumerFactory;
     }
 
-    // Manual or scheduled processing
+    // Triggered manually via HTTP
     public Map<String, Object> processSingleMessage() {
         Consumer<String, String> consumer = consumerFactory.createConsumer();
         consumer.assign(Collections.singletonList(new TopicPartition(inputTopic, 0)));
@@ -52,7 +52,7 @@ public class KafkaListenerService {
             for (ConsumerRecord<String, String> record : records) {
                 logger.info("Processing record with key: {}, value: {}", record.key(), record.value());
                 summaryResponse = handleMessage(record.value());
-                break; // Process only one message
+                break; // Only one message per call
             }
         } catch (Exception e) {
             logger.error("Error polling or processing Kafka record: {}", e.getMessage(), e);
@@ -63,23 +63,18 @@ public class KafkaListenerService {
         return summaryResponse;
     }
 
-    @Scheduled(fixedRate = 300000) // Every 5 minutes
-    public void scheduledFileProcessing() {
-        logger.info("Scheduled Kafka message processing triggered.");
-        processSingleMessage();
-    }
-
     private Map<String, Object> handleMessage(String message) throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        JsonNode root = tryParseJson(message); // Attempt to parse the message
+        JsonNode root;
 
-        if (root == null) {
-            // If parsing failed, try to fix and re-parse
-            logger.warn("Invalid JSON detected. Attempting to fix the JSON.");
-            String fixedMessage = fixInvalidJson(message);
-            root = tryParseJson(fixedMessage); // Attempt to parse the fixed message
-            if (root == null) {
-                logger.error("Failed to fix the invalid JSON message: {}", message);
+        try {
+            root = objectMapper.readTree(message);
+        } catch (Exception e) {
+            logger.warn("Failed to parse JSON, attempting to convert POJO-like message: {}", message);
+            message = convertPojoToJson(message);
+            try {
+                root = objectMapper.readTree(message);
+            } catch (Exception retryEx) {
+                logger.error("Failed to parse corrected JSON: {}", retryEx.getMessage(), retryEx);
                 return null;
             }
         }
@@ -102,7 +97,7 @@ public class KafkaListenerService {
         logger.info("File uploaded to blob storage at URL: {}", blobUrl);
 
         Map<String, Object> summaryResponse = buildSummaryPayload(batchId, blobUrl, batchFilesNode);
-        String summaryMessage = mapper.writeValueAsString(summaryResponse);
+        String summaryMessage = objectMapper.writeValueAsString(summaryResponse);
         kafkaTemplate.send(outputTopic, batchId, summaryMessage);
         logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
 
@@ -139,7 +134,7 @@ public class KafkaListenerService {
         summary.setProcessedFiles(processedFiles);
         summary.setSummaryFileURL(blobUrl + "/summary/" + batchId + "_summary.json");
 
-        return new ObjectMapper().convertValue(summary, Map.class);
+        return objectMapper.convertValue(summary, Map.class);
     }
 
     private String getFileExtension(String fileLocation) {
@@ -147,33 +142,28 @@ public class KafkaListenerService {
         return lastDotIndex > 0 ? fileLocation.substring(lastDotIndex) : "";
     }
 
-    // Helper methods to handle JSON parsing and fixing
-
     /**
-     * Attempt to parse a JSON string and return JsonNode
-     * @param message the JSON message string
-     * @return JsonNode if valid JSON, null if invalid
+     * Attempts to convert a Java-style toString-like object into a JSON string.
      */
-    private JsonNode tryParseJson(String message) {
+    private String convertPojoToJson(String pojoString) {
         try {
-            ObjectMapper mapper = new ObjectMapper();
-            return mapper.readTree(message);
-        } catch (Exception e) {
-            return null; // Return null if JSON parsing fails
+            String json = pojoString
+                    .replaceAll("(\\w+)=", "\"$1\":")
+                    .replaceAll("([\\w\\d])\\(", "{\"$1\":")
+                    .replaceAll("\\),", "},")
+                    .replaceAll("\\)", "}")
+                    .replaceAll("([a-zA-Z])=\\{", "\"$1\":{")
+                    .replaceAll("},\\s*", "},")
+                    .replaceAll("=null", ":null");
+
+            if (!json.startsWith("{")) json = "{" + json;
+            if (!json.endsWith("}")) json = json + "}";
+
+            logger.debug("Converted POJO string to JSON: {}", json);
+            return json;
+        } catch (Exception ex) {
+            logger.error("Failed to convert POJO to JSON: {}", ex.getMessage());
+            return pojoString; // fallback to original
         }
-    }
-
-    /**
-     * Fix invalid JSON by adding quotes around keys and values.
-     * @param message the invalid JSON message
-     * @return the fixed JSON message
-     */
-    private String fixInvalidJson(String message) {
-        // Example fixes for common issues:
-        // - Add quotes around unquoted keys and values
-        message = message.replaceAll("([a-zA-Z0-9]+):", "\"$1\":");
-        message = message.replaceAll(":(\\w+)", ":\"$1\"");
-
-        return message;
     }
 }
