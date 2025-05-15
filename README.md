@@ -1,169 +1,76 @@
-package com.nedbank.kafka.filemanage.service;
+at [Source: (String)"{PublishEven{"t":"sourceSystem":DEBTMAN, "timestamp":2025-05-12T09:06:07.843956600+02:00[Africa/Johannesburg], "batchFiles":[BatchFil{"e":"objectId":{1037A096-0000-CE1A-A484-3290CA7938C2},"repositoryId":BATCH, "fileLocation":/path/to/file1, "validationStatus":valid}], "consumerReference":12345, "processReference":check_process_reference, "batchControlFileData":null}"; line: 1, column: 3]
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nedbank.kafka.filemanage.model.*;
-import org.apache.kafka.clients.consumer.*;
-import org.apache.kafka.common.TopicPartition;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.core.ConsumerFactory;
-import org.springframework.stereotype.Service;
+com.fasterxml.jackson.core.JsonParseException: Unexpected character ('P' (code 80)): was expecting double-quote to start field name
+ at [Source: (String)"{PublishEven{"t":"sourceSystem":DEBTMAN, "timestamp":2025-05-12T09:06:07.843956600+02:00[Africa/Johannesburg], "batchFiles":[BatchFil{"e":"objectId":{1037A096-0000-CE1A-A484-3290CA7938C2},"repositoryId":BATCH, "fileLocation":/path/to/file1, "validationStatus":valid}], "consumerReference":12345, "processReference":check_process_reference, "batchControlFileData":null}"; line: 1, column: 3]
+	at com.fasterxml.jackson.core.JsonParser._constructError(JsonParser.java:2418) ~[jackson-core-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.core.base.ParserMinimalBase._reportError(ParserMinimalBase.java:749) ~[jackson-core-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.core.base.ParserMinimalBase._reportUnexpectedChar(ParserMinimalBase.java:673) ~[jackson-core-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser._handleOddName(ReaderBasedJsonParser.java:1937) ~[jackson-core-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser.nextFieldName(ReaderBasedJsonParser.java:965) ~[jackson-core-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.databind.deser.std.BaseNodeDeserializer._deserializeContainerNoRecursion(JsonNodeDeserializer.java:534) ~[jackson-databind-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.databind.deser.std.JsonNodeDeserializer.deserialize(JsonNodeDeserializer.java:98) ~[jackson-databind-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.databind.deser.std.JsonNodeDeserializer.deserialize(JsonNodeDeserializer.java:23) ~[jackson-databind-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.databind.deser.DefaultDeserializationContext.readRootValue(DefaultDeserializationContext.java:323) ~[jackson-databind-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.databind.ObjectMapper._readTreeAndClose(ObjectMapper.java:4772) ~[jackson-databind-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.databind.ObjectMapper.readTree(ObjectMapper.java:3124) ~[jackson-databind-2.14.1.jar:2.14.1]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.handleMessage(KafkaListenerService.java:75) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.processSingleMessage(KafkaListenerService.java:54) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.controller.FileProcessingController.triggerFileProcessing(FileProcessingController.java:32) ~[classes/:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:884) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:797) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1080) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:973) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1003) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:906) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:731) ~[tomcat-embed-core-10.1.1.jar:6.0]
+	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:880) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:814) ~[tomcat-embed-core-10.1.1.jar:6.0]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:223) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:53) ~[tomcat-embed-websocket-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:197) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:97) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:542) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:119) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:92) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:78) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:357) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:400) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:65) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:861) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1739) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1191) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:61) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at java.base/java.lang.Thread.run(Thread.java:842) ~[na:na]
 
-import java.time.Duration;
-import java.util.*;
-
-@Service
-public class KafkaListenerService {
-
-    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
-
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final BlobStorageService blobStorageService;
-    private final ConsumerFactory<String, String> consumerFactory;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @Value("${kafka.topic.input}")
-    private String inputTopic;
-
-    @Value("${kafka.topic.output}")
-    private String outputTopic;
-
-    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
-                                BlobStorageService blobStorageService,
-                                ConsumerFactory<String, String> consumerFactory) {
-        this.kafkaTemplate = kafkaTemplate;
-        this.blobStorageService = blobStorageService;
-        this.consumerFactory = consumerFactory;
-    }
-
-    // Triggered manually via HTTP
-    public Map<String, Object> processSingleMessage() {
-        Consumer<String, String> consumer = consumerFactory.createConsumer();
-        consumer.assign(Collections.singletonList(new TopicPartition(inputTopic, 0)));
-        consumer.seekToBeginning(Collections.singletonList(new TopicPartition(inputTopic, 0)));
-
-        Map<String, Object> summaryResponse = null;
-
-        try {
-            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
-            for (ConsumerRecord<String, String> record : records) {
-                logger.info("Processing record with key: {}, value: {}", record.key(), record.value());
-                summaryResponse = handleMessage(record.value());
-                break; // Only one message per call
-            }
-        } catch (Exception e) {
-            logger.error("Error polling or processing Kafka record: {}", e.getMessage(), e);
-        } finally {
-            consumer.close();
-        }
-
-        return summaryResponse;
-    }
-
-    private Map<String, Object> handleMessage(String message) throws Exception {
-        JsonNode root;
-
-        try {
-            root = objectMapper.readTree(message);
-        } catch (Exception e) {
-            logger.warn("Failed to parse JSON, attempting to convert POJO-like message: {}", message);
-            message = convertPojoToJson(message);
-            try {
-                root = objectMapper.readTree(message);
-            } catch (Exception retryEx) {
-                logger.error("Failed to parse corrected JSON: {}", retryEx.getMessage(), retryEx);
-                return null;
-            }
-        }
-
-        String batchId = extractField(root, "consumerReference");
-        JsonNode batchFilesNode = root.get("batchFiles");
-
-        if (batchFilesNode == null || !batchFilesNode.isArray() || batchFilesNode.isEmpty()) {
-            logger.warn("No batch files found in the message.");
-            return null;
-        }
-
-        JsonNode firstFile = batchFilesNode.get(0);
-        String filePath = firstFile.get("fileLocation").asText();
-        String objectId = firstFile.get("ObjectId").asText();
-
-        logger.info("Parsed batchId: {}, filePath: {}, objectId: {}", batchId, filePath, objectId);
-
-        String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
-        logger.info("File uploaded to blob storage at URL: {}", blobUrl);
-
-        Map<String, Object> summaryResponse = buildSummaryPayload(batchId, blobUrl, batchFilesNode);
-        String summaryMessage = objectMapper.writeValueAsString(summaryResponse);
-        kafkaTemplate.send(outputTopic, batchId, summaryMessage);
-        logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
-
-        return summaryResponse;
-    }
-
-    private String extractField(JsonNode json, String fieldName) {
-        try {
-            JsonNode fieldNode = json.get(fieldName);
-            return fieldNode != null ? fieldNode.asText() : null;
-        } catch (Exception e) {
-            logger.error("Failed to extract field '{}': {}", fieldName, e.getMessage(), e);
-            throw new RuntimeException("Failed to extract " + fieldName, e);
-        }
-    }
-
-    private Map<String, Object> buildSummaryPayload(String batchId, String blobUrl, JsonNode batchFilesNode) {
-        List<ProcessedFileInfo> processedFiles = new ArrayList<>();
-
-        for (JsonNode fileNode : batchFilesNode) {
-            String objectId = fileNode.get("ObjectId").asText();
-            String fileLocation = fileNode.get("fileLocation").asText();
-            String extension = getFileExtension(fileLocation);
-
-            String dynamicFileUrl = blobUrl + "/" + objectId.replaceAll("[{}]", "") + "_" + batchId + "_" + objectId + extension;
-            processedFiles.add(new ProcessedFileInfo(objectId, dynamicFileUrl));
-        }
-
-        SummaryPayload summary = new SummaryPayload();
-        summary.setBatchID(batchId);
-        summary.setHeader(new HeaderInfo());
-        summary.setMetadata(new MetadataInfo());
-        summary.setPayload(new PayloadInfo());
-        summary.setProcessedFiles(processedFiles);
-        summary.setSummaryFileURL(blobUrl + "/summary/" + batchId + "_summary.json");
-
-        return objectMapper.convertValue(summary, Map.class);
-    }
-
-    private String getFileExtension(String fileLocation) {
-        int lastDotIndex = fileLocation.lastIndexOf('.');
-        return lastDotIndex > 0 ? fileLocation.substring(lastDotIndex) : "";
-    }
-
-    /**
-     * Attempts to convert a Java-style toString-like object into a JSON string.
-     */
-    private String convertPojoToJson(String pojoString) {
-        try {
-            String json = pojoString
-                    .replaceAll("(\\w+)=", "\"$1\":")
-                    .replaceAll("([\\w\\d])\\(", "{\"$1\":")
-                    .replaceAll("\\),", "},")
-                    .replaceAll("\\)", "}")
-                    .replaceAll("([a-zA-Z])=\\{", "\"$1\":{")
-                    .replaceAll("},\\s*", "},")
-                    .replaceAll("=null", ":null");
-
-            if (!json.startsWith("{")) json = "{" + json;
-            if (!json.endsWith("}")) json = json + "}";
-
-            logger.debug("Converted POJO string to JSON: {}", json);
-            return json;
-        } catch (Exception ex) {
-            logger.error("Failed to convert POJO to JSON: {}", ex.getMessage());
-            return pojoString; // fallback to original
-        }
-    }
-}
+2025-05-15T19:41:49.143+02:00  INFO 2512 --- [nio-8080-exec-2] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Discovered group coordinator nsnxeteelpka01.nednet.co.za:9093 (id: 2147483647 rack: null)
+2025-05-15T19:41:49.177+02:00  INFO 2512 --- [nio-8080-exec-2] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Resetting generation and member id due to: consumer pro-actively leaving the group
+2025-05-15T19:41:49.177+02:00  INFO 2512 --- [nio-8080-exec-2] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Request joining group due to: consumer pro-actively leaving the group
+2025-05-15T19:41:49.178+02:00  INFO 2512 --- [nio-8080-exec-2] o.apache.kafka.common.metrics.Metrics    : Metrics scheduler closed
+2025-05-15T19:41:49.178+02:00  INFO 2512 --- [nio-8080-exec-2] o.apache.kafka.common.metrics.Metrics    : Closing reporter org.apache.kafka.common.metrics.JmxReporter
+2025-05-15T19:41:49.179+02:00  INFO 2512 --- [nio-8080-exec-2] o.apache.kafka.common.metrics.Metrics    : Metrics reporters closed
+2025-05-15T19:41:49.186+02:00  INFO 2512 --- [nio-8080-exec-2] o.a.kafka.common.utils.AppInfoParser     : App info kafka.consumer for consumer-str-ecp-batch-1 unregistered
