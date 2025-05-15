@@ -1,48 +1,39 @@
-# Kafka Consumer Configuration
-kafka.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
-kafka.consumer.group.id=str-ecp-batch
-kafka.consumer.auto.offset.reset=earliest
+Summary File Structure
 
-# SSL Configuration
-kafka.consumer.security.protocol=SSL
-kafka.consumer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
-kafka.consumer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
-kafka.consumer.ssl.key.password=3dX7y3Yz9Jv6L4F
-kafka.consumer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
-kafka.consumer.ssl.truststore.password=nedbank1
-kafka.consumer.ssl.protocol=TLSv1.2
+• {
 
-# Kafka Consumer Deserialization
-kafka.consumer.key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
-kafka.consumer.value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+• "BatchID": "12345",
 
-# Kafka Producer Configuration (to send Summary File URL)
-kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
-kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
-kafka.producer.security.protocol=SSL
-kafka.producer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
-kafka.producer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
-kafka.producer.ssl.key.password=3dX7y3Yz9Jv6L4F
-kafka.producer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
-kafka.producer.ssl.truststore.password=nedbank1
-kafka.producer.ssl.protocol=TLSv1.2
-kafka.producer.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
+• "Header": {
 
-azure.keyvault.uri=https://nsn-dev-ecm-kva-001.vault.azure.net/secrets
+• "TenantCode": "ZANBL", "ChannelID": "100", "AudienceID": "f7359b3f-4d8f-41a5-8df5-84b115cd8a74", "Timestamp": "2025-02-06T12:34:56Z", "SourceSystem": "CARD",
 
-logging.level.org.springframework.kafka=DEBUG
+• "Product": "CASA", "JobName": "SMM815"
 
-kafka.topic.input=str-ecp-batch-composition
-kafka.topic.output=str-ecp-batch-composition-complete
+• },
 
-vault.hashicorp.url=https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200
-vault.hashicorp.namespace =admin/espire
+• "Metadata": {
 
-vault.hashicorp.passwordDev=Dev+Cred4#
-vault.hashicorp.passwordNbhDev=nbh_dev1
+• "TotalFilesProcessed": 2, "ProcessingStatus": "Success", "EventOutcomeCode": "Success", "EventOutcomeDescription": "All customer PDFs processed successfully"
 
-proxy.host=proxyprod.africa.nedcor.net
-proxy.port=80
-proxy.username=CC437236
-proxy.password=34dYaB@jEh56
-use.proxy=false
+• },
+
+• "Payload": {
+
+• "UniqueConsumerRef": "d9e5ff0f-f237-4b8f-bf9f-e3c4bbf6c54c", "UniqueECPBatchRef": "C044A38E-0000-C21B-B1E2-69FEE895A17B", "FilenetObjectID": [ "C044A38E-0000-C21B-B1E2-69FEE895A17B", "D8EFC5A4-0000-B22A-B3D5-74FEE895A17B" ], "RepositoryID": "Legacy", "RunPriority": "High", "EventID": "E12345", "EventType": "Completion", "RestartKey": "Key12345"
+
+• },
+
+• "ProcessedFiles": [
+
+• { "CustomerID": "C001", "PDFFileURL": "https://<azure_blob_storage_account>/pdfs/C001_12345.pdf" }, { "CustomerID": "C002", "PDFFileURL": "https://<azure_blob_storage_account>/pdfs/C002_12345.pdf"
+
+• }
+
+• ],
+
+• "SummaryFileURL": "https:///summary/12345_summary.json",
+
+• "Timestamp": "2025-02-06T12:34:56Z" }
+
+=======================================
