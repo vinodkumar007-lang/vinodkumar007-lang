@@ -1,142 +1,184 @@
-# Kafka Consumer Configuration
-kafka.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
-kafka.consumer.group.id=str-ecp-batch
-kafka.consumer.auto.offset.reset=earliest
+package com.nedbank.kafka.filemanage.controller;
 
-# SSL Configuration
-kafka.consumer.security.protocol=SSL
-kafka.consumer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
-kafka.consumer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
-kafka.consumer.ssl.key.password=3dX7y3Yz9Jv6L4F
-kafka.consumer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
-kafka.consumer.ssl.truststore.password=nedbank1
-kafka.consumer.ssl.protocol=TLSv1.2
+import com.nedbank.kafka.filemanage.service.KafkaListenerService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.web.bind.annotation.*;
 
-# Kafka Consumer Deserialization
-kafka.consumer.key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
-kafka.consumer.value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
-
-# Kafka Producer Configuration (to send Summary File URL)
-kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
-kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
-kafka.producer.security.protocol=SSL
-kafka.producer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
-kafka.producer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
-kafka.producer.ssl.key.password=3dX7y3Yz9Jv6L4F
-kafka.producer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
-kafka.producer.ssl.truststore.password=nedbank1
-kafka.producer.ssl.protocol=TLSv1.2
-kafka.producer.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
-
-azure.keyvault.uri=https://nsn-dev-ecm-kva-001.vault.azure.net/secrets
-
-logging.level.org.springframework.kafka=DEBUG
-
-kafka.topic.input=str-ecp-batch-composition
-kafka.topic.output=str-ecp-batch-composition-complete
-
-vault.hashicorp.url=https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200
-vault.hashicorp.namespace =admin/espire
-
-vault.hashicorp.passwordDev=Dev+Cred4#
-vault.hashicorp.passwordNbhDev=nbh_dev1
-
-proxy.host=proxyprod.africa.nedcor.net
-proxy.port=80
-proxy.username=CC437236
-proxy.password=34dYaB@jEh56
-use.proxy=false
-
-
-package com.nedbank.kafka.filemanage.config;
-
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.common.serialization.StringDeserializer;
-import org.apache.kafka.common.serialization.StringSerializer;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.kafka.annotation.EnableKafka;
-import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
-import org.springframework.kafka.core.*;
-
-import java.util.HashMap;
 import java.util.Map;
 
-@Configuration
-@EnableKafka
-public class KafkaConfig {
+@RestController
+@RequestMapping("/api/file")
+public class FileProcessingController {
 
-    @Value("${kafka.bootstrap.servers}")
-    private String bootstrapServers;
+    private static final Logger logger = LoggerFactory.getLogger(FileProcessingController.class);
+    private final KafkaListenerService kafkaListenerService;
 
-    @Value("${kafka.consumer.group.id}")
-    private String groupId;
-
-    @Value("${kafka.consumer.ssl.keystore.location}")
-    private String keystoreLocation;
-
-    @Value("${kafka.consumer.ssl.keystore.password}")
-    private String keystorePassword;
-
-    @Value("${kafka.consumer.ssl.key.password}")
-    private String keyPassword;
-
-    @Value("${kafka.consumer.ssl.truststore.location}")
-    private String truststoreLocation;
-
-    @Value("${kafka.consumer.ssl.truststore.password}")
-    private String truststorePassword;
-
-    @Value("${kafka.consumer.ssl.protocol}")
-    private String sslProtocol;
-
-    @Bean
-    public ConsumerFactory<String, String> consumerFactory() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put("security.protocol", "SSL");
-        props.put("ssl.keystore.location", keystoreLocation);
-        props.put("ssl.keystore.password", keystorePassword);
-        props.put("ssl.key.password", keyPassword);
-        props.put("ssl.truststore.location", truststoreLocation);
-        props.put("ssl.truststore.password", truststorePassword);
-        props.put("ssl.protocol", sslProtocol);
-        return new DefaultKafkaConsumerFactory<>(props);
+    public FileProcessingController(KafkaListenerService kafkaListenerService) {
+        this.kafkaListenerService = kafkaListenerService;
     }
 
-    @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, String> factory =
-                new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(consumerFactory());
-        return factory;
+    // Health check
+    @GetMapping("/health")
+    public String healthCheck() {
+        logger.info("Health check endpoint hit.");
+        return "File Processing Service is up and running.";
     }
 
-    @Bean
-    public ProducerFactory<String, String> producerFactory() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put("security.protocol", "SSL");
-        props.put("ssl.keystore.location", keystoreLocation);
-        props.put("ssl.keystore.password", keystorePassword);
-        props.put("ssl.key.password", keyPassword);
-        props.put("ssl.truststore.location", truststoreLocation);
-        props.put("ssl.truststore.password", truststorePassword);
-        props.put("ssl.protocol", sslProtocol);
-        return new DefaultKafkaProducerFactory<>(props);
+    // Manual POST trigger
+    @PostMapping("/process")
+    public Map<String, Object> triggerFileProcessing() {
+        logger.info("POST /process called to trigger Kafka message processing.");
+        return kafkaListenerService.processSingleMessage();
+    }
+}
+package com.nedbank.kafka.filemanage.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.*;
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
+
+import java.time.Duration;
+import java.util.*;
+
+@Service
+public class KafkaListenerService {
+
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final BlobStorageService blobStorageService;
+    private final ConsumerFactory<String, String> consumerFactory;
+
+    @Value("${kafka.topic.input}")
+    private String inputTopic;
+
+    @Value("${kafka.topic.output}")
+    private String outputTopic;
+
+    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
+                                BlobStorageService blobStorageService,
+                                ConsumerFactory<String, String> consumerFactory) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.blobStorageService = blobStorageService;
+        this.consumerFactory = consumerFactory;
     }
 
-    @Bean
-    public KafkaTemplate<String, String> kafkaTemplate() {
-        return new KafkaTemplate<>(producerFactory());
+    // Manual or scheduled processing
+    public Map<String, Object> processSingleMessage() {
+        Consumer<String, String> consumer = consumerFactory.createConsumer();
+        consumer.assign(Collections.singletonList(new TopicPartition(inputTopic, 0)));
+        consumer.seekToBeginning(Collections.singletonList(new TopicPartition(inputTopic, 0)));
+
+        Map<String, Object> summaryResponse = null;
+
+        try {
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
+            for (ConsumerRecord<String, String> record : records) {
+                logger.info("Processing record with key: {}, value: {}", record.key(), record.value());
+                summaryResponse = handleMessage(record.value());
+                break; // Process only one message
+            }
+        } catch (Exception e) {
+            logger.error("Error polling or processing Kafka record: {}", e.getMessage(), e);
+        } finally {
+            consumer.close();
+        }
+
+        return summaryResponse;
+    }
+
+    @Scheduled(fixedRate = 300000) // Every 5 minutes
+    public void scheduledFileProcessing() {
+        logger.info("Scheduled Kafka message processing triggered.");
+        processSingleMessage();
+    }
+
+    private Map<String, Object> handleMessage(String message) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode root = mapper.readTree(message);
+
+        String batchId = extractField(root, "consumerReference");
+        JsonNode batchFilesNode = root.get("batchFiles");
+
+        if (batchFilesNode == null || !batchFilesNode.isArray() || batchFilesNode.isEmpty()) {
+            logger.warn("No batch files found in the message.");
+            return null;
+        }
+
+        JsonNode firstFile = batchFilesNode.get(0);
+        String filePath = firstFile.get("fileLocation").asText();
+        String objectId = firstFile.get("ObjectId").asText();
+
+        logger.info("Parsed batchId: {}, filePath: {}, objectId: {}", batchId, filePath, objectId);
+
+        String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
+        logger.info("File uploaded to blob storage at URL: {}", blobUrl);
+
+        Map<String, Object> summaryResponse = buildSummaryPayload(batchId, blobUrl, batchFilesNode);
+        String summaryMessage = mapper.writeValueAsString(summaryResponse);
+        kafkaTemplate.send(outputTopic, batchId, summaryMessage);
+        logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
+
+        return summaryResponse;
+    }
+
+    private String extractField(JsonNode json, String fieldName) {
+        try {
+            JsonNode fieldNode = json.get(fieldName);
+            return fieldNode != null ? fieldNode.asText() : null;
+        } catch (Exception e) {
+            logger.error("Failed to extract field '{}': {}", fieldName, e.getMessage(), e);
+            throw new RuntimeException("Failed to extract " + fieldName, e);
+        }
+    }
+
+    private Map<String, Object> buildSummaryPayload(String batchId, String blobUrl, JsonNode batchFilesNode) {
+        List<ProcessedFileInfo> processedFiles = new ArrayList<>();
+
+        for (JsonNode fileNode : batchFilesNode) {
+            String objectId = fileNode.get("ObjectId").asText();
+            String fileLocation = fileNode.get("fileLocation").asText();
+            String extension = getFileExtension(fileLocation);
+
+            String dynamicFileUrl = blobUrl + "/" + objectId.replaceAll("[{}]", "") + "_" + batchId + "_" + objectId + extension;
+            processedFiles.add(new ProcessedFileInfo(objectId, dynamicFileUrl));
+        }
+
+        SummaryPayload summary = new SummaryPayload();
+        summary.setBatchID(batchId);
+        summary.setHeader(new HeaderInfo());
+        summary.setMetadata(new MetadataInfo());
+        summary.setPayload(new PayloadInfo());
+        summary.setProcessedFiles(processedFiles);
+        summary.setSummaryFileURL(blobUrl + "/summary/" + batchId + "_summary.json");
+
+        return new ObjectMapper().convertValue(summary, Map.class);
+    }
+
+    private String getFileExtension(String fileLocation) {
+        int lastDotIndex = fileLocation.lastIndexOf('.');
+        return lastDotIndex > 0 ? fileLocation.substring(lastDotIndex) : "";
+    }
+}
+package com.nedbank.kafka.filemanage;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
+
+@SpringBootApplication
+@EnableScheduling
+public class Application {
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
     }
 }
