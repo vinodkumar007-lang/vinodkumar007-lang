@@ -71,7 +71,18 @@ public class KafkaListenerService {
 
     private Map<String, Object> handleMessage(String message) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
-        JsonNode root = mapper.readTree(message);
+        JsonNode root = tryParseJson(message); // Attempt to parse the message
+
+        if (root == null) {
+            // If parsing failed, try to fix and re-parse
+            logger.warn("Invalid JSON detected. Attempting to fix the JSON.");
+            String fixedMessage = fixInvalidJson(message);
+            root = tryParseJson(fixedMessage); // Attempt to parse the fixed message
+            if (root == null) {
+                logger.error("Failed to fix the invalid JSON message: {}", message);
+                return null;
+            }
+        }
 
         String batchId = extractField(root, "consumerReference");
         JsonNode batchFilesNode = root.get("batchFiles");
@@ -134,5 +145,35 @@ public class KafkaListenerService {
     private String getFileExtension(String fileLocation) {
         int lastDotIndex = fileLocation.lastIndexOf('.');
         return lastDotIndex > 0 ? fileLocation.substring(lastDotIndex) : "";
+    }
+
+    // Helper methods to handle JSON parsing and fixing
+
+    /**
+     * Attempt to parse a JSON string and return JsonNode
+     * @param message the JSON message string
+     * @return JsonNode if valid JSON, null if invalid
+     */
+    private JsonNode tryParseJson(String message) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            return mapper.readTree(message);
+        } catch (Exception e) {
+            return null; // Return null if JSON parsing fails
+        }
+    }
+
+    /**
+     * Fix invalid JSON by adding quotes around keys and values.
+     * @param message the invalid JSON message
+     * @return the fixed JSON message
+     */
+    private String fixInvalidJson(String message) {
+        // Example fixes for common issues:
+        // - Add quotes around unquoted keys and values
+        message = message.replaceAll("([a-zA-Z0-9]+):", "\"$1\":");
+        message = message.replaceAll(":(\\w+)", ":\"$1\"");
+
+        return message;
     }
 }
