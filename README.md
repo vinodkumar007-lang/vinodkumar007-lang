@@ -1,28 +1,23 @@
-private String convertPojoToJson(String pojoString) {
-    try {
-        // Remove any class-like prefixes (e.g., PublishEvent{ => { )
-        String json = pojoString.replaceAll("\\w+\\{", "{");
+at [Source: (String)"{PublishEvent(sourceSystem=DEBTMAN, timestamp=2025-05-"12T09":"06":"07.843956600"+"02":"00"[Africa/Johannesburg], batchFiles=[BatchFile(objectId={1037A096-0000-CE1A-A484-3290CA7938C2}, repositoryId=BATCH, fileLocation=/path/to/file1, validationStatus=valid)], consumerReference=12345, processReference=check_process_reference, batchControlFileData=null)}"; line: 1, column: 3]
 
-        // Add quotes around keys
-        json = json.replaceAll("(\\w+):", "\"$1\":");
-
-        // Add quotes around values that look like strings (words, paths)
-        json = json.replaceAll(":([\\w/\\.\\-]+)", ":\"$1\"");
-
-        // Add quotes around values with UUIDs inside curly braces
-        json = json.replaceAll(":\\{([A-Fa-f0-9\\-]+)\\}", ":\"{$1}\"");
-
-        // Add quotes around values with timestamps
-        json = json.replaceAll(":([\\d\\-T:+\\[\\]A-Za-z]+)", ":\"$1\"");
-
-        // Fix issues where closing brackets are missing
-        if (!json.startsWith("{")) json = "{" + json;
-        if (!json.endsWith("}")) json = json + "}";
-
-        logger.debug("Converted POJO string to JSON: {}", json);
-        return json;
-    } catch (Exception ex) {
-        logger.error("Failed to convert POJO to JSON: {}", ex.getMessage(), ex);
-        return pojoString; // fallback to original
-    }
-}
+com.fasterxml.jackson.core.JsonParseException: Unexpected character ('P' (code 80)): was expecting double-quote to start field name
+ at [Source: (String)"{PublishEvent(sourceSystem=DEBTMAN, timestamp=2025-05-"12T09":"06":"07.843956600"+"02":"00"[Africa/Johannesburg], batchFiles=[BatchFile(objectId={1037A096-0000-CE1A-A484-3290CA7938C2}, repositoryId=BATCH, fileLocation=/path/to/file1, validationStatus=valid)], consumerReference=12345, processReference=check_process_reference, batchControlFileData=null)}"; line: 1, column: 3]
+	at com.fasterxml.jackson.core.JsonParser._constructError(JsonParser.java:2418) ~[jackson-core-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.core.base.ParserMinimalBase._reportError(ParserMinimalBase.java:749) ~[jackson-core-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.core.base.ParserMinimalBase._reportUnexpectedChar(ParserMinimalBase.java:673) ~[jackson-core-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser._handleOddName(ReaderBasedJsonParser.java:1937) ~[jackson-core-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser.nextFieldName(ReaderBasedJsonParser.java:965) ~[jackson-core-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.databind.deser.std.BaseNodeDeserializer._deserializeContainerNoRecursion(JsonNodeDeserializer.java:534) ~[jackson-databind-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.databind.deser.std.JsonNodeDeserializer.deserialize(JsonNodeDeserializer.java:98) ~[jackson-databind-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.databind.deser.std.JsonNodeDeserializer.deserialize(JsonNodeDeserializer.java:23) ~[jackson-databind-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.databind.deser.DefaultDeserializationContext.readRootValue(DefaultDeserializationContext.java:323) ~[jackson-databind-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.databind.ObjectMapper._readTreeAndClose(ObjectMapper.java:4772) ~[jackson-databind-2.14.1.jar:2.14.1]
+	at com.fasterxml.jackson.databind.ObjectMapper.readTree(ObjectMapper.java:3124) ~[jackson-databind-2.14.1.jar:2.14.1]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.handleMessage(KafkaListenerService.java:75) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.processSingleMessage(KafkaListenerService.java:54) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.controller.FileProcessingController.triggerFileProcessing(FileProcessingController.java:32) ~[classes/:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.j
