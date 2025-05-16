@@ -1,15 +1,16 @@
- @PostMapping("/process")
-    public Map<String, Object> triggerFileProcessing() {
-        logger.info("POST /process called to trigger Kafka message processing.");
-        return kafkaListenerService.processSingleMessage();
-    }
+@PostMapping("/process")
+public Map<String, Object> triggerFileProcessing() {
+    logger.info("POST /process called to trigger Kafka message processing.");
+    return kafkaListenerService.processAllMessages();
+}
 
-    package com.nedbank.kafka.filemanage.service;
+package com.nedbank.kafka.filemanage.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nedbank.kafka.filemanage.model.*;
 import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -45,7 +46,132 @@ public class KafkaListenerService {
         this.consumerFactory = consumerFactory;
     }
 
-    // Triggered manually via HTTP
+    // ✅ New Method: Process all messages grouped by batchId and create final summary file
+    public Map<String, Object> processAllMessages() {
+        Consumer<String, String> consumer = consumerFactory.createConsumer();
+
+        List<PartitionInfo> partitionInfos = consumer.partitionsFor(inputTopic);
+        List<TopicPartition> topicPartitions = new ArrayList<>();
+        for (PartitionInfo partitionInfo : partitionInfos) {
+            topicPartitions.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
+        }
+
+        consumer.assign(topicPartitions);
+        consumer.seekToBeginning(topicPartitions);
+
+        Map<String, List<JsonNode>> groupedMessages = new HashMap<>();
+        List<String> failedMessages = new ArrayList<>();
+        List<Map<String, Object>> summaries = new ArrayList<>();
+
+        try {
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(10));
+            logger.info("Polled {} messages from topic: {}", records.count(), inputTopic);
+
+            for (ConsumerRecord<String, String> record : records) {
+                try {
+                    JsonNode root;
+                    try {
+                        root = objectMapper.readTree(record.value());
+                    } catch (Exception e) {
+                        PublishEvent event = parseToPublishEvent(record.value());
+                        root = objectMapper.valueToTree(event);
+                    }
+
+                    String batchId = extractField(root, "consumerReference");
+                    if (batchId == null) {
+                        logger.warn("Missing consumerReference in message, skipping.");
+                        failedMessages.add(record.value());
+                        continue;
+                    }
+
+                    groupedMessages.computeIfAbsent(batchId, k -> new ArrayList<>()).add(root);
+
+                } catch (Exception e) {
+                    logger.error("Error parsing/processing message: {}", record.value(), e);
+                    failedMessages.add(record.value());
+                }
+            }
+
+            for (Map.Entry<String, List<JsonNode>> entry : groupedMessages.entrySet()) {
+                String batchId = entry.getKey();
+                List<JsonNode> messages = entry.getValue();
+
+                try {
+                    Map<String, Object> summary = processGroupedBatch(batchId, messages);
+                    summaries.add(summary);
+                } catch (Exception e) {
+                    logger.error("Failed to process grouped batch for batchId {}: {}", batchId, e.getMessage(), e);
+                    failedMessages.add("BatchId: " + batchId);
+                }
+            }
+
+        } finally {
+            consumer.close();
+        }
+
+        // ✅ Final summary file upload
+        String finalSummaryUrl = uploadFinalSummaryFile(summaries);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("processedBatchCount", summaries.size());
+        response.put("failedCount", failedMessages.size());
+        response.put("summaryByBatchId", summaries);
+        response.put("failedMessages", failedMessages);
+        response.put("finalSummaryFileUrl", finalSummaryUrl);
+
+        return response;
+    }
+
+    // ✅ Group-based batch processing
+    private Map<String, Object> processGroupedBatch(String batchId, List<JsonNode> messages) throws Exception {
+        List<JsonNode> allBatchFiles = new ArrayList<>();
+
+        for (JsonNode message : messages) {
+            JsonNode batchFilesNode = message.get("batchFiles");
+            if (batchFilesNode != null && batchFilesNode.isArray()) {
+                for (JsonNode file : batchFilesNode) {
+                    allBatchFiles.add(file);
+                }
+            }
+        }
+
+        if (allBatchFiles.isEmpty()) {
+            logger.warn("No batch files found for batchId: {}", batchId);
+            return null;
+        }
+
+        JsonNode firstFile = allBatchFiles.get(0);
+        String filePath = firstFile.get("fileLocation").asText();
+        String objectId = firstFile.get("ObjectId").asText();
+
+        String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
+        logger.info("Batch {} uploaded to blob storage at URL: {}", batchId, blobUrl);
+
+        JsonNode batchFilesNode = objectMapper.valueToTree(allBatchFiles);
+
+        Map<String, Object> summary = buildSummaryPayload(batchId, blobUrl, batchFilesNode);
+        String summaryMessage = objectMapper.writeValueAsString(summary);
+        kafkaTemplate.send(outputTopic, batchId, summaryMessage);
+        logger.info("Summary for batchId {} published to topic {}: {}", batchId, outputTopic, summaryMessage);
+
+        return summary;
+    }
+
+    // ✅ Upload final summary file
+    private String uploadFinalSummaryFile(List<Map<String, Object>> batchSummaries) {
+        try {
+            String timestamp = new Date().toInstant().toString().replace(":", "_");
+            String fileName = "final_summary_" + timestamp + ".json";
+            String fileContent = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(batchSummaries);
+
+            return blobStorageService.uploadSummaryFileAndGenerateSasUrl(fileName, fileContent);
+        } catch (Exception e) {
+            logger.error("Failed to upload final summary file: {}", e.getMessage(), e);
+            return "ERROR: Could not upload summary file.";
+        }
+    }
+
+    // ✅ Your existing single-message trigger (unchanged)
     public Map<String, Object> processSingleMessage() {
         Consumer<String, String> consumer = consumerFactory.createConsumer();
         consumer.assign(Collections.singletonList(new TopicPartition(inputTopic, 0)));
@@ -58,7 +184,7 @@ public class KafkaListenerService {
             for (ConsumerRecord<String, String> record : records) {
                 logger.info("Processing record with key: {}, value: {}", record.key(), record.value());
                 summaryResponse = handleMessage(record.value());
-                break; // Only one message per call
+                break;
             }
         } catch (Exception e) {
             logger.error("Error polling or processing Kafka record: {}", e.getMessage(), e);
@@ -72,27 +198,11 @@ public class KafkaListenerService {
     private Map<String, Object> handleMessage(String message) throws Exception {
         JsonNode root;
 
-        System.out.println("Message check   " + message);
-       /* try {
+        try {
             root = objectMapper.readTree(message);
         } catch (Exception e) {
-            logger.warn("Failed to parse JSON, attempting to convert POJO-like message: {}", message);
-            message = convertPojoToJson(message);
-            try {
-                root = objectMapper.readTree(message);
-            } catch (Exception retryEx) {
-                logger.error("Failed to parse corrected JSON: {}", retryEx.getMessage(), retryEx);
-                return null;
-            }
-        }*/
-
-        /*try {
-            root = objectMapper.readTree(message);
-        } catch (Exception e) {
-            logger.warn("Failed to parse JSON, attempting POJO conversion");
-
+            logger.warn("Failed to parse JSON, attempting POJO conversion: {}", message);
             PublishEvent event = parseToPublishEvent(message);
-            // Manually map `event` into a JsonNode if needed:
             root = objectMapper.valueToTree(event);
         }
 
@@ -115,13 +225,11 @@ public class KafkaListenerService {
 
         Map<String, Object> summaryResponse = buildSummaryPayload(batchId, blobUrl, batchFilesNode);
         String summaryMessage = objectMapper.writeValueAsString(summaryResponse);
-        assert batchId != null;
+
         kafkaTemplate.send(outputTopic, batchId, summaryMessage);
         logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
 
-        return summaryResponse;*/
-
-        return  null;
+        return summaryResponse;
     }
 
     private String extractField(JsonNode json, String fieldName) {
@@ -162,57 +270,35 @@ public class KafkaListenerService {
         return lastDotIndex > 0 ? fileLocation.substring(lastDotIndex) : "";
     }
 
-    /**
-     * Attempts to convert a Java-style toString-like object into a JSON string.
-     */
     private String convertPojoToJson(String raw) {
-        // Remove the class wrapper
         raw = raw.trim();
         if (raw.startsWith("PublishEvent(") && raw.endsWith(")")) {
             raw = raw.substring("PublishEvent(".length(), raw.length() - 1);
         }
 
-        // Replace '=' with ':' and quote keys and string values
         raw = raw.replaceAll("([a-zA-Z0-9_]+)=", "\"$1\":");
         raw = raw.replaceAll(":([a-zA-Z0-9_]+)", ":\"$1\"");
-
-        // Quote string values
         raw = raw.replaceAll("([a-zA-Z0-9_]+)", "\"$1\"");
-
-        // Fix nested objectId and similar internal braces
         raw = raw.replaceAll("objectId=\\{([^}]+)}", "\"objectId\": \"$1\"");
-
-        // Fix lists
         raw = raw.replace("],", "], ");
-
         return "{" + raw + "}";
     }
+
     public PublishEvent parseToPublishEvent(String raw) {
         try {
-            // Step 1: Strip the outer PublishEvent(...)
             if (raw.startsWith("PublishEvent(")) {
                 raw = raw.substring("PublishEvent(".length(), raw.length() - 1);
             }
 
-            // Step 2: Replace BatchFile(...) with proper JSON object
             raw = raw.replaceAll("BatchFile\\(", "\\{").replaceAll("\\)", "}");
-
-            // Step 3: Quote objectId content inside {}
             raw = raw.replaceAll("objectId=\\{([^}]+)}", "objectId:\"$1\"");
-
-            // Step 4: Quote keys and values properly (use non-greedy match for values)
             raw = raw.replaceAll("(\\w+)=([^,\\[{]+)", "\"$1\":\"$2\"");
-
-            // Step 5: Fix batchFiles array brackets
             raw = raw.replace("\"batchFiles\":\"[", "\"batchFiles\":[");
             raw = raw.replace("]\"", "]");
-
-            // Step 6: Add JSON braces
             String json = "{" + raw + "}";
 
-            // Step 7: Use Jackson ObjectMapper to parse
             ObjectMapper mapper = new ObjectMapper();
-            mapper.findAndRegisterModules(); // for ZonedDateTime, etc.
+            mapper.findAndRegisterModules();
             return mapper.readValue(json, PublishEvent.class);
 
         } catch (Exception e) {
