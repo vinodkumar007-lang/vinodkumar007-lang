@@ -1,75 +1,58 @@
-2025-05-16T12:54:56.721+02:00  INFO 21216 --- [nio-8080-exec-2] o.a.k.c.c.internals.SubscriptionState    : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Resetting offset for partition str-ecp-batch-composition-0 to position FetchPosition{offset=20, offsetEpoch=Optional.empty, currentLeader=LeaderAndEpoch{leader=Optional[nsnxeteelpka03.nednet.co.za:9093 (id: 2 rack: null)], epoch=16}}.
-2025-05-16T12:54:56.958+02:00  INFO 21216 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record with key: null, value: PublishEvent(sourceSystem=DEBTMAN, timestamp=2025-05-12T09:06:07.843956600+02:00[Africa/Johannesburg], batchFiles=[BatchFile(objectId={1037A096-0000-CE1A-A484-3290CA7938C2}, repositoryId=BATCH, fileLocation=/path/to/file1, validationStatus=valid)], consumerReference=12345, processReference=check_process_reference, batchControlFileData=null)
-2025-05-16T12:54:56.970+02:00  WARN 21216 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Failed to parse JSON, attempting POJO conversion
-2025-05-16T12:54:57.127+02:00 ERROR 21216 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Error polling or processing Kafka record: Failed to parse to PublishEvent
+public PublishEvent parseToPublishEvent(String raw) {
+    try {
+        // Extract the inner content from PublishEvent(...)
+        raw = raw.trim();
+        if (raw.startsWith("PublishEvent(")) {
+            raw = raw.substring("PublishEvent(".length(), raw.length() - 1);
+        }
 
-java.lang.RuntimeException: Failed to parse to PublishEvent
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.parseToPublishEvent(KafkaListenerService.java:201) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.handleMessage(KafkaListenerService.java:87) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.processSingleMessage(KafkaListenerService.java:54) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.controller.FileProcessingController.triggerFileProcessing(FileProcessingController.java:32) ~[classes/:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
-	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:884) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:797) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1080) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:973) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1003) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:906) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:731) ~[tomcat-embed-core-10.1.1.jar:6.0]
-	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:880) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:814) ~[tomcat-embed-core-10.1.1.jar:6.0]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:223) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:53) ~[tomcat-embed-websocket-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:197) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:97) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:542) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:119) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:92) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:78) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:357) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:400) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:65) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:861) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1739) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1191) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:61) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at java.base/java.lang.Thread.run(Thread.java:842) ~[na:na]
-Caused by: com.fasterxml.jackson.core.JsonParseException: Unexpected character ('[' (code 91)): was expecting comma to separate Object entries
- at [Source: (String)"{"sourceSystem":"DEBTMAN", "timestamp":"2025-05-12T09:06:07.843956600+02:00"[Africa/Johannesburg}], "batchFiles":[{"objectId":"1037A096-0000-CE1A-A484-3290CA7938C2", "repositoryId":"BATCH", "fileLocation":"/path/to/file1", "validationStatus":"valid"}], "consumerReference":"12345", "processReference":"check_process_reference", "batchControlFileData":"null"}"; line: 1, column: 78]
-	at com.fasterxml.jackson.core.JsonParser._constructError(JsonParser.java:2418) ~[jackson-core-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.core.base.ParserMinimalBase._reportError(ParserMinimalBase.java:749) ~[jackson-core-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.core.base.ParserMinimalBase._reportUnexpectedChar(ParserMinimalBase.java:673) ~[jackson-core-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser._skipComma(ReaderBasedJsonParser.java:2459) ~[jackson-core-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.core.json.ReaderBasedJsonParser.nextFieldName(ReaderBasedJsonParser.java:950) ~[jackson-core-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.BeanDeserializer.vanillaDeserialize(BeanDeserializer.java:321) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.BeanDeserializer.deserialize(BeanDeserializer.java:177) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.DefaultDeserializationContext.readRootValue(DefaultDeserializationContext.java:323) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.ObjectMapper._readMapAndClose(ObjectMapper.java:4730) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.ObjectMapper.readValue(ObjectMapper.java:3677) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.ObjectMapper.readValue(ObjectMapper.java:3645) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.parseToPublishEvent(KafkaListenerService.java:199) ~[classes/:na]
-	... 53 common frames omitted
+        // Remove BatchFile(...) wrapper from inside batchFiles array
+        raw = raw.replace("BatchFile(", "{").replace(")", "}");
+
+        // Replace objectId={...} with objectId:"..."
+        raw = raw.replaceAll("objectId=\\{([^}]+)}", "objectId:\"$1\"");
+
+        // Quote all key=value pairs
+        raw = raw.replaceAll("(\\w+)=([^,\\[]+)(?=,|$)", "\"$1\":\"$2\"");
+
+        // Fix timestamp value that has timezone in square brackets
+        raw = raw.replaceAll("\"timestamp\":\"([^\"]+)\\[(.*?)\\]\"", "\"timestamp\":\"$1[$2]\"");
+
+        // Wrap batchFiles list correctly
+        raw = raw.replace("batchFiles=[", "\"batchFiles\":[");
+        raw = raw.replace("],", "],");
+
+        // Finalize JSON
+        String json = "{" + raw + "}";
+
+        // Use ObjectMapper to convert JSON string to POJO
+        ObjectMapper mapper = new ObjectMapper();
+        mapper.findAndRegisterModules(); // for ZonedDateTime
+        return mapper.readValue(json, PublishEvent.class);
+
+    } catch (Exception e) {
+        throw new RuntimeException("Failed to parse to PublishEvent", e);
+    }
+}
+import java.time.ZonedDateTime;
+import java.util.List;
+
+public class PublishEvent {
+    private String sourceSystem;
+    private ZonedDateTime timestamp;
+    private List<BatchFile> batchFiles;
+    private String consumerReference;
+    private String processReference;
+    private String batchControlFileData;
+
+    // Getters and setters
+}
+public class BatchFile {
+    private String objectId;
+    private String repositoryId;
+    private String fileLocation;
+    private String validationStatus;
+
+    // Getters and setters
+}
+mapper.findAndRegisterModules();
