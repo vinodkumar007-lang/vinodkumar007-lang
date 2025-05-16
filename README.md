@@ -1,48 +1,17 @@
-# Kafka Consumer Configuration
-kafka.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
-kafka.consumer.group.id=str-ecp-batch
-kafka.consumer.auto.offset.reset=earliest
+I’m currently working on integrating our Kafka connection with an orchestration tool, and I need clarification on the client authentication setup.
 
-# SSL Configuration
-kafka.consumer.security.protocol=SSL
-kafka.consumer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
-kafka.consumer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
-kafka.consumer.ssl.key.password=3dX7y3Yz9Jv6L4F
-kafka.consumer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
-kafka.consumer.ssl.truststore.password=nedbank1
-kafka.consumer.ssl.protocol=TLSv1.2
+Our Java application is currently configured to connect using SSL/mTLS, with the following keystore:
 
-# Kafka Consumer Deserialization
-kafka.consumer.key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
-kafka.consumer.value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+pgsql
+Copy
+Edit
+keystore location: C:\Users\CC437236\jdk-17.0.12_windows-x64_bin\jdk-17.0.12\lib\security\keystore.jks
+Could you please confirm:
 
-# Kafka Producer Configuration (to send Summary File URL)
-kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
-kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
-kafka.producer.security.protocol=SSL
-kafka.producer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
-kafka.producer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
-kafka.producer.ssl.key.password=3dX7y3Yz9Jv6L4F
-kafka.producer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
-kafka.producer.ssl.truststore.password=nedbank1
-kafka.producer.ssl.protocol=TLSv1.2
-kafka.producer.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
+Is mutual TLS (mTLS) being used for authentication?
 
-azure.keyvault.uri=https://nsn-dev-ecm-kva-001.vault.azure.net/secrets
+If so, what identity/username (e.g., from the client certificate CN or SAN) is registered for this client on the Kafka side?
 
-logging.level.org.springframework.kafka=DEBUG
+If there’s a specific username/password required for use in orchestration (e.g., if we need to switch to SASL for that integration), can you please provide or provision those credentials?
 
-kafka.topic.input=str-ecp-batch-composition
-kafka.topic.output=str-ecp-batch-composition-complete
-
-vault.hashicorp.url=https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200
-vault.hashicorp.namespace =admin/espire
-
-vault.hashicorp.passwordDev=Dev+Cred4#
-vault.hashicorp.passwordNbhDev=nbh_dev1
-
-proxy.host=proxyprod.africa.nedcor.net
-proxy.port=80
-proxy.username=CC437236
-proxy.password=34dYaB@jEh56
-use.proxy=false
+Let me know if there’s a secure way to retrieve or store these credentials (e.g., through Vault or Key Vault), and if we need to align on any certificate rotation policies.
