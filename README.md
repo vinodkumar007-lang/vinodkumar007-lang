@@ -38,48 +38,57 @@ public class KafkaListenerService {
         this.blobStorageService = blobStorageService;
         this.consumerFactory = consumerFactory;
     }
-
+    
     public Map<String, Object> processAllMessages() {
         Consumer<String, String> consumer = consumerFactory.createConsumer();
         consumer.assign(Collections.singletonList(new TopicPartition(inputTopic, 0)));
         consumer.seekToBeginning(Collections.singletonList(new TopicPartition(inputTopic, 0)));
 
-        Map<String, Object> finalSummaryResponse = new HashMap<>();
-        Set<String> batchIds = new HashSet<>();
-        List<Map<String, Object>> batchSummaries = new ArrayList<>();
+        Map<String, Object> summaryResponse = null;
 
         try {
-            while (true) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
-                if (records.isEmpty()) {
-                    break; // Exit loop when no more messages are available
-                }
-                for (ConsumerRecord<String, String> record : records) {
-                    logger.info("Processing record with key: {}, value: {}", record.key(), record.value());
-                    Map<String, Object> batchSummary = handleMessage(record.value());
-                    if (batchSummary != null) {
-                        batchSummaries.add(batchSummary);
-                        batchIds.add((String) batchSummary.get("batchID"));
-                    }
-                }
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
+            for (ConsumerRecord<String, String> record : records) {
+                logger.info("Processing record with key: {}, value: {}", record.key(), record.value());
+                summaryResponse = handleMessage(record.value());
+                break; // Only one message per call
             }
-
-            if (!batchSummaries.isEmpty()) {
-                String summaryFileUrl = uploadFinalSummaryFile(batchSummaries, batchIds);
-                finalSummaryResponse.put("summaryFileUrl", summaryFileUrl);
-            }
-
         } catch (Exception e) {
-            logger.error("Error processing Kafka records: {}", e.getMessage(), e);
+            logger.error("Error polling or processing Kafka record: {}", e.getMessage(), e);
         } finally {
             consumer.close();
         }
 
-        return finalSummaryResponse;
+        return summaryResponse;
     }
 
     private Map<String, Object> handleMessage(String message) throws Exception {
-        JsonNode root = objectMapper.readTree(message);
+        JsonNode root;
+
+        System.out.println("Message check   " + message);
+        try {
+            root = objectMapper.readTree(message);
+        } catch (Exception e) {
+            logger.warn("Failed to parse JSON, attempting to convert POJO-like message: {}", message);
+            message = convertPojoToJson(message);
+            try {
+                root = objectMapper.readTree(message);
+            } catch (Exception retryEx) {
+                logger.error("Failed to parse corrected JSON: {}", retryEx.getMessage(), retryEx);
+                return null;
+            }
+        }
+
+        try {
+            root = objectMapper.readTree(message);
+        } catch (Exception e) {
+            logger.warn("Failed to parse JSON, attempting POJO conversion");
+
+            PublishEvent event = parseToPublishEvent(message);
+            // Manually map `event` into a JsonNode if needed:
+            root = objectMapper.valueToTree(event);
+        }
+
         String batchId = extractField(root, "consumerReference");
         JsonNode batchFilesNode = root.get("batchFiles");
 
@@ -88,32 +97,22 @@ public class KafkaListenerService {
             return null;
         }
 
-        String dynamicObjectId = getDynamicObjectId(batchFilesNode);
+        JsonNode firstFile = batchFilesNode.get(0);
+        String filePath = firstFile.get("fileLocation").asText();
+        String objectId = firstFile.get("ObjectId").asText();
 
-        if (dynamicObjectId == null) {
-            logger.warn("No valid objectId found.");
-            return null;
-        }
+        logger.info("Parsed batchId: {}, filePath: {}, objectId: {}", batchId, filePath, objectId);
 
-        // Handle file processing logic here (upload, create summary, etc.)
-        String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(batchFilesNode.get(0).get("fileLocation").asText(), batchId, dynamicObjectId);
+        String blobUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
+        logger.info("File uploaded to blob storage at URL: {}", blobUrl);
 
         Map<String, Object> summaryResponse = buildSummaryPayload(batchId, blobUrl, batchFilesNode);
-        kafkaTemplate.send(outputTopic, batchId, objectMapper.writeValueAsString(summaryResponse));
-        logger.info("Summary published to Kafka topic: {}", outputTopic);
+        String summaryMessage = objectMapper.writeValueAsString(summaryResponse);
+        assert batchId != null;
+        kafkaTemplate.send(outputTopic, batchId, summaryMessage);
+        logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
 
         return summaryResponse;
-    }
-
-    private String getDynamicObjectId(JsonNode batchFilesNode) {
-        // Dynamically select objectId from any file in the batchFilesNode
-        for (JsonNode fileNode : batchFilesNode) {
-            String objectId = fileNode.get("ObjectId").asText();
-            if (objectId != null && !objectId.isEmpty()) {
-                return objectId; // Return the first valid objectId found
-            }
-        }
-        return null; // Return null if no valid objectId is found
     }
 
     private String extractField(JsonNode json, String fieldName) {
@@ -126,121 +125,89 @@ public class KafkaListenerService {
         }
     }
 
-    private String uploadFinalSummaryFile(List<Map<String, Object>> batchSummaries, Set<String> batchIds) {
-        try {
-            if (batchSummaries.isEmpty()) return "No batch summaries to upload.";
+    private Map<String, Object> buildSummaryPayload(String batchId, String blobUrl, JsonNode batchFilesNode) {
+        List<ProcessedFileInfo> processedFiles = new ArrayList<>();
 
-            // Collect all unique batch IDs
-            List<Map<String, Object>> processedFiles = new ArrayList<>();
-            String dynamicObjectId = null;
+        for (JsonNode fileNode : batchFilesNode) {
+            String objectId = fileNode.get("ObjectId").asText();
+            String fileLocation = fileNode.get("fileLocation").asText();
+            String extension = getFileExtension(fileLocation);
 
-            // Iterate through all batches to collect batchId and processed files info
-            for (Map<String, Object> summary : batchSummaries) {
-                List<Map<String, Object>> batchProcessedFiles = (List<Map<String, Object>>) summary.get("processedFiles");
-                if (batchProcessedFiles != null && !batchProcessedFiles.isEmpty()) {
-                    processedFiles.addAll(batchProcessedFiles);
-                }
-            }
-
-            // Dynamically get an objectId from the processed files
-            dynamicObjectId = getDynamicObjectId(processedFiles);
-
-            // Generate a dynamic file name including all batchIds
-            String batchIdsStr = String.join("_", batchIds);
-            String fileName = "final_summary_" + batchIdsStr + ".json";
-
-            // Create content with all batch summaries
-            String fileContent = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(batchSummaries);
-
-            // If a valid objectId is found, upload the final summary file
-            if (dynamicObjectId != null) {
-                return blobStorageService.uploadSummaryFileAndGenerateSasUrl(fileName, fileContent, batchIdsStr, dynamicObjectId);
-            } else {
-                logger.warn("No objectId found for any processed files. Cannot upload final summary.");
-                return "ERROR: No objectId found for final summary.";
-            }
-
-        } catch (Exception e) {
-            logger.error("Failed to upload final summary file: {}", e.getMessage(), e);
-            return "ERROR: Could not upload summary file.";
+            String dynamicFileUrl = blobUrl + "/" + objectId.replaceAll("[{}]", "") + "_" + batchId + "_" + objectId + extension;
+            processedFiles.add(new ProcessedFileInfo(objectId, dynamicFileUrl));
         }
-    }
-}
 
-package com.nedbank.kafka.filemanage.service;
+        SummaryPayload summary = new SummaryPayload();
+        summary.setBatchID(batchId);
+        summary.setHeader(new HeaderInfo());
+        summary.setMetadata(new MetadataInfo());
+        summary.setPayload(new PayloadInfo());
+        summary.setProcessedFiles(processedFiles);
+        summary.setSummaryFileURL(blobUrl + "/summary/" + batchId + "_summary.json");
 
-import com.azure.storage.blob.BlobClient;
-import com.azure.storage.blob.BlobContainerClient;
-import com.azure.storage.blob.BlobServiceClient;
-import com.azure.storage.blob.BlobServiceClientBuilder;
-import com.azure.storage.blob.sas.BlobSasPermission;
-import com.azure.storage.blob.sas.BlobServiceSasSignatureValues;
-import com.azure.storage.common.StorageSharedKeyCredential;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.time.OffsetDateTime;
-
-@Service
-public class BlobStorageService {
-
-    private static final Logger logger = LoggerFactory.getLogger(BlobStorageService.class);
-
-    @Value("${azure.storage.account-name}")
-    private String accountName;
-
-    @Value("${azure.storage.account-key}")
-    private String accountKey;
-
-    @Value("${azure.storage.container-name}")
-    private String containerName;
-
-    public String uploadFileAndGenerateSasUrl(String fileLocation, String batchId, String objectId) throws IOException {
-        try {
-            // Set up Azure Blob client
-            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
-            BlobClient targetBlobClient = containerClient.getBlobClient(objectId + "_" + batchId);
-
-            // Get source blob name from URL
-            String sourceBlobName = fileLocation.substring(fileLocation.lastIndexOf("/") + 1);
-            BlobClient sourceBlobClient = containerClient.getBlobClient(sourceBlobName);
-
-            // Download and upload to target blob
-            try (InputStream inputStream = sourceBlobClient.openQueryStream()) {
-                long sourceSize = sourceBlobClient.getProperties().getBlobSize();
-                targetBlobClient.upload(inputStream, sourceSize, true); // true = overwrite
-                logger.info("Successfully uploaded file '{}' to '{}'", sourceBlobName, targetBlobClient.getBlobUrl());
-            }
-
-            // Generate SAS URL
-            BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
-                    OffsetDateTime.now().plusHours(24),
-                    new BlobSasPermission().setReadPermission(true)
-            );
-
-            String sasToken = targetBlobClient.generateSas(sasValues);
-            return targetBlobClient.getBlobUrl() + "?" + sasToken;
-
-        } catch (IOException e) {
-            logger.error("Error uploading file to blob storage: {}", e.getMessage(), e);
-            throw e;
-        } catch (Exception e) {
-            logger.error("Unexpected error during blob upload: {}", e.getMessage(), e);
-            throw new IOException("Unexpected error during blob upload", e);
-        }
+        return objectMapper.convertValue(summary, Map.class);
     }
 
-    public String uploadSummaryFileAndGenerateSasUrl(String fileName, String fileContent, String batchIds, String objectId) throws IOException {
-        // Logic for uploading summary file with batch IDs and generating SAS URL
-        // Similar to the uploadFileAndGenerateSasUrl method, but handling summary file
+    private String getFileExtension(String fileLocation) {
+        int lastDotIndex = fileLocation.lastIndexOf('.');
+        return lastDotIndex > 0 ? fileLocation.substring(lastDotIndex) : "";
+    }
+
+    /**
+     * Attempts to convert a Java-style toString-like object into a JSON string.
+     */
+    private String convertPojoToJson(String raw) {
+        // Remove the class wrapper
+        raw = raw.trim();
+        if (raw.startsWith("PublishEvent(") && raw.endsWith(")")) {
+            raw = raw.substring("PublishEvent(".length(), raw.length() - 1);
+        }
+
+        // Replace '=' with ':' and quote keys and string values
+        raw = raw.replaceAll("([a-zA-Z0-9_]+)=", "\"$1\":");
+        raw = raw.replaceAll(":([a-zA-Z0-9_]+)", ":\"$1\"");
+
+        // Quote string values
+        raw = raw.replaceAll("([a-zA-Z0-9_]+)", "\"$1\"");
+
+        // Fix nested objectId and similar internal braces
+        raw = raw.replaceAll("objectId=\\{([^}]+)}", "\"objectId\": \"$1\"");
+
+        // Fix lists
+        raw = raw.replace("],", "], ");
+
+        return "{" + raw + "}";
+    }
+    public PublishEvent parseToPublishEvent(String raw) {
+        try {
+            // Step 1: Strip the outer PublishEvent(...)
+            if (raw.startsWith("PublishEvent(")) {
+                raw = raw.substring("PublishEvent(".length(), raw.length() - 1);
+            }
+
+            // Step 2: Replace BatchFile(...) with proper JSON object
+            raw = raw.replaceAll("BatchFile\\(", "\\{").replaceAll("\\)", "}");
+
+            // Step 3: Quote objectId content inside {}
+            raw = raw.replaceAll("objectId=\\{([^}]+)}", "objectId:\"$1\"");
+
+            // Step 4: Quote keys and values properly (use non-greedy match for values)
+            raw = raw.replaceAll("(\\w+)=([^,\\[{]+)", "\"$1\":\"$2\"");
+
+            // Step 5: Fix batchFiles array brackets
+            raw = raw.replace("\"batchFiles\":\"[", "\"batchFiles\":[");
+            raw = raw.replace("]\"", "]");
+
+            // Step 6: Add JSON braces
+            String json = "{" + raw + "}";
+
+            // Step 7: Use Jackson ObjectMapper to parse
+            ObjectMapper mapper = new ObjectMapper();
+            mapper.findAndRegisterModules(); // for ZonedDateTime, etc.
+            return mapper.readValue(json, PublishEvent.class);
+
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to parse to PublishEvent", e);
+        }
     }
 }
