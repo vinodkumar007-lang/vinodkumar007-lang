@@ -44,14 +44,23 @@ public class KafkaListenerService {
         consumer.assign(Collections.singletonList(new TopicPartition(inputTopic, 0)));
         consumer.seekToBeginning(Collections.singletonList(new TopicPartition(inputTopic, 0)));
 
-        Map<String, Object> summaryResponse = null;
-
+        Map<String, Object> summaryResponse = new HashMap<>();
+        List<Map<String, Object>> processedBatchSummaries = new ArrayList<>();
+        
         try {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
             for (ConsumerRecord<String, String> record : records) {
                 logger.info("Processing record with key: {}, value: {}", record.key(), record.value());
-                summaryResponse = handleMessage(record.value());
-                break; // Only one message per call
+                Map<String, Object> recordSummary = handleMessage(record.value());
+                if (recordSummary != null) {
+                    processedBatchSummaries.add(recordSummary);
+                }
+            }
+
+            // Create a consolidated summary for all processed messages
+            if (!processedBatchSummaries.isEmpty()) {
+                summaryResponse.put("processedBatchSummaries", processedBatchSummaries);
+                logger.info("Processed {} messages from Kafka topic: {}", processedBatchSummaries.size(), inputTopic);
             }
         } catch (Exception e) {
             logger.error("Error polling or processing Kafka record: {}", e.getMessage(), e);
@@ -64,7 +73,7 @@ public class KafkaListenerService {
 
     private Map<String, Object> handleMessage(String message) throws Exception {
         JsonNode root;
-
+        
         System.out.println("Message check   " + message);
         try {
             root = objectMapper.readTree(message);
