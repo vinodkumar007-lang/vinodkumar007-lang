@@ -1,31 +1,7 @@
-private String convertPojoToJson(String raw) {
-    // Trim leading and trailing whitespaces
-    raw = raw.trim();
+2025-05-16T09:46:59.133+02:00  WARN 5004 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Failed to parse JSON, attempting to convert POJO-like message: PublishEvent(sourceSystem=DEBTMAN, timestamp=2025-05-12T09:06:07.843956600+02:00[Africa/Johannesburg], batchFiles=[BatchFile(objectId={1037A096-0000-CE1A-A484-3290CA7938C2}, repositoryId=BATCH, fileLocation=/path/to/file1, validationStatus=valid)], consumerReference=12345, processReference=check_process_reference, batchControlFileData=null)
+2025-05-16T09:46:59.143+02:00 ERROR 5004 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Failed to parse corrected JSON: Unexpected character ('P' (code 80)): was expecting double-quote to start field name
+ at [Source: (String)"{PublishEvent("sourceSystem":"DEBTMAN", "timestamp":2025-05-12T09:06:07.843956600+02:00[Africa/Johannesburg],  "batchFiles":[BatchFile("objectId":{1037A096-0000-CE1A-A484-3290CA7938C2}, "repositoryId":"BATCH", "fileLocation":"/path/to/file"1, "validationStatus":"valid")],  "consumerReference":12345, "processReference":"check_process_reference", "batchControlFileData":"null")}"; line: 1, column: 3]
 
-    // Remove root class wrapper (e.g., "{PublishEvent(...)}" -> "...")
-    if (raw.startsWith("{") && raw.contains("(")) {
-        int firstParen = raw.indexOf('(');
-        int lastParen = raw.lastIndexOf(')');
-        if (firstParen > 0 && lastParen > firstParen) {
-            raw = raw.substring(firstParen + 1, lastParen);
-        }
-    }
-
-    // Replace "=" with ":" and quote keys and string values
-    raw = raw.replaceAll("([a-zA-Z0-9_]+)=", "\"$1\":");
-    raw = raw.replaceAll(":([a-zA-Z/_\\-.@]+)", ":\"$1\"");
-
-    // Quote timestamps and unquoted string values
-    raw = raw.replaceAll(":\"(\\d{4}-\\d{2}-\\d{2}T[^\"]+)\"", ":\"$1\"");
-    raw = raw.replaceAll(":([a-zA-Z_][a-zA-Z0-9_]+)", ":\"$1\"");
-
-    // Fix nested objectId and similar internal braces
-    raw = raw.replaceAll("objectId=\\{([^}]+)}", "\"objectId\": \"$1\"");
-    raw = raw.replaceAll("(?<=[\\[,\\{])([a-zA-Z0-9_]+)(?==)", "\"$1\"");
-
-    // Fix lists
-    raw = raw.replace("],", "], ");
-
-    // Add curly braces to form a valid JSON object
-    return "{" + raw + "}";
-}
+com.fasterxml.jackson.core.JsonParseException: Unexpected character ('P' (code 80)): was expecting double-quote to start field name
+ at [Source: (String)"{PublishEvent("sourceSystem":"DEBTMAN", "timestamp":2025-05-12T09:06:07.843956600+02:00[Africa/Johannesburg],  "batchFiles":[BatchFile("objectId":{1037A096-0000-CE1A-A484-3290CA7938C2}, "repositoryId":"BATCH", "fileLocation":"/path/to/file"1, "validationStatus":"valid")],  "consumerReference":12345, "processReference":"check_process_reference", "batchControlFileData":"null")}"; line: 1, column: 3]
+	
