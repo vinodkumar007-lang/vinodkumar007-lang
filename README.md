@@ -1,30 +1,21 @@
 private String convertPojoToJson(String raw) {
-    // Remove outer wrapper like PublishEvent(...)
-    if (raw.contains("(") && raw.endsWith(")")) {
-        int firstParen = raw.indexOf('(');
-        int lastParen = raw.lastIndexOf(')');
-        raw = raw.substring(firstParen + 1, lastParen);
+    // Remove class wrapper
+    raw = raw.trim();
+    if (raw.startsWith("PublishEvent(") && raw.endsWith(")")) {
+        raw = raw.substring("PublishEvent(".length(), raw.length() - 1);
     }
 
-    // Replace nested object notations like BatchFile(...) with { ... }
-    raw = raw.replaceAll("(\\w+)\\(", "{");
-    raw = raw.replaceAll("\\)", "}");
+    // Replace '=' with ':' and quote keys and string values
+    raw = raw.replaceAll("([a-zA-Z0-9_]+)=", "\"$1\":");
+    raw = raw.replaceAll(":([a-zA-Z0-9_]+)", ":\"$1\"");
 
-    // Replace objectId={...} with "objectId": "{...}"
-    raw = raw.replaceAll("(\\w+)=\\{([^}]+)}", "\"$1\": \"{$2}\"");
+    // Handle nested objects and arrays
+    raw = raw.replaceAll("\\{([^}]+)\\}", "\"$1\"");
+    raw = raw.replaceAll("\\[([^\\]]+)\\]", "\"$1\"");
 
-    // Quote key names and values properly
-    raw = raw.replaceAll("(\\w+)=([^,\\{\\}\\[\\]]+)", "\"$1\": \"$2\"");
+    // Escape special characters
+    raw = raw.replaceAll("([{}\\[\\]=,])", "\\\\$1");
 
-    // Replace `,` between fields but not inside nested brackets
-    raw = raw.replaceAll(",\\s*(\\w+=)", ", \"$1");
-
-    // Handle arrays manually — batchFiles=[{...}, {...}]
-    raw = raw.replaceAll("(\\w+)=\\[", "\"$1\": [");
-
-    // Fix any values left unquoted like `null`, `true`, `12345` (only skip numbers and booleans)
-    raw = raw.replaceAll(":\\s*([^\"\\[\\{\\dtruefalsenull][^,\\}\\]]*)", ": \"$1\"");
-
-    // Wrap the final result in curly braces
+    // Return as valid JSON
     return "{" + raw + "}";
 }
