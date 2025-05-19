@@ -1,8 +1,13 @@
-The overall end-to-end file manager flow has been implemented and tested successfully with a limited set of messages
-Bulk file testing (batch-wise) is pending, as currently we are observing only limited Kafka messages in the consumer topic
-We are still awaiting access to the Azure Blob Storage account to verify and confirm whether files are being stored correctly
-Azure repository access is also pending, which is required to push the code related to this module
-Docker image creation is on hold, pending confirmation regarding Docker setup and access
-Some fields required to generate the final summary file are missing in the Kafka consumer messages These are needed before we can publish to the output topic
-Additionally, the valid file path in the summary file needs to be updated after the OT process is completed
-
+{
+  "sourceSystem" : "DEBTMAN",
+  "timestamp" : 1747056246.229279100,
+  "batchFiles" : [ {
+    "fileLocation" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
+    "validationStatus" : "valid",
+    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
+    "RepositoryId" : "BATCH"
+  } ],
+  "consumerReference" : "12345",
+  "processReference" : "Test12345",
+  "batchControlFileData" : null
+}
