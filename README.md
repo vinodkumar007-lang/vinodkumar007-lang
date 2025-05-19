@@ -1,17 +1,8 @@
-I’m currently working on integrating our Kafka connection with an orchestration tool, and I need clarification on the client authentication setup.
+The overall end-to-end file manager flow has been implemented and tested successfully with a limited set of messages
+Bulk file testing (batch-wise) is pending, as currently we are observing only limited Kafka messages in the consumer topic
+We are still awaiting access to the Azure Blob Storage account to verify and confirm whether files are being stored correctly
+Azure repository access is also pending, which is required to push the code related to this module
+Docker image creation is on hold, pending confirmation regarding Docker setup and access
+Some fields required to generate the final summary file are missing in the Kafka consumer messages These are needed before we can publish to the output topic
+Additionally, the valid file path in the summary file needs to be updated after the OT process is completed
 
-Our Java application is currently configured to connect using SSL/mTLS, with the following keystore:
-
-pgsql
-Copy
-Edit
-keystore location: C:\Users\CC437236\jdk-17.0.12_windows-x64_bin\jdk-17.0.12\lib\security\keystore.jks
-Could you please confirm:
-
-Is mutual TLS (mTLS) being used for authentication?
-
-If so, what identity/username (e.g., from the client certificate CN or SAN) is registered for this client on the Kafka side?
-
-If there’s a specific username/password required for use in orchestration (e.g., if we need to switch to SASL for that integration), can you please provide or provision those credentials?
-
-Let me know if there’s a secure way to retrieve or store these credentials (e.g., through Vault or Key Vault), and if we need to align on any certificate rotation policies.
