@@ -1,13 +1,5 @@
-{
-  "sourceSystem" : "DEBTMAN",
-  "timestamp" : 1747056246.229279100,
-  "batchFiles" : [ {
-    "fileLocation" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "validationStatus" : "valid",
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH"
-  } ],
-  "consumerReference" : "12345",
-  "processReference" : "Test12345",
-  "batchControlFileData" : null
-}
+Subject: Request for Review – Kafka Consumer Topic Field Mapping & Expected Sources
+
+Dear Team,
+
+As discussed, please find below the list of fields extracted from the current Kafka consumer topic message. Each field is described along with the expected source/system of origin for validation. Kindly review and confirm if the details are accurate or advise if any changes are needed.
