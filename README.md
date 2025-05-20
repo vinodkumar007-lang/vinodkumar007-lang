@@ -1,3 +1,4 @@
-C:\Users\CC437236>git clone https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Exstream_Dev
-Cloning into 'ECM_comp_Exstream_Dev'...
-fatal: unable to access 'https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Exstream_Dev/': Failed to connect to dev.azure.com port 443 after 21071 ms: Could not connect to server
+proxy.host=proxyprod.africa.nedcor.net
+proxy.port=80
+proxy.username=CC437236
+proxy.password=34dYaB@jEh56
