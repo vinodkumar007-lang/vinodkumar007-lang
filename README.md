@@ -1,3 +1,2 @@
-C:\Users\CC437236>git clone https://CC437236:ghp_ABC123XYZ456@dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Exstream_Dev
-Cloning into 'ECM_comp_Exstream_Dev'...
-fatal: unable to access 'https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Exstream_Dev/': SSL certificate problem: self-signed certificate in certificate chain
+git config --global http.sslVerify false
+git clone https://CC437236:ghp_ABC123XYZ456@dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Exstream_Dev
