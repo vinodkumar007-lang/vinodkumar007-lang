@@ -1,42 +1,21 @@
-✅ Configuring Git to Use Your Proxy
-Here's how to set Git to work with your proxy:
+C:\Users\CC437236>http://CC437236:34dYaB@jEh56@proxyprod.africa.nedcor.net:80
+'http:' is not recognized as an internal or external command,
+operable program or batch file.
 
-1. Set Proxy in Git Globally
-Open a Command Prompt and run:
+C:\Users\CC437236>http://CC437236:34dYaB@jEh56@proxyprod.africa.nedcor.net:80
+'http:' is not recognized as an internal or external command,
+operable program or batch file.
 
-bash
-Copy
-Edit
-git config --global http.proxy http://CC437236:34dYaB@jEh56@proxyprod.africa.nedcor.net:80
-⚠️ Note: The @ in your password must be URL-encoded as %40.
+C:\Users\CC437236>set HTTP_PROXY=http://CC437236:34dYaB%40jEh56@proxyprod.africa.nedcor.net:80
 
-So the correct command becomes:
+C:\Users\CC437236>http://CC437236:34dYaB%40jEh56@proxyprod.africa.nedcor.net:80
+'http:' is not recognized as an internal or external command,
+operable program or batch file.
 
-bash
-Copy
-Edit
-git config --global http.proxy http://CC437236:34dYaB%40jEh56@proxyprod.africa.nedcor.net:80
-🔒 Security Tip
-To avoid putting your password in plain text, you can also use the Windows Credential Manager or omit the password from Git config and input it interactively when prompted.
+C:\Users\CC437236>HTTPS_PROXY=http://CC437236:34dYaB%40jEh56@proxyprod.africa.nedcor.net:80
+'HTTPS_PROXY' is not recognized as an internal or external command,
+operable program or batch file.
 
-✅ Alternative: Set Environment Variables (Temporary)
-If you prefer not to use Git config:
-
-cmd
-Copy
-Edit
-set HTTP_PROXY=http://CC437236:34dYaB%40jEh56@proxyprod.africa.nedcor.net:80
-set HTTPS_PROXY=http://CC437236:34dYaB%40jEh56@proxyprod.africa.nedcor.net:80
-Then try the Git clone again:
-
-cmd
-Copy
-Edit
-git clone https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Exstream_Dev
-🧹 To Remove Proxy Later
-If you no longer need the proxy settings:
-
-bash
-Copy
-Edit
-git config --global --unset http.proxy
+C:\Users\CC437236>https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Exstream_Dev
+'https:' is not recognized as an internal or external command,
+operable program or batch file.
