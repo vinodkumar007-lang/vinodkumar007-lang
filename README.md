@@ -1,34 +1,7 @@
-package com.nedbank.kafka.filemanage.service;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nedbank.kafka.filemanage.model.CustomerSummary;
-import com.nedbank.kafka.filemanage.model.ProcessedFileInfo;
-import com.nedbank.kafka.filemanage.model.SummaryFileInfo;
-import com.nedbank.kafka.filemanage.model.SummaryPayload;
-import com.nedbank.kafka.filemanage.model.HeaderInfo;
-import com.nedbank.kafka.filemanage.model.MetaDataInfo;
-import com.nedbank.kafka.filemanage.model.PayloadInfo;
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.ConsumerFactory;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
-
-import java.io.File;
-import java.io.IOException;
-import java.time.Duration;
-import java.util.*;
+// Same package declaration and imports as before
 
 @Service
 public class KafkaListenerService {
-
     private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
     private final KafkaTemplate<String, String> kafkaTemplate;
@@ -61,14 +34,11 @@ public class KafkaListenerService {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
             for (ConsumerRecord<String, String> record : records) {
                 Map<String, Object> result = handleMessage(record.value());
-                if (result != null) {
-                    return result;
-                }
+                if (result != null) return result;
             }
         } catch (Exception e) {
             logger.error("Error during Kafka message processing", e);
-            response.put("status", "500");
-            response.put("message", "Internal Server Error while processing messages");
+            return generateErrorResponse("500", "Internal Server Error while processing messages");
         } finally {
             consumer.close();
         }
@@ -86,7 +56,7 @@ public class KafkaListenerService {
             try {
                 root = objectMapper.readTree(message);
             } catch (Exception retryEx) {
-                logger.error("Failed to parse corrected JSON: {}", retryEx.getMessage(), retryEx);
+                logger.error("Failed to parse corrected JSON", retryEx);
                 return generateErrorResponse("400", "Invalid JSON format");
             }
         }
@@ -95,7 +65,6 @@ public class KafkaListenerService {
         JsonNode batchFilesNode = root.get("batchFiles");
 
         if (batchFilesNode == null || !batchFilesNode.isArray() || batchFilesNode.isEmpty()) {
-            logger.warn("No batch files found in message.");
             return generateErrorResponse("404", "No batch files found");
         }
 
@@ -107,7 +76,6 @@ public class KafkaListenerService {
         try {
             sasUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
         } catch (Exception e) {
-            logger.error("Blob upload/SAS URL generation failed", e);
             return generateErrorResponse("453", "Error generating SAS URL");
         }
 
@@ -129,12 +97,10 @@ public class KafkaListenerService {
             if (fileNode.has("fileName")) fileName = fileNode.get("fileName").asText();
             if (fileNode.has("jobName")) jobName = fileNode.get("jobName").asText();
 
-            String fileUrl = "file://" + location;
-
             CustomerSummary.FileDetail detail = new CustomerSummary.FileDetail();
             detail.setObjectId(objId);
-            detail.setFileUrl(fileUrl);
             detail.setFileLocation(location);
+            detail.setFileUrl("file://" + location);
             detail.setStatus(extension.equals(".ps") ? "failed" : "OK");
             detail.setEncrypted(isEncrypted(location, extension));
             detail.setType(determineType(location, extension));
@@ -159,14 +125,6 @@ public class KafkaListenerService {
             customer.getFiles().add(detail);
         }
 
-        Map<String, Object> totals = new LinkedHashMap<>();
-        totals.put("totalCustomersProcessed", customerSummaries.size());
-        totals.put("totalArchived", archived.size());
-        totals.put("totalEmailed", emailed.size());
-        totals.put("totalMobstat", mobstat.size());
-        totals.put("totalPrint", printed.size());
-
-        // ✅ Create SummaryFileInfo object and write to the home directory (dynamic location)
         SummaryFileInfo summary = new SummaryFileInfo();
         summary.setFileName(fileName);
         summary.setJobName(jobName);
@@ -175,19 +133,15 @@ public class KafkaListenerService {
         summary.setCustomers(customerSummaries);
         summary.setSummaryFileURL(sasUrl);
 
-        // Use a dynamic location (user's home directory) instead of hardcoding C:\
         String userHome = System.getProperty("user.home");
         File jsonFile = new File(userHome, "summary.json");
 
         try {
             objectMapper.writeValue(jsonFile, summary);
-            logger.info("✅ summary.json written to: {}", jsonFile.getAbsolutePath());
         } catch (IOException e) {
-            logger.error("Failed to write summary.json to user home directory", e);
             return generateErrorResponse("601", "Failed to write summary file");
         }
 
-        // ✅ Publish message to Kafka
         Map<String, Object> kafkaMsg = new HashMap<>();
         kafkaMsg.put("fileName", fileName);
         kafkaMsg.put("jobName", jobName);
@@ -196,85 +150,38 @@ public class KafkaListenerService {
         kafkaMsg.put("pdfFileURL", sasUrl);
         kafkaTemplate.send(outputTopic, batchId, objectMapper.writeValueAsString(kafkaMsg));
 
-        logger.info("Kafka message sent to topic: {}", outputTopic);
-
-        // ✅ Prepare the response with the summary file path
-        Map<String, Object> response = new HashMap<>();
-        response.put("fileName", fileName);
-        response.put("jobName", jobName);
-        response.put("batchId", batchId);
-        response.put("timestamp", new Date().toString());
-        response.put("summaryFileURL", sasUrl);
-
-        // Return the location of summary.json file along with other metadata
-        response.put("summaryFilePath", jsonFile.getAbsolutePath());
-
-        // Add the POJOs for SummaryPayload, HeaderInfo, MetaDataInfo, PayloadInfo, etc.
-        SummaryPayload summaryPayload = new SummaryPayload();
+        // ✅ Construct enriched response using defined POJOs
         HeaderInfo headerInfo = new HeaderInfo();
-        MetaDataInfo metaDataInfo = new MetaDataInfo();
+        headerInfo.setSource("KafkaService");
+        headerInfo.setStatus("200");
+        headerInfo.setMessage("Processing Complete");
+
+        MetaDataInfo metaData = new MetaDataInfo();
+        metaData.setBatchId(batchId);
+        metaData.setFileName(fileName);
+        metaData.setJobName(jobName);
+        metaData.setTimestamp(new Date().toString());
+        metaData.setSummaryFileURL(sasUrl);
+        metaData.setSummaryFilePath(jsonFile.getAbsolutePath());
+
         PayloadInfo payloadInfo = new PayloadInfo();
+        payloadInfo.setTotalArchived(archived.size());
+        payloadInfo.setTotalEmailed(emailed.size());
+        payloadInfo.setTotalMobstat(mobstat.size());
+        payloadInfo.setTotalPrinted(printed.size());
+        payloadInfo.setTotalCustomersProcessed(customerSummaries.size());
 
-        // Setting mock or required data to POJOs (Adjust this as needed)
+        ProcessedFileInfo processedFileInfo = new ProcessedFileInfo();
+        processedFileInfo.setProcessedFiles(customerSummaries);
 
+        SummaryPayload summaryPayload = new SummaryPayload();
         summaryPayload.setHeader(headerInfo);
-        summaryPayload.setMetadata(metaDataInfo);
+        summaryPayload.setMetadata(metaData);
         summaryPayload.setPayload(payloadInfo);
+        summaryPayload.setProcessedFileInfo(processedFileInfo);
 
-        // Add the POJO to the response (optional, based on your needs)
-        response.put("summaryPayload", summaryPayload);
-
-        return response;
+        return Map.of("summaryPayload", summaryPayload);
     }
 
-    // Other methods remain unchanged...
-
-    private boolean isEncrypted(String path, String ext) {
-        return (ext.equals(".pdf") || ext.equals(".html") || ext.equals(".txt"))
-                && (path.toLowerCase().contains("mobstat") || path.toLowerCase().contains("email"));
-    }
-
-    private String determineType(String path, String ext) {
-        if (path.contains("mobstat")) return "pdf_mobstat";
-        if (path.contains("archive")) return "pdf_archive";
-        if (path.contains("email")) {
-            if (ext.equals(".html")) return "html_email";
-            if (ext.equals(".txt")) return "txt_email";
-            return "pdf_email";
-        }
-        if (ext.equals(".ps")) return "ps_print";
-        return "unknown";
-    }
-
-    private String getFileExtension(String path) {
-        int dot = path.lastIndexOf('.');
-        return dot > 0 ? path.substring(dot) : "";
-    }
-
-    private String extractField(JsonNode node, String name) {
-        try {
-            JsonNode val = node.get(name);
-            return val != null ? val.asText() : null;
-        } catch (Exception e) {
-            logger.error("Failed to extract field {}: {}", name, e.getMessage());
-            return null;
-        }
-    }
-
-    private String convertPojoToJson(String raw) {
-        raw = raw.trim();
-        if (raw.startsWith("PublishEvent(") && raw.endsWith(")")) {
-            raw = raw.substring("PublishEvent(".length(), raw.length() - 1);
-        }
-        raw = raw.replaceAll("([a-zA-Z0-9_]+)=", "\"$1\":");
-        raw = raw.replaceAll(":([a-zA-Z0-9_]+)", ":\"$1\"");
-        return "{" + raw + "}";
-    }
-
-    private Map<String, Object> generateErrorResponse(String status, String message) {
-        Map<String, Object> error = new HashMap<>();
-        error.put("status", status);
-        error.put("message", message);
-        return error;
-    }
+    // helper methods: unchanged
 }
