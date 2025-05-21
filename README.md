@@ -1,5 +1,5 @@
-proxy.host=proxyprod.africa.nedcor.net
-proxy.port=80
-proxy.username=CC437236
-proxy.password=34dYaB@jEh56
-use.proxy=false
+$env:HTTP_PROXY="http://CC437236:34dYaB@jEh56@proxyprod.africa.nedcor.net:80"
+$env:HTTPS_PROXY="http://CC437236:34dYaB@jEh56@proxyprod.africa.nedcor.net:80"
+
+$env:HTTP_PROXY="http://CC437236:34dYaB%40jEh56@proxyprod.africa.nedcor.net:80"
+$env:HTTPS_PROXY="http://CC437236:34dYaB%40jEh56@proxyprod.africa.nedcor.net:80"
