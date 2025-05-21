@@ -119,7 +119,10 @@ public class KafkaListenerService {
         Map<String, Object> summaryResponse = buildSummaryPayload(batchId, sasUrl, batchFilesNode);
 
         // Save summary.json temporarily to C: drive
-        saveSummaryToFile(summaryResponse, batchId);
+        String summaryFileUrl = saveSummaryToFile(summaryResponse, batchId);
+
+        // Set the summaryFileUrl in the response
+        summaryResponse.put("summaryFileURL", summaryFileUrl);
 
         String summaryMessage = objectMapper.writeValueAsString(summaryResponse);
         assert batchId != null;
@@ -129,18 +132,18 @@ public class KafkaListenerService {
         return summaryResponse;
     }
 
-    private void saveSummaryToFile(Map<String, Object> summaryResponse, String batchId) {
+    private String saveSummaryToFile(Map<String, Object> summaryResponse, String batchId) {
+        String summaryFileUrl = "C:/summary_" + batchId + ".json";
         try {
-            // Define the file path to save the summary.json temporarily in C: drive
-            String filePath = "C:/summary_" + batchId + ".json";
-            File summaryFile = new File(filePath);
+            File summaryFile = new File(summaryFileUrl);
             FileWriter fileWriter = new FileWriter(summaryFile);
             objectMapper.writeValue(fileWriter, summaryResponse);
             fileWriter.close();
-            logger.info("Summary saved to local file: {}", filePath);
+            logger.info("Summary saved to local file: {}", summaryFileUrl);
         } catch (IOException e) {
             logger.error("Failed to save summary to file: {}", e.getMessage(), e);
         }
+        return summaryFileUrl;
     }
 
     private Map<String, Object> buildSummaryPayload(String batchId, String sasUrl, JsonNode batchFilesNode) {
@@ -216,7 +219,6 @@ public class KafkaListenerService {
         summaryResponse.put("jobName", jobName);
         summaryResponse.put("batchId", batchId);
         summaryResponse.put("timestamp", new Date().toString());
-        summaryResponse.put("summaryFileURL", sasUrl);
         summaryResponse.put("customers", customerSummaries);
         summaryResponse.put("totals", totals);
 
