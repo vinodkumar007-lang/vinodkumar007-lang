@@ -198,13 +198,16 @@ public class KafkaListenerService {
 
         logger.info("Kafka message sent to topic: {}", outputTopic);
 
-        // ✅ Prepare the response without including the summary.json data
+        // ✅ Prepare the response with the summary file path
         Map<String, Object> response = new HashMap<>();
         response.put("fileName", fileName);
         response.put("jobName", jobName);
         response.put("batchId", batchId);
         response.put("timestamp", new Date().toString());
         response.put("summaryFileURL", sasUrl);
+        
+        // Return the location of summary.json file along with other metadata
+        response.put("summaryFilePath", jsonFile.getAbsolutePath());
 
         // Add the POJOs for SummaryPayload, HeaderInfo, MetaDataInfo, PayloadInfo, etc.
         SummaryPayload summaryPayload = new SummaryPayload();
