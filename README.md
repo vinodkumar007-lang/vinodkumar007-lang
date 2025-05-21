@@ -13,7 +13,6 @@ import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.*;
@@ -78,17 +77,16 @@ public class KafkaListenerService {
     private Map<String, Object> handleMessage(String message) throws Exception {
         JsonNode root;
 
-        logger.info("Processing message: {}", message);
         try {
             root = objectMapper.readTree(message);
         } catch (Exception e) {
-            logger.warn("Failed to parse JSON, attempting to convert POJO-like message: {}", message);
+            logger.warn("Failed to parse JSON, attempting fallback conversion.");
             message = convertPojoToJson(message);
             try {
                 root = objectMapper.readTree(message);
             } catch (Exception retryEx) {
-                logger.error("Failed to parse corrected JSON: {}", retryEx.getMessage(), retryEx);
-                return null;
+                logger.error("Fallback JSON parsing failed: {}", retryEx.getMessage(), retryEx);
+                return generateErrorResponse("400", "Invalid message format");
             }
         }
 
@@ -96,8 +94,8 @@ public class KafkaListenerService {
         JsonNode batchFilesNode = root.get("batchFiles");
 
         if (batchFilesNode == null || !batchFilesNode.isArray() || batchFilesNode.isEmpty()) {
-            logger.warn("No batch files found in the message.");
-            return null;
+            logger.warn("No batch files found.");
+            return generateErrorResponse("400", "No batch files in message");
         }
 
         JsonNode firstFile = batchFilesNode.get(0);
@@ -106,145 +104,72 @@ public class KafkaListenerService {
 
         logger.info("Parsed batchId: {}, filePath: {}, objectId: {}", batchId, filePath, objectId);
 
-        // Call to BlobStorageService to upload file and generate SAS URL
-        String sasUrl = null;
+        String sasUrl;
         try {
             sasUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
         } catch (Exception e) {
-            logger.error("Error during file upload and SAS generation: {}", e.getMessage(), e);
-            return generateErrorResponse("500", "Failed to upload file or generate SAS URL");
+            logger.error("File upload failed: {}", e.getMessage());
+            sasUrl = null; // fallback to summary file in C drive
         }
 
-        // Generate summary with new format
-        Map<String, Object> summaryResponse = buildSummaryPayload(batchId, sasUrl, batchFilesNode);
+        // Build summary JSON and save it
+        String summaryFileUrl = writeSummaryToLocalDrive(batchId, batchFilesNode);
 
-        // Save summary.json temporarily to C: drive
-        String summaryFileUrl = saveSummaryToFile(summaryResponse, batchId);
+        SummaryPayload summaryPayload = buildSummaryPayload(batchId, summaryFileUrl, batchFilesNode);
 
-        // Set the summaryFileUrl in the response
-        summaryResponse.put("summaryFileURL", summaryFileUrl);
-
-        String summaryMessage = objectMapper.writeValueAsString(summaryResponse);
-        assert batchId != null;
+        // Send summary message to Kafka
+        String summaryMessage = objectMapper.writeValueAsString(summaryPayload);
         kafkaTemplate.send(outputTopic, batchId, summaryMessage);
         logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
 
-        return summaryResponse;
+        Map<String, Object> response = new HashMap<>();
+        response.put("batchId", batchId);
+        response.put("summaryFileURL", summaryFileUrl);
+        response.put("processedFiles", summaryPayload.getProcessedFiles());
+        response.put("header", summaryPayload.getHeader());
+        response.put("metadata", summaryPayload.getMetadata());
+        response.put("payload", summaryPayload.getPayload());
+
+        return response;
     }
 
-    private String saveSummaryToFile(Map<String, Object> summaryResponse, String batchId) {
-        String summaryFileUrl = "C:/summary_" + batchId + ".json";
-        try {
-            File summaryFile = new File(summaryFileUrl);
-            FileWriter fileWriter = new FileWriter(summaryFile);
-            objectMapper.writeValue(fileWriter, summaryResponse);
-            fileWriter.close();
-            logger.info("Summary saved to local file: {}", summaryFileUrl);
-        } catch (IOException e) {
-            logger.error("Failed to save summary to file: {}", e.getMessage(), e);
-        }
-        return summaryFileUrl;
-    }
-
-    private Map<String, Object> buildSummaryPayload(String batchId, String sasUrl, JsonNode batchFilesNode) {
+    private SummaryPayload buildSummaryPayload(String batchId, String summaryFileUrl, JsonNode batchFilesNode) {
         List<ProcessedFileInfo> processedFiles = new ArrayList<>();
-        List<CustomerSummary> customerSummaries = new ArrayList<>();
-
-        Set<String> archivedCustomers = new HashSet<>();
-        Set<String> emailedCustomers = new HashSet<>();
-        Set<String> mobstatCustomers = new HashSet<>();
-        Set<String> printCustomers = new HashSet<>();
-
-        String fileName = "";
-        String jobName = "";
 
         for (JsonNode fileNode : batchFilesNode) {
             String objectId = fileNode.get("ObjectId").asText();
             String fileLocation = fileNode.get("fileLocation").asText();
-            String extension = getFileExtension(fileLocation).toLowerCase();
-            String customerId = objectId.split("_")[0];
-
-            if (fileNode.has("fileName")) fileName = fileNode.get("fileName").asText();
-            if (fileNode.has("jobName")) jobName = fileNode.get("jobName").asText();
-
-            String dynamicFileUrl = "file://" + fileLocation;
-
-            CustomerSummary.FileDetail fileDetail = new CustomerSummary.FileDetail();
-            fileDetail.setObjectId(objectId);
-            fileDetail.setFileUrl(dynamicFileUrl);
-            fileDetail.setFileLocation(fileLocation);
-            fileDetail.setStatus(extension.equals(".ps") ? "failed" : "OK");
-            fileDetail.setEncrypted(isEncrypted(fileLocation, extension));
-            fileDetail.setType(determineType(fileLocation, extension));
-
-            if (fileLocation.contains("mobstat")) mobstatCustomers.add(customerId);
-            if (fileLocation.contains("archive")) archivedCustomers.add(customerId);
-            if (fileLocation.contains("email")) emailedCustomers.add(customerId);
-            if (extension.equals(".ps")) printCustomers.add(customerId);
-
-            processedFiles.add(new ProcessedFileInfo(objectId, dynamicFileUrl));
-
-            CustomerSummary customer = customerSummaries.stream()
-                    .filter(c -> c.getCustomerId().equals(customerId))
-                    .findFirst()
-                    .orElseGet(() -> {
-                        CustomerSummary newCustomer = new CustomerSummary();
-                        newCustomer.setCustomerId(customerId);
-                        newCustomer.setAccountNumber("");
-                        newCustomer.setFiles(new ArrayList<>());
-                        customerSummaries.add(newCustomer);
-                        return newCustomer;
-                    });
-
-            customer.getFiles().add(fileDetail);
+            String fileUrl = "file://" + fileLocation;
+            processedFiles.add(new ProcessedFileInfo(objectId, fileUrl));
         }
 
-        Map<String, Object> totals = new LinkedHashMap<>();
-        totals.put("totalCustomersProcessed", customerSummaries.size());
-        totals.put("totalArchived", archivedCustomers.size());
-        totals.put("totalEmailed", emailedCustomers.size());
-        totals.put("totalMobstat", mobstatCustomers.size());
-        totals.put("totalPrint", printCustomers.size());
-
-        Map<String, Object> fullSummary = new LinkedHashMap<>();
-        fullSummary.put("fileName", fileName);
-        fullSummary.put("jobName", jobName);
-        fullSummary.put("batchId", batchId);
-        fullSummary.put("timestamp", new Date().toString());
-        fullSummary.put("customers", customerSummaries);
-        fullSummary.put("totals", totals);
-
-        Map<String, Object> summaryResponse = new LinkedHashMap<>();
-        summaryResponse.put("fileName", fileName);
-        summaryResponse.put("jobName", jobName);
-        summaryResponse.put("batchId", batchId);
-        summaryResponse.put("timestamp", new Date().toString());
-        summaryResponse.put("customers", customerSummaries);
-        summaryResponse.put("totals", totals);
-
-        return summaryResponse;
+        SummaryPayload summary = new SummaryPayload();
+        summary.setBatchID(batchId);
+        summary.setHeader(new HeaderInfo());
+        summary.setMetadata(new MetadataInfo());
+        summary.setPayload(new PayloadInfo());
+        summary.setProcessedFiles(processedFiles);
+        summary.setSummaryFileURL(summaryFileUrl);
+        return summary;
     }
 
-    private boolean isEncrypted(String fileLocation, String extension) {
-        return (extension.equals(".pdf") || extension.equals(".html") || extension.equals(".txt")) &&
-                (fileLocation.toLowerCase().contains("mobstat") || fileLocation.toLowerCase().contains("email"));
-    }
+    private String writeSummaryToLocalDrive(String batchId, JsonNode batchFilesNode) {
+        try {
+            SummaryFileInfo summaryFileInfo = new SummaryFileInfo();
+            summaryFileInfo.setBatchId(batchId);
+            summaryFileInfo.setTimestamp(new Date().toString());
+            summaryFileInfo.setFiles(objectMapper.convertValue(batchFilesNode, List.class));
 
-    private String determineType(String fileLocation, String extension) {
-        if (fileLocation.contains("mobstat")) return "pdf_mobstat";
-        if (fileLocation.contains("archive")) return "pdf_archive";
-        if (fileLocation.contains("email")) {
-            if (extension.equals(".html")) return "html_email";
-            if (extension.equals(".txt")) return "txt_email";
-            return "pdf_email";
+            String filePath = "C:\\summary_outputs\\summary_" + batchId + ".json";
+            File outputDir = new File("C:\\summary_outputs");
+            if (!outputDir.exists()) outputDir.mkdirs();
+
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(filePath), summaryFileInfo);
+            return "file:///" + filePath.replace("\\", "/");
+        } catch (IOException e) {
+            logger.error("Error writing summary.json: {}", e.getMessage(), e);
+            return null;
         }
-        if (extension.equals(".ps")) return "ps_print";
-        return "unknown";
-    }
-
-    private String getFileExtension(String fileLocation) {
-        int lastDotIndex = fileLocation.lastIndexOf('.');
-        return lastDotIndex > 0 ? fileLocation.substring(lastDotIndex) : "";
     }
 
     private String extractField(JsonNode json, String fieldName) {
@@ -264,7 +189,6 @@ public class KafkaListenerService {
         }
         raw = raw.replaceAll("([a-zA-Z0-9_]+)=", "\"$1\":");
         raw = raw.replaceAll(":([a-zA-Z0-9_]+)", ":\"$1\"");
-
         return "{" + raw + "}";
     }
 
