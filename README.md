@@ -13,6 +13,7 @@ import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.*;
@@ -77,7 +78,7 @@ public class KafkaListenerService {
     private Map<String, Object> handleMessage(String message) throws Exception {
         JsonNode root;
 
-        System.out.println("Message check   " + message);
+        logger.info("Processing message: {}", message);
         try {
             root = objectMapper.readTree(message);
         } catch (Exception e) {
@@ -117,12 +118,29 @@ public class KafkaListenerService {
         // Generate summary with new format
         Map<String, Object> summaryResponse = buildSummaryPayload(batchId, sasUrl, batchFilesNode);
 
+        // Save summary.json temporarily to C: drive
+        saveSummaryToFile(summaryResponse, batchId);
+
         String summaryMessage = objectMapper.writeValueAsString(summaryResponse);
         assert batchId != null;
         kafkaTemplate.send(outputTopic, batchId, summaryMessage);
         logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
 
         return summaryResponse;
+    }
+
+    private void saveSummaryToFile(Map<String, Object> summaryResponse, String batchId) {
+        try {
+            // Define the file path to save the summary.json temporarily in C: drive
+            String filePath = "C:/summary_" + batchId + ".json";
+            File summaryFile = new File(filePath);
+            FileWriter fileWriter = new FileWriter(summaryFile);
+            objectMapper.writeValue(fileWriter, summaryResponse);
+            fileWriter.close();
+            logger.info("Summary saved to local file: {}", filePath);
+        } catch (IOException e) {
+            logger.error("Failed to save summary to file: {}", e.getMessage(), e);
+        }
     }
 
     private Map<String, Object> buildSummaryPayload(String batchId, String sasUrl, JsonNode batchFilesNode) {
@@ -255,4 +273,3 @@ public class KafkaListenerService {
         return errorResponse;
     }
 }
-
