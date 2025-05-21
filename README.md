@@ -1,101 +1,229 @@
-private Map<String, Object> buildSummaryPayload(String batchId, String blobUrl, JsonNode batchFilesNode) {
-    List<ProcessedFileInfo> processedFiles = new ArrayList<>();
-    List<CustomerSummary> customerSummaries = new ArrayList<>();
+	
+Field
+	
+Description
+	
+Type
+	
+Kafka Topic
+	
+Remarks
 
-    Set<String> archivedCustomers = new HashSet<>();
-    Set<String> emailedCustomers = new HashSet<>();
-    Set<String> mobstatCustomers = new HashSet<>();
-    Set<String> printCustomers = new HashSet<>();
+ 	
+BatchID (golden thread)
+	
+Unique identifier for the batch.
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-    String fileName = "";
-    String jobName = "";
+ 	
+TenantCode (golden thread)
+	
+Tenant identifier (e.g., ZANBL).
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publisg message
 
-    for (JsonNode fileNode : batchFilesNode) {
-        String objectId = fileNode.get("ObjectId").asText();
-        String fileLocation = fileNode.get("fileLocation").asText();
-        String extension = getFileExtension(fileLocation).toLowerCase();
-        String customerId = objectId.split("_")[0];
+ 	
+ChannelID (golden thread)
+	
+Channel ID (e.g., 100 = consumer).
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-        if (fileNode.has("fileName")) fileName = fileNode.get("fileName").asText();
-        if (fileNode.has("jobName")) jobName = fileNode.get("jobName").asText();
 
-        String dynamicFileUrl = "file://" + fileLocation;
+not in use yet
+	
+AudienceID (golden thread)
+	
+GUID for audience, often for security.
+	
+GUID
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-        CustomerSummary.FileDetail fileDetail = new CustomerSummary.FileDetail();
-        fileDetail.setObjectId(objectId);
-        fileDetail.setFileUrl(dynamicFileUrl);
-        fileDetail.setFileLocation(fileLocation);
-        fileDetail.setStatus(extension.equals(".ps") ? "failed" : "OK");
-        fileDetail.setEncrypted(isEncrypted(fileLocation, extension));
-        fileDetail.setType(determineType(fileLocation, extension));
+ 	
+Timestamp
+	
+Time the event occurred.
+	
+DateTime
+	
+Both
+	
+Kafka generated
 
-        if (fileLocation.contains("mobstat")) mobstatCustomers.add(customerId);
-        if (fileLocation.contains("archive")) archivedCustomers.add(customerId);
-        if (fileLocation.contains("email")) emailedCustomers.add(customerId);
-        if (extension.equals(".ps")) printCustomers.add(customerId);
+ 	
+SourceSystem (golden thread)
+	
+Source system of origin (e.g., CARD).
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-        processedFiles.add(new ProcessedFileInfo(objectId, dynamicFileUrl));
+ 	
+Product (golden thread)
+	
+Product associated with the batch (e.g., CASA).
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-        CustomerSummary customer = customerSummaries.stream()
-                .filter(c -> c.getCustomerId().equals(customerId))
-                .findFirst()
-                .orElseGet(() -> {
-                    CustomerSummary newCustomer = new CustomerSummary();
-                    newCustomer.setCustomerId(customerId);
-                    newCustomer.setAccountNumber("");
-                    newCustomer.setFiles(new ArrayList<>());
-                    customerSummaries.add(newCustomer);
-                    return newCustomer;
-                });
+ 	
+JobName (golden thread)
+	
+Job identifier (e.g., SMM815).
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-        customer.getFiles().add(fileDetail);
-    }
+ 	
+UniqueConsumerRef (golden thread)
+	
+GUID for identifying the consumer.
+	
+GUID
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-    Map<String, Object> totals = new LinkedHashMap<>();
-    totals.put("totalCustomersProcessed", customerSummaries.size());
-    totals.put("totalArchived", archivedCustomers.size());
-    totals.put("totalEmailed", emailedCustomers.size());
-    totals.put("totalMobstat", mobstatCustomers.size());
-    totals.put("totalPrint", printCustomers.size());
+ 	
+Blob URL (storage name where input data is)
+	
+GUID for identifying the ECP batch.
+	
+GUID
+	
+str-ecp-batch-composition
+	
+ECP process will populate on str-ecp-batch-composition
 
-    Map<String, Object> fullSummary = new LinkedHashMap<>();
-    fullSummary.put("fileName", fileName);
-    fullSummary.put("jobName", jobName);
-    fullSummary.put("batchId", batchId);
-    fullSummary.put("timestamp", new Date().toString());
-    fullSummary.put("customers", customerSummaries);
-    fullSummary.put("totals", totals);
+ 	
+Filename on blob storage 
+	
+ 
+	
+ 
+	
+str-ecp-batch-composition
+	
+ECP process will populate on str-ecp-batch-composition
 
-    // Save to file locally in ~/summary_outputs/
-    String summaryFileUrl = null;
-    try {
-        String userHome = System.getProperty("user.home");
-        File outputDir = new File(userHome + File.separator + "summary_outputs");
-        if (!outputDir.exists()) outputDir.mkdirs();
 
-        String filePath = outputDir + File.separator + "summary_" + batchId + ".json";
-        objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(filePath), fullSummary);
-        logger.info("Summary JSON written to local file: {}", filePath);
+not in use yet
+	
+RunPriority
+	
+Batch priority (High, Medium, Low).
+	
+String
+	
+str-ecp-batch-composition
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-        // Windows-only: open file in default app
-        if (System.getProperty("os.name").toLowerCase().contains("win")) {
-            Runtime.getRuntime().exec(new String[]{"cmd", "/c", "start", "", filePath});
-        }
 
-        summaryFileUrl = "file://" + filePath.replace("\\", "/");
+not in use yet
+	
+EventType
+	
+Type of event (e.g., Completion, Restart).
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-    } catch (IOException e) {
-        logger.error("Failed to write local summary JSON file", e);
-    }
 
-    // Final output to Kafka & return
-    SummaryPayload summary = new SummaryPayload();
-    summary.setBatchID(batchId);
-    summary.setHeader(new HeaderInfo());
-    summary.setMetadata(new MetadataInfo());
-    summary.setPayload(new PayloadInfo());
-    summary.setProcessedFiles(processedFiles);
-    summary.setSummaryFileURL(summaryFileUrl);
+not in use yet, rerun/reprocess to be defined
+	
+RestartKey
+	
+Key used to support restart events.
+	
+String
+	
+str-ecp-batch-composition
+	
+First field customer
 
-    return objectMapper.convertValue(summary, Map.class);
-}
+ 	
+TotalFilesProcessed
+	
+Number of successfully processed files.
+	
+Integer
+	
+str-ecp-batch-composition-complete
+	
+OT team
+
+ 	
+ProcessingStatus
+	
+Overall status (Success, Failure, Partial).
+	
+String
+	
+str-ecp-batch-composition-complete
+	
+OT team
+
+
+what are the valid values? Eg. RC = 00. To be defined during testing
+	
+EventOutcomeCode
+	
+Code indicating result (Success, Tech Error, etc.).
+	
+String
+	
+str-ecp-batch-composition-complete
+	
+OT team
+
+ 	
+EventOutcomeDescription
+	
+Human-readable explanation of the outcome.
+	
+String
+	
+str-ecp-batch-composition-complete
+	
+OT team
+
+ 	
+SummaryReportFileLocation
+	
+URL or path of the summary report file.
+	
+URL
+	
+str-ecp-batch-composition-complete
+	
+OT team
