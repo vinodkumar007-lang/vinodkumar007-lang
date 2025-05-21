@@ -6,6 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nedbank.kafka.filemanage.model.CustomerSummary;
 import com.nedbank.kafka.filemanage.model.ProcessedFileInfo;
 import com.nedbank.kafka.filemanage.model.SummaryFileInfo;
+import com.nedbank.kafka.filemanage.model.SummaryPayload;
+import com.nedbank.kafka.filemanage.model.HeaderInfo;
+import com.nedbank.kafka.filemanage.model.MetaDataInfo;
+import com.nedbank.kafka.filemanage.model.PayloadInfo;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
@@ -162,7 +166,7 @@ public class KafkaListenerService {
         totals.put("totalMobstat", mobstat.size());
         totals.put("totalPrint", printed.size());
 
-        // ✅ Create SummaryFileInfo object and write to C:\summary.json
+        // ✅ Create SummaryFileInfo object and write to the home directory (dynamic location)
         SummaryFileInfo summary = new SummaryFileInfo();
         summary.setFileName(fileName);
         summary.setJobName(jobName);
@@ -171,12 +175,15 @@ public class KafkaListenerService {
         summary.setCustomers(customerSummaries);
         summary.setSummaryFileURL(sasUrl);
 
+        // Use a dynamic location (user's home directory) instead of hardcoding C:\
+        String userHome = System.getProperty("user.home");
+        File jsonFile = new File(userHome, "summary.json");
+
         try {
-            File jsonFile = new File("C:\\summary.json");
             objectMapper.writeValue(jsonFile, summary);
-            logger.info("✅ summary.json written to C: drive");
+            logger.info("✅ summary.json written to: {}", jsonFile.getAbsolutePath());
         } catch (IOException e) {
-            logger.error("Failed to write summary.json to C drive", e);
+            logger.error("Failed to write summary.json to user home directory", e);
             return generateErrorResponse("601", "Failed to write summary file");
         }
 
@@ -191,15 +198,36 @@ public class KafkaListenerService {
 
         logger.info("Kafka message sent to topic: {}", outputTopic);
 
-        // ✅ Return only metadata
+        // ✅ Prepare the response without including the summary.json data
         Map<String, Object> response = new HashMap<>();
         response.put("fileName", fileName);
         response.put("jobName", jobName);
         response.put("batchId", batchId);
         response.put("timestamp", new Date().toString());
         response.put("summaryFileURL", sasUrl);
+
+        // Add the POJOs for SummaryPayload, HeaderInfo, MetaDataInfo, PayloadInfo, etc.
+        SummaryPayload summaryPayload = new SummaryPayload();
+        HeaderInfo headerInfo = new HeaderInfo();
+        MetaDataInfo metaDataInfo = new MetaDataInfo();
+        PayloadInfo payloadInfo = new PayloadInfo();
+
+        // Setting mock or required data to POJOs (Adjust this as needed)
+        headerInfo.setSomeHeaderField("Header Data");
+        metaDataInfo.setSomeMetaDataField("Metadata Field");
+        payloadInfo.setSomePayloadField("Payload Field");
+
+        summaryPayload.setHeader(headerInfo);
+        summaryPayload.setMetadata(metaDataInfo);
+        summaryPayload.setPayload(payloadInfo);
+
+        // Add the POJO to the response (optional, based on your needs)
+        response.put("summaryPayload", summaryPayload);
+
         return response;
     }
+
+    // Other methods remain unchanged...
 
     private boolean isEncrypted(String path, String ext) {
         return (ext.equals(".pdf") || ext.equals(".html") || ext.equals(".txt"))
