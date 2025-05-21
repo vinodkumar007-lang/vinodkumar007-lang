@@ -1,187 +1,51 @@
-// Same package declaration and imports as before
+PS C:\Users\CC437236> az login
+The command failed with an unexpected error. Here is the traceback:
+HTTPSConnectionPool(host='login.microsoftonline.com', port=443): Max retries exceeded with url: /organizations/v2.0/.well-known/openid-configuration (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x03FC0370>, 'Connection to login.microsoftonline.com timed out. (connect timeout=None)'))
+Traceback (most recent call last):
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\urllib3/connection.py", line 174, in _new_conn
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\urllib3/util/connection.py", line 96, in create_connection
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\urllib3/util/connection.py", line 86, in create_connection
+TimeoutError: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
 
-@Service
-public class KafkaListenerService {
-    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+During handling of the above exception, another exception occurred:
 
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final BlobStorageService blobStorageService;
-    private final ConsumerFactory<String, String> consumerFactory;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+Traceback (most recent call last):
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\urllib3/connectionpool.py", line 699, in urlopen
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\urllib3/connectionpool.py", line 382, in _make_request
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\urllib3/connectionpool.py", line 1010, in _validate_conn
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\urllib3/connection.py", line 358, in connect
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\urllib3/connection.py", line 179, in _new_conn
+urllib3.exceptions.ConnectTimeoutError: (<urllib3.connection.HTTPSConnection object at 0x03FC0370>, 'Connection to login.microsoftonline.com timed out. (connect timeout=None)')
 
-    @Value("${kafka.topic.input}")
-    private String inputTopic;
+During handling of the above exception, another exception occurred:
 
-    @Value("${kafka.topic.output}")
-    private String outputTopic;
+Traceback (most recent call last):
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\requests/adapters.py", line 439, in send
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\urllib3/connectionpool.py", line 783, in urlopen
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\urllib3/connectionpool.py", line 755, in urlopen
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\urllib3/util/retry.py", line 574, in increment
+urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='login.microsoftonline.com', port=443): Max retries exceeded with url: /organizations/v2.0/.well-known/openid-configuration (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x03FC0370>, 'Connection to login.microsoftonline.com timed out. (connect timeout=None)'))
 
-    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
-                                BlobStorageService blobStorageService,
-                                ConsumerFactory<String, String> consumerFactory) {
-        this.kafkaTemplate = kafkaTemplate;
-        this.blobStorageService = blobStorageService;
-        this.consumerFactory = consumerFactory;
-    }
+During handling of the above exception, another exception occurred:
 
-    public Map<String, Object> processAllMessages() {
-        Consumer<String, String> consumer = consumerFactory.createConsumer();
-        consumer.assign(Collections.singletonList(new TopicPartition(inputTopic, 0)));
-        consumer.seekToBeginning(Collections.singletonList(new TopicPartition(inputTopic, 0)));
-
-        Map<String, Object> response = new HashMap<>();
-
-        try {
-            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
-            for (ConsumerRecord<String, String> record : records) {
-                Map<String, Object> result = handleMessage(record.value());
-                if (result != null) return result;
-            }
-        } catch (Exception e) {
-            logger.error("Error during Kafka message processing", e);
-            return generateErrorResponse("500", "Internal Server Error while processing messages");
-        } finally {
-            consumer.close();
-        }
-
-        return response;
-    }
-
-    private Map<String, Object> handleMessage(String message) throws JsonProcessingException {
-        JsonNode root;
-
-        try {
-            root = objectMapper.readTree(message);
-        } catch (Exception e) {
-            message = convertPojoToJson(message);
-            try {
-                root = objectMapper.readTree(message);
-            } catch (Exception retryEx) {
-                logger.error("Failed to parse corrected JSON", retryEx);
-                return generateErrorResponse("400", "Invalid JSON format");
-            }
-        }
-
-        String batchId = extractField(root, "consumerReference");
-        JsonNode batchFilesNode = root.get("batchFiles");
-
-        if (batchFilesNode == null || !batchFilesNode.isArray() || batchFilesNode.isEmpty()) {
-            return generateErrorResponse("404", "No batch files found");
-        }
-
-        JsonNode firstFile = batchFilesNode.get(0);
-        String filePath = firstFile.get("fileLocation").asText();
-        String objectId = firstFile.get("ObjectId").asText();
-
-        String sasUrl;
-        try {
-            sasUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
-        } catch (Exception e) {
-            return generateErrorResponse("453", "Error generating SAS URL");
-        }
-
-        List<CustomerSummary> customerSummaries = new ArrayList<>();
-        String fileName = "";
-        String jobName = "";
-
-        Set<String> archived = new HashSet<>();
-        Set<String> emailed = new HashSet<>();
-        Set<String> mobstat = new HashSet<>();
-        Set<String> printed = new HashSet<>();
-
-        for (JsonNode fileNode : batchFilesNode) {
-            String objId = fileNode.get("ObjectId").asText();
-            String location = fileNode.get("fileLocation").asText();
-            String extension = getFileExtension(location).toLowerCase();
-            String customerId = objId.split("_")[0];
-
-            if (fileNode.has("fileName")) fileName = fileNode.get("fileName").asText();
-            if (fileNode.has("jobName")) jobName = fileNode.get("jobName").asText();
-
-            CustomerSummary.FileDetail detail = new CustomerSummary.FileDetail();
-            detail.setObjectId(objId);
-            detail.setFileLocation(location);
-            detail.setFileUrl("file://" + location);
-            detail.setStatus(extension.equals(".ps") ? "failed" : "OK");
-            detail.setEncrypted(isEncrypted(location, extension));
-            detail.setType(determineType(location, extension));
-
-            if (location.contains("mobstat")) mobstat.add(customerId);
-            if (location.contains("archive")) archived.add(customerId);
-            if (location.contains("email")) emailed.add(customerId);
-            if (extension.equals(".ps")) printed.add(customerId);
-
-            CustomerSummary customer = customerSummaries.stream()
-                    .filter(c -> c.getCustomerId().equals(customerId))
-                    .findFirst()
-                    .orElseGet(() -> {
-                        CustomerSummary c = new CustomerSummary();
-                        c.setCustomerId(customerId);
-                        c.setAccountNumber("");
-                        c.setFiles(new ArrayList<>());
-                        customerSummaries.add(c);
-                        return c;
-                    });
-
-            customer.getFiles().add(detail);
-        }
-
-        SummaryFileInfo summary = new SummaryFileInfo();
-        summary.setFileName(fileName);
-        summary.setJobName(jobName);
-        summary.setBatchId(batchId);
-        summary.setTimestamp(new Date().toString());
-        summary.setCustomers(customerSummaries);
-        summary.setSummaryFileURL(sasUrl);
-
-        String userHome = System.getProperty("user.home");
-        File jsonFile = new File(userHome, "summary.json");
-
-        try {
-            objectMapper.writeValue(jsonFile, summary);
-        } catch (IOException e) {
-            return generateErrorResponse("601", "Failed to write summary file");
-        }
-
-        Map<String, Object> kafkaMsg = new HashMap<>();
-        kafkaMsg.put("fileName", fileName);
-        kafkaMsg.put("jobName", jobName);
-        kafkaMsg.put("batchId", batchId);
-        kafkaMsg.put("timestamp", new Date().toString());
-        kafkaMsg.put("pdfFileURL", sasUrl);
-        kafkaTemplate.send(outputTopic, batchId, objectMapper.writeValueAsString(kafkaMsg));
-
-        // ✅ Construct enriched response using defined POJOs
-        HeaderInfo headerInfo = new HeaderInfo();
-        headerInfo.setSource("KafkaService");
-        headerInfo.setStatus("200");
-        headerInfo.setMessage("Processing Complete");
-
-        MetaDataInfo metaData = new MetaDataInfo();
-        metaData.setBatchId(batchId);
-        metaData.setFileName(fileName);
-        metaData.setJobName(jobName);
-        metaData.setTimestamp(new Date().toString());
-        metaData.setSummaryFileURL(sasUrl);
-        metaData.setSummaryFilePath(jsonFile.getAbsolutePath());
-
-        PayloadInfo payloadInfo = new PayloadInfo();
-        payloadInfo.setTotalArchived(archived.size());
-        payloadInfo.setTotalEmailed(emailed.size());
-        payloadInfo.setTotalMobstat(mobstat.size());
-        payloadInfo.setTotalPrinted(printed.size());
-        payloadInfo.setTotalCustomersProcessed(customerSummaries.size());
-
-        ProcessedFileInfo processedFileInfo = new ProcessedFileInfo();
-        processedFileInfo.setProcessedFiles(customerSummaries);
-
-        SummaryPayload summaryPayload = new SummaryPayload();
-        summaryPayload.setHeader(headerInfo);
-        summaryPayload.setMetadata(metaData);
-        summaryPayload.setPayload(payloadInfo);
-        summaryPayload.setProcessedFileInfo(processedFileInfo);
-
-        return Map.of("summaryPayload", summaryPayload);
-    }
-
-    // helper methods: unchanged
-}
+Traceback (most recent call last):
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\knack/cli.py", line 233, in invoke
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/core/commands/__init__.py", line 663, in execute
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/core/commands/__init__.py", line 726, in _run_jobs_serially
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/core/commands/__init__.py", line 697, in _run_job
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/core/commands/__init__.py", line 333, in __call__
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/core/commands/command_operation.py", line 121, in handler
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/command_modules/profile/custom.py", line 139, in login
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/core/_profile.py", line 154, in login
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/core/auth/identity.py", line 153, in login_with_auth_code
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\azure/cli/core/auth/identity.py", line 112, in _msal_app
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\msal/application.py", line 1685, in __init__
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\msal/application.py", line 533, in __init__  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\msal/authority.py", line 120, in __init__
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\msal/authority.py", line 175, in tenant_discovery
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\msal/individual_cache.py", line 269, in wrapper
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\requests/sessions.py", line 555, in get
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\requests/sessions.py", line 542, in request  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\requests/sessions.py", line 655, in send
+  File "D:\a\_work\1\s\build_scripts\windows\artifacts\cli\Lib\site-packages\requests/adapters.py", line 504, in send
+requests.exceptions.ConnectTimeout: HTTPSConnectionPool(host='login.microsoftonline.com', port=443): Max retries exceeded with url: /organizations/v2.0/.well-known/openid-configuration (Caused by ConnectTimeoutError(<urllib3.connection.HTTPSConnection object at 0x03FC0370>, 'Connection to login.microsoftonline.com timed out. (connect timeout=None)'))
+To check existing issues, please visit: https://github.com/Azure/azure-cli/issues
+To open a new issue, please run `az feedback`
