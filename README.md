@@ -2,14 +2,18 @@ package com.nedbank.kafka.filemanage.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nedbank.kafka.filemanage.model.*;
-import org.apache.kafka.clients.consumer.*;
+import com.nedbank.kafka.filemanage.model.CustomerSummary;
+import com.nedbank.kafka.filemanage.model.ProcessedFileInfo;
+import com.nedbank.kafka.filemanage.model.SummaryFileInfo;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -46,47 +50,39 @@ public class KafkaListenerService {
         consumer.assign(Collections.singletonList(new TopicPartition(inputTopic, 0)));
         consumer.seekToBeginning(Collections.singletonList(new TopicPartition(inputTopic, 0)));
 
-        Map<String, Object> summaryResponse = new HashMap<>();
-        List<Map<String, Object>> processedBatchSummaries = new ArrayList<>();
+        Map<String, Object> response = new HashMap<>();
 
         try {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
             for (ConsumerRecord<String, String> record : records) {
-                logger.info("Processing record with key: {}, value: {}", record.key(), record.value());
-                Map<String, Object> recordSummary = handleMessage(record.value());
-                if (recordSummary != null) {
-                    processedBatchSummaries.add(recordSummary);
+                Map<String, Object> result = handleMessage(record.value());
+                if (result != null) {
+                    return result;
                 }
             }
-
-            if (!processedBatchSummaries.isEmpty()) {
-                summaryResponse.put("processedBatchSummaries", processedBatchSummaries);
-                logger.info("Processed {} messages from Kafka topic: {}", processedBatchSummaries.size(), inputTopic);
-            }
         } catch (Exception e) {
-            logger.error("Error polling or processing Kafka record: {}", e.getMessage(), e);
-            summaryResponse.put("status", "500");
-            summaryResponse.put("message", "Internal Server Error while processing messages");
+            logger.error("Error during Kafka message processing", e);
+            response.put("status", "500");
+            response.put("message", "Internal Server Error while processing messages");
         } finally {
             consumer.close();
         }
 
-        return summaryResponse;
+        return response;
     }
 
-    private Map<String, Object> handleMessage(String message) throws Exception {
+    private Map<String, Object> handleMessage(String message) {
         JsonNode root;
 
         try {
             root = objectMapper.readTree(message);
         } catch (Exception e) {
-            logger.warn("Failed to parse JSON, attempting fallback conversion.");
             message = convertPojoToJson(message);
             try {
                 root = objectMapper.readTree(message);
             } catch (Exception retryEx) {
-                logger.error("Fallback JSON parsing failed: {}", retryEx.getMessage(), retryEx);
-                return generateErrorResponse("400", "Invalid message format");
+                logger.error("Failed to parse corrected JSON: {}", retryEx.getMessage(), retryEx);
+                return generateErrorResponse("400", "Invalid JSON format");
             }
         }
 
@@ -94,90 +90,144 @@ public class KafkaListenerService {
         JsonNode batchFilesNode = root.get("batchFiles");
 
         if (batchFilesNode == null || !batchFilesNode.isArray() || batchFilesNode.isEmpty()) {
-            logger.warn("No batch files found.");
-            return generateErrorResponse("400", "No batch files in message");
+            logger.warn("No batch files found in message.");
+            return generateErrorResponse("404", "No batch files found");
         }
 
         JsonNode firstFile = batchFilesNode.get(0);
         String filePath = firstFile.get("fileLocation").asText();
         String objectId = firstFile.get("ObjectId").asText();
 
-        logger.info("Parsed batchId: {}, filePath: {}, objectId: {}", batchId, filePath, objectId);
-
         String sasUrl;
         try {
             sasUrl = blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
         } catch (Exception e) {
-            logger.error("File upload failed: {}", e.getMessage());
-            sasUrl = null; // fallback to summary file in C drive
+            logger.error("Blob upload/SAS URL generation failed", e);
+            return generateErrorResponse("453", "Error generating SAS URL");
         }
 
-        // Build summary JSON and save it
-        String summaryFileUrl = writeSummaryToLocalDrive(batchId, batchFilesNode);
+        List<CustomerSummary> customerSummaries = new ArrayList<>();
+        String fileName = "";
+        String jobName = "";
 
-        SummaryPayload summaryPayload = buildSummaryPayload(batchId, summaryFileUrl, batchFilesNode);
+        Set<String> archived = new HashSet<>();
+        Set<String> emailed = new HashSet<>();
+        Set<String> mobstat = new HashSet<>();
+        Set<String> printed = new HashSet<>();
 
-        // Send summary message to Kafka
-        String summaryMessage = objectMapper.writeValueAsString(summaryPayload);
-        kafkaTemplate.send(outputTopic, batchId, summaryMessage);
-        logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
+        for (JsonNode fileNode : batchFilesNode) {
+            String objId = fileNode.get("ObjectId").asText();
+            String location = fileNode.get("fileLocation").asText();
+            String extension = getFileExtension(location).toLowerCase();
+            String customerId = objId.split("_")[0];
 
+            if (fileNode.has("fileName")) fileName = fileNode.get("fileName").asText();
+            if (fileNode.has("jobName")) jobName = fileNode.get("jobName").asText();
+
+            String fileUrl = "file://" + location;
+
+            CustomerSummary.FileDetail detail = new CustomerSummary.FileDetail();
+            detail.setObjectId(objId);
+            detail.setFileUrl(fileUrl);
+            detail.setFileLocation(location);
+            detail.setStatus(extension.equals(".ps") ? "failed" : "OK");
+            detail.setEncrypted(isEncrypted(location, extension));
+            detail.setType(determineType(location, extension));
+
+            if (location.contains("mobstat")) mobstat.add(customerId);
+            if (location.contains("archive")) archived.add(customerId);
+            if (location.contains("email")) emailed.add(customerId);
+            if (extension.equals(".ps")) printed.add(customerId);
+
+            CustomerSummary customer = customerSummaries.stream()
+                    .filter(c -> c.getCustomerId().equals(customerId))
+                    .findFirst()
+                    .orElseGet(() -> {
+                        CustomerSummary c = new CustomerSummary();
+                        c.setCustomerId(customerId);
+                        c.setAccountNumber("");
+                        c.setFiles(new ArrayList<>());
+                        customerSummaries.add(c);
+                        return c;
+                    });
+
+            customer.getFiles().add(detail);
+        }
+
+        Map<String, Object> totals = new LinkedHashMap<>();
+        totals.put("totalCustomersProcessed", customerSummaries.size());
+        totals.put("totalArchived", archived.size());
+        totals.put("totalEmailed", emailed.size());
+        totals.put("totalMobstat", mobstat.size());
+        totals.put("totalPrint", printed.size());
+
+        // ✅ Create SummaryFileInfo object and write to C:\summary.json
+        SummaryFileInfo summary = new SummaryFileInfo();
+        summary.setFileName(fileName);
+        summary.setJobName(jobName);
+        summary.setBatchId(batchId);
+        summary.setTimestamp(new Date().toString());
+        summary.setCustomers(customerSummaries);
+        summary.setSummaryFileURL(sasUrl);
+
+        try {
+            File jsonFile = new File("C:\\summary.json");
+            objectMapper.writeValue(jsonFile, summary);
+            logger.info("✅ summary.json written to C: drive");
+        } catch (IOException e) {
+            logger.error("Failed to write summary.json to C drive", e);
+            return generateErrorResponse("601", "Failed to write summary file");
+        }
+
+        // ✅ Publish message to Kafka
+        Map<String, Object> kafkaMsg = new HashMap<>();
+        kafkaMsg.put("fileName", fileName);
+        kafkaMsg.put("jobName", jobName);
+        kafkaMsg.put("batchId", batchId);
+        kafkaMsg.put("timestamp", new Date().toString());
+        kafkaMsg.put("summaryFileURL", sasUrl);
+        kafkaTemplate.send(outputTopic, batchId, objectMapper.writeValueAsString(kafkaMsg));
+
+        logger.info("Kafka message sent to topic: {}", outputTopic);
+
+        // ✅ Return only metadata
         Map<String, Object> response = new HashMap<>();
+        response.put("fileName", fileName);
+        response.put("jobName", jobName);
         response.put("batchId", batchId);
-        response.put("summaryFileURL", summaryFileUrl);
-        response.put("processedFiles", summaryPayload.getProcessedFiles());
-        response.put("header", summaryPayload.getHeader());
-        response.put("metadata", summaryPayload.getMetadata());
-        response.put("payload", summaryPayload.getPayload());
-
+        response.put("timestamp", new Date().toString());
+        response.put("summaryFileURL", sasUrl);
         return response;
     }
 
-    private SummaryPayload buildSummaryPayload(String batchId, String summaryFileUrl, JsonNode batchFilesNode) {
-        List<ProcessedFileInfo> processedFiles = new ArrayList<>();
-
-        for (JsonNode fileNode : batchFilesNode) {
-            String objectId = fileNode.get("ObjectId").asText();
-            String fileLocation = fileNode.get("fileLocation").asText();
-            String fileUrl = "file://" + fileLocation;
-            processedFiles.add(new ProcessedFileInfo(objectId, fileUrl));
-        }
-
-        SummaryPayload summary = new SummaryPayload();
-        summary.setBatchID(batchId);
-        summary.setHeader(new HeaderInfo());
-        summary.setMetadata(new MetadataInfo());
-        summary.setPayload(new PayloadInfo());
-        summary.setProcessedFiles(processedFiles);
-        summary.setSummaryFileURL(summaryFileUrl);
-        return summary;
+    private boolean isEncrypted(String path, String ext) {
+        return (ext.equals(".pdf") || ext.equals(".html") || ext.equals(".txt"))
+                && (path.toLowerCase().contains("mobstat") || path.toLowerCase().contains("email"));
     }
 
-    private String writeSummaryToLocalDrive(String batchId, JsonNode batchFilesNode) {
-        try {
-            SummaryFileInfo summaryFileInfo = new SummaryFileInfo();
-            summaryFileInfo.setBatchId(batchId);
-            summaryFileInfo.setTimestamp(new Date().toString());
-            summaryFileInfo.setFiles(objectMapper.convertValue(batchFilesNode, List.class));
-
-            String filePath = "C:\\summary_outputs\\summary_" + batchId + ".json";
-            File outputDir = new File("C:\\summary_outputs");
-            if (!outputDir.exists()) outputDir.mkdirs();
-
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(filePath), summaryFileInfo);
-            return "file:///" + filePath.replace("\\", "/");
-        } catch (IOException e) {
-            logger.error("Error writing summary.json: {}", e.getMessage(), e);
-            return null;
+    private String determineType(String path, String ext) {
+        if (path.contains("mobstat")) return "pdf_mobstat";
+        if (path.contains("archive")) return "pdf_archive";
+        if (path.contains("email")) {
+            if (ext.equals(".html")) return "html_email";
+            if (ext.equals(".txt")) return "txt_email";
+            return "pdf_email";
         }
+        if (ext.equals(".ps")) return "ps_print";
+        return "unknown";
     }
 
-    private String extractField(JsonNode json, String fieldName) {
+    private String getFileExtension(String path) {
+        int dot = path.lastIndexOf('.');
+        return dot > 0 ? path.substring(dot) : "";
+    }
+
+    private String extractField(JsonNode node, String name) {
         try {
-            JsonNode fieldNode = json.get(fieldName);
-            return fieldNode != null ? fieldNode.asText() : null;
+            JsonNode val = node.get(name);
+            return val != null ? val.asText() : null;
         } catch (Exception e) {
-            logger.error("Failed to extract field '{}': {}", fieldName, e.getMessage(), e);
+            logger.error("Failed to extract field {}: {}", name, e.getMessage());
             return null;
         }
     }
@@ -192,10 +242,10 @@ public class KafkaListenerService {
         return "{" + raw + "}";
     }
 
-    private Map<String, Object> generateErrorResponse(String errorCode, String errorMessage) {
-        Map<String, Object> errorResponse = new HashMap<>();
-        errorResponse.put("status", errorCode);
-        errorResponse.put("message", errorMessage);
-        return errorResponse;
+    private Map<String, Object> generateErrorResponse(String status, String message) {
+        Map<String, Object> error = new HashMap<>();
+        error.put("status", status);
+        error.put("message", message);
+        return error;
     }
 }
