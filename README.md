@@ -1,33 +1,10 @@
-200
-	Success.
-
-400
-	Bad request.
-
-401
-	Unauthorized.
-
-403
-	Forbidden.
-
-404
-	Not found.
-
-420
-	Connection error (network error).
-
-453
-	Service response error.
-
-601
-	Local error.
-
- package com.nedbank.kafka.filemanage.service;
+package com.nedbank.kafka.filemanage.service;
 
 import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.BlobServiceClient;
 import com.azure.storage.blob.BlobServiceClientBuilder;
+import com.azure.storage.blob.models.BlobStorageException;
 import com.azure.storage.blob.sas.BlobSasPermission;
 import com.azure.storage.blob.sas.BlobServiceSasSignatureValues;
 import com.azure.storage.common.StorageSharedKeyCredential;
@@ -42,8 +19,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.net.SocketTimeoutException;
 import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -69,7 +45,7 @@ public class BlobStorageService {
     @Value("${vault.hashicorp.passwordNbhDev}")
     private String passwordNbhDev;
 
-    @Value("${use.proxy:false}")  // Flag to enable/disable proxy configuration
+    @Value("${use.proxy:false}")
     private boolean useProxy;
 
     public BlobStorageService(RestTemplate restTemplate, ProxySetup proxySetup) {
@@ -78,17 +54,24 @@ public class BlobStorageService {
     }
 
     public String uploadFileAndGenerateSasUrl(String fileLocation, String batchId, String objectId) {
-        try {
-            // 🔐 Replace with actual Vault logic in production
-            String accountKey = ""; // getSecretFromVault("account_key", getVaultToken());
-            String accountName = "nsndvextr01"; // getSecretFromVault("account_name", ...);
-            String containerName = "nsnakscontregecm001"; // getSecretFromVault("container_name", ...);
+        if (fileLocation == null || batchId == null || objectId == null) {
+            logger.error("Bad Request: One or more input parameters are null.");
+            throw new BlobStorageException("400 - Bad Request: Null input detected.", null, null);
+        }
 
-            // 📄 Determine file extension and blob name
+        try {
+            String accountKey = ""; // Placeholder for actual Vault secret
+            String accountName = "nsndvextr01";
+            String containerName = "nsnakscontregecm001";
+
             String extension = getFileExtension(fileLocation);
+            if (extension.isEmpty()) {
+                logger.error("Unable to determine file extension from: {}", fileLocation);
+                throw new BlobStorageException("400 - Invalid file extension.", null, null);
+            }
+
             String blobName = objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
 
-            // 📦 Set up Azure Blob client
             BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
                     .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
                     .credential(new StorageSharedKeyCredential(accountName, accountKey))
@@ -97,21 +80,24 @@ public class BlobStorageService {
             BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
             BlobClient targetBlobClient = containerClient.getBlobClient(blobName);
 
-            // 📥 Get source blob name from URL
             String sourceBlobName = fileLocation.substring(fileLocation.lastIndexOf("/") + 1);
             BlobClient sourceBlobClient = containerClient.getBlobClient(sourceBlobName);
 
-            // ⬇️⬆️ Download source and upload to target
             try (InputStream inputStream = sourceBlobClient.openInputStream()) {
                 long sourceSize = sourceBlobClient.getProperties().getBlobSize();
-                targetBlobClient.upload(inputStream, sourceSize, true); // true = overwrite
-                logger.info("✅ File uploaded successfully from '{}' to '{}'", sourceBlobName, targetBlobClient.getBlobUrl());
-            } catch (Exception e) {
-                logger.error("❌ Error transferring blob: {}", e.getMessage(), e);
-                throw new IOException("❌ Failed to transfer blob from source to target", e);
+                targetBlobClient.upload(inputStream, sourceSize, true);
+                logger.info("✅ File uploaded: '{}' -> '{}'", sourceBlobName, targetBlobClient.getBlobUrl());
+            } catch (SocketTimeoutException ste) {
+                logger.error("420 - Connection timeout: {}", ste.getMessage(), ste);
+                throw new BlobStorageException("420 - Connection timeout.", ste, null);
+            } catch (IOException ioe) {
+                logger.error("601 - Local I/O error: {}", ioe.getMessage(), ioe);
+                throw new BlobStorageException("601 - Local I/O error.", ioe, null);
+            } catch (Exception ex) {
+                logger.error("453 - Upload failed: {}", ex.getMessage(), ex);
+                throw new BlobStorageException("453 - Upload failed.", ex, null);
             }
 
-            // 🔗 Generate SAS token with 24-hour read permission
             BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
                     OffsetDateTime.now().plusHours(24),
                     new BlobSasPermission().setReadPermission(true)
@@ -119,16 +105,19 @@ public class BlobStorageService {
 
             String sasToken = targetBlobClient.generateSas(sasValues);
             String sasUrl = targetBlobClient.getBlobUrl() + "?" + sasToken;
-
-            logger.info("🔐 SAS URL (valid for 24 hours): {}", sasUrl);
+            logger.info("🔐 SAS URL generated: {}", sasUrl);
             return sasUrl;
 
-        } catch (IOException e) {
-            logger.error("❌ IO error during blob upload or SAS generation: {}", e.getMessage(), e);
-            throw new RuntimeException("❌ Error uploading to Azure Blob or generating SAS URL", e);
+        } catch (BlobStorageException e) {
+            logger.error("Blob storage error: {}", e.getMessage(), e);
+            throw e;
         } catch (Exception e) {
-            logger.error("❌ Unexpected error during blob operation: {}", e.getMessage(), e);
-            throw new RuntimeException("❌ Unexpected error in blob upload or SAS URL generation", e);
+            if (e.getMessage().contains("SSL")) {
+                logger.error("530 - SSL error: {}", e.getMessage(), e);
+                throw new BlobStorageException("530 - SSL Exception.", e, null);
+            }
+            logger.error("451 - Runtime error: {}", e.getMessage(), e);
+            throw new BlobStorageException("451 - Unexpected runtime error.", e, null);
         }
     }
 
@@ -148,9 +137,10 @@ public class BlobStorageService {
 
             JSONObject json = new JSONObject(Objects.requireNonNull(response.getBody()));
             return json.getJSONObject("auth").getString("client_token");
+
         } catch (Exception e) {
-            logger.error("Error getting Vault token: {}", e.getMessage());
-            throw new RuntimeException("❌ Failed to obtain Vault token", e);
+            logger.error("401 - Unauthorized Vault access: {}", e.getMessage());
+            throw new BlobStorageException("401 - Unauthorized Vault access.", e, null);
         }
     }
 
@@ -163,17 +153,15 @@ public class BlobStorageService {
             headers.set("x-vault-namespace", VAULT_NAMESPACE);
             headers.set("x-vault-token", token);
 
-            Map<String, String> body = new HashMap<>();
-            body.put("password", passwordNbhDev);
-
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+            HttpEntity<Map<String, String>> request = new HttpEntity<>(new HashMap<>(), headers);
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, request, String.class);
 
             JSONObject json = new JSONObject(response.getBody());
             return json.getJSONObject("data").getString(key);
+
         } catch (Exception e) {
-            logger.error("Error retrieving secret from Vault: {}", e.getMessage());
-            throw new RuntimeException("❌ Failed to retrieve secret from Vault", e);
+            logger.error("403 - Forbidden Vault access: {}", e.getMessage());
+            throw new BlobStorageException("403 - Forbidden Vault access.", e, null);
         }
     }
 
