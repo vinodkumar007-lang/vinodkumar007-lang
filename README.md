@@ -8,13 +8,16 @@ import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.File;
 import java.io.IOException;
 import java.time.Duration;
+import java.time.ZonedDateTime;
 import java.util.*;
 
 @Service
@@ -42,14 +45,13 @@ public class KafkaListenerService {
     }
 
     public Map<String, Object> processAllMessages() {
-        Consumer<String, String> consumer = consumerFactory.createConsumer();
-        consumer.assign(Collections.singletonList(new TopicPartition(inputTopic, 0)));
-        consumer.seekToBeginning(Collections.singletonList(new TopicPartition(inputTopic, 0)));
-
         Map<String, Object> summaryResponse = new HashMap<>();
         List<Map<String, Object>> processedBatchSummaries = new ArrayList<>();
 
-        try {
+        try (Consumer<String, String> consumer = consumerFactory.createConsumer()) {
+            consumer.assign(Collections.singletonList(new TopicPartition(inputTopic, 0)));
+            consumer.seekToBeginning(Collections.singletonList(new TopicPartition(inputTopic, 0)));
+
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
             for (ConsumerRecord<String, String> record : records) {
                 logger.info("Processing record with key: {}, value: {}", record.key(), record.value());
@@ -63,92 +65,67 @@ public class KafkaListenerService {
                 summaryResponse.put("processedBatchSummaries", processedBatchSummaries);
                 logger.info("Processed {} messages from Kafka topic: {}", processedBatchSummaries.size(), inputTopic);
             }
-        } catch (Exception e) {
-            logger.error("Error polling or processing Kafka record: {}", e.getMessage(), e);
-        } finally {
-            consumer.close();
-        }
 
-        return summaryResponse;
+            return summaryResponse;
+
+        } catch (org.apache.kafka.common.errors.RecordTooLargeException e) {
+            throw new ResponseStatusException(HttpStatus.valueOf(701), "Message too large for Kafka topic.", e);
+        } catch (org.apache.kafka.common.errors.SslAuthenticationException e) {
+            throw new ResponseStatusException(HttpStatus.valueOf(530), "SSL authentication failure", e);
+        } catch (org.apache.kafka.common.errors.AuthorizationException e) {
+            throw new ResponseStatusException(HttpStatus.valueOf(421), "Access denied", e);
+        } catch (Exception e) {
+            logger.error("Runtime exception in Kafka listener", e);
+            throw new ResponseStatusException(HttpStatus.valueOf(451), "Runtime error from Kafka or Camel framework", e);
+        }
     }
 
     private Map<String, Object> handleMessage(String message) throws Exception {
         JsonNode root;
-
-        System.out.println("Message check   " + message);
         try {
             root = objectMapper.readTree(message);
         } catch (Exception e) {
-            logger.warn("Failed to parse JSON, attempting to convert POJO-like message: {}", message);
+            logger.warn("Initial parse failed, attempting fallback: {}", message);
             message = convertPojoToJson(message);
-            try {
-                root = objectMapper.readTree(message);
-            } catch (Exception retryEx) {
-                logger.error("Failed to parse corrected JSON: {}", retryEx.getMessage(), retryEx);
-                return null;
-            }
+            root = objectMapper.readTree(message);
         }
 
         String batchId = extractField(root, "consumerReference");
-        JsonNode batchFilesNode = root.get("batchFiles");
+        if (batchId == null) throw new ResponseStatusException(HttpStatus.valueOf(601), "Missing batchId");
 
+        JsonNode batchFilesNode = root.get("batchFiles");
         if (batchFilesNode == null || !batchFilesNode.isArray() || batchFilesNode.isEmpty()) {
-            logger.warn("No batch files found in the message.");
-            return null;
+            throw new ResponseStatusException(HttpStatus.valueOf(601), "No batch files found.");
         }
 
-        JsonNode firstFile = batchFilesNode.get(0);
-        String filePath = firstFile.get("fileLocation").asText();
-        String objectId = firstFile.get("ObjectId").asText();
-
-        logger.info("Parsed batchId: {}, filePath: {}, objectId: {}", batchId, filePath, objectId);
-
-        // Simulate Blob Storage URL
         String blobUrl = "file://./output";
 
-        // Generate summary with new format
-        Map<String, Object> summaryResponse = buildSummaryPayload(batchId, blobUrl, batchFilesNode);
-
+        Map<String, Object> summaryResponse = buildSummaryPayload(root, batchId, blobUrl, batchFilesNode);
         String summaryMessage = objectMapper.writeValueAsString(summaryResponse);
-        assert batchId != null;
+
         kafkaTemplate.send(outputTopic, batchId, summaryMessage);
         logger.info("Summary published to Kafka topic: {} with message: {}", outputTopic, summaryMessage);
 
         return summaryResponse;
     }
 
-    private Map<String, Object> buildSummaryPayload(String batchId, String blobUrl, JsonNode batchFilesNode) {
+    private Map<String, Object> buildSummaryPayload(JsonNode root, String batchId, String blobUrl, JsonNode batchFilesNode) {
         List<ProcessedFileInfo> processedFiles = new ArrayList<>();
         List<CustomerSummary> customerSummaries = new ArrayList<>();
 
-        Set<String> archivedCustomers = new HashSet<>();
-        Set<String> emailedCustomers = new HashSet<>();
-        Set<String> mobstatCustomers = new HashSet<>();
-        Set<String> printCustomers = new HashSet<>();
+        Set<String> archived = new HashSet<>();
+        Set<String> emailed = new HashSet<>();
+        Set<String> mobstat = new HashSet<>();
+        Set<String> print = new HashSet<>();
 
-        String fileName = "";
-        String jobName = "";
-        String tenantCode = "ZANBL"; // Can be extracted dynamically if present
-        String channelId = "100";
-        String sourceSystem = "CARD";
-        String product = "CASA";
-        String audienceId = UUID.randomUUID().toString();
-        String uniqueConsumerRef = UUID.randomUUID().toString();
-        String uniqueECPBatchRef = UUID.randomUUID().toString();
-        String repositoryId = "Legacy";
-        String runPriority = "High";
-        String eventType = "Completion";
-        String eventId = "E12345";
-        String restartKey = "Key_" + batchId;
+        String fileName = extractField(batchFilesNode.get(0), "fileName");
+        String jobName = extractField(batchFilesNode.get(0), "jobName");
 
         for (JsonNode fileNode : batchFilesNode) {
-            String objectId = fileNode.get("ObjectId").asText();
-            String fileLocation = fileNode.get("fileLocation").asText();
+            String objectId = extractField(fileNode, "ObjectId");
+            String fileLocation = extractField(fileNode, "fileLocation");
             String extension = getFileExtension(fileLocation).toLowerCase();
             String customerId = objectId.split("_")[0];
-
-            if (fileNode.has("fileName")) fileName = fileNode.get("fileName").asText();
-            if (fileNode.has("jobName")) jobName = fileNode.get("jobName").asText();
 
             String dynamicFileUrl = "file://" + fileLocation;
 
@@ -160,125 +137,129 @@ public class KafkaListenerService {
             fileDetail.setEncrypted(isEncrypted(fileLocation, extension));
             fileDetail.setType(determineType(fileLocation, extension));
 
-            if (fileLocation.contains("mobstat")) mobstatCustomers.add(customerId);
-            if (fileLocation.contains("archive")) archivedCustomers.add(customerId);
-            if (fileLocation.contains("email")) emailedCustomers.add(customerId);
-            if (extension.equals(".ps")) printCustomers.add(customerId);
+            if (fileLocation.contains("archive")) archived.add(customerId);
+            if (fileLocation.contains("mobstat")) mobstat.add(customerId);
+            if (fileLocation.contains("email")) emailed.add(customerId);
+            if (extension.equals(".ps")) print.add(customerId);
 
-            processedFiles.add(new ProcessedFileInfo(customerId, dynamicFileUrl));
+            processedFiles.add(new ProcessedFileInfo(objectId, dynamicFileUrl));
 
             CustomerSummary customer = customerSummaries.stream()
                     .filter(c -> c.getCustomerId().equals(customerId))
                     .findFirst()
                     .orElseGet(() -> {
-                        CustomerSummary newCustomer = new CustomerSummary();
-                        newCustomer.setCustomerId(customerId);
-                        newCustomer.setAccountNumber("");
-                        newCustomer.setFiles(new ArrayList<>());
-                        customerSummaries.add(newCustomer);
-                        return newCustomer;
+                        CustomerSummary c = new CustomerSummary();
+                        c.setCustomerId(customerId);
+                        c.setAccountNumber("");
+                        c.setFiles(new ArrayList<>());
+                        customerSummaries.add(c);
+                        return c;
                     });
 
             customer.getFiles().add(fileDetail);
         }
 
-        // Create full detailed summary for file output
-        Map<String, Object> fullSummary = new LinkedHashMap<>();
-        fullSummary.put("fileName", fileName);
-        fullSummary.put("jobName", jobName);
-        fullSummary.put("batchId", batchId);
-        fullSummary.put("timestamp", new Date().toString());
-        fullSummary.put("customers", customerSummaries);
-
         Map<String, Object> totals = new LinkedHashMap<>();
         totals.put("totalCustomersProcessed", customerSummaries.size());
-        totals.put("totalArchived", archivedCustomers.size());
-        totals.put("totalEmailed", emailedCustomers.size());
-        totals.put("totalMobstat", mobstatCustomers.size());
-        totals.put("totalPrint", printCustomers.size());
+        totals.put("totalArchived", archived.size());
+        totals.put("totalEmailed", emailed.size());
+        totals.put("totalMobstat", mobstat.size());
+        totals.put("totalPrint", print.size());
 
-        fullSummary.put("totals", totals);
+        // Golden thread data
+        HeaderInfo header = new HeaderInfo();
+        header.setTenantCode(extractField(root, "tenantCode"));
+        header.setChannelID(extractField(root, "channelID"));
+        header.setAudienceID(extractField(root, "audienceID"));
+        header.setTimestamp(ZonedDateTime.now().toString());
+        header.setSourceSystem(extractField(root, "sourceSystem"));
+        header.setProduct(extractField(root, "product"));
+        header.setJobName(jobName);
 
-        // Save to file locally
-        String summaryFileUrl = null;
-        try {
-            String userHome = System.getProperty("user.home");
-            File outputDir = new File(userHome + File.separator + "summary_outputs");
-            if (!outputDir.exists()) outputDir.mkdirs();
+        MetadataInfo metadata = new MetadataInfo();
+        metadata.setTotalFilesProcessed(batchFilesNode.size());
+        metadata.setProcessingStatus("Success");
+        metadata.setEventOutcomeCode("Success");
+        metadata.setEventOutcomeDescription("All customer PDFs processed successfully");
 
-            String filePath = outputDir + File.separator + "summary_" + batchId + ".json";
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(filePath), fullSummary);
-            logger.info("Summary JSON written to local file: {}", filePath);
+        PayloadInfo payload = new PayloadInfo();
+        payload.setUniqueConsumerRef(extractField(root, "consumerReference"));
+        payload.setUniqueECPBatchRef(extractField(root, "ecpBatchId"));
+        payload.setFilenetObjectID(Arrays.asList(UUID.randomUUID().toString()));
+        payload.setRepositoryID("Legacy");
+        payload.setRunPriority("High");
+        payload.setEventID("E12345");
+        payload.setEventType("Completion");
+        payload.setRestartKey("Key123");
 
-            // Open in default viewer (Windows only)
-            if (System.getProperty("os.name").toLowerCase().contains("win")) {
-                Runtime.getRuntime().exec(new String[]{"cmd", "/c", "start", "", filePath});
-            }
+        String summaryFilePath = writeSummaryToFile(batchId, fileName, jobName, customerSummaries, totals);
 
-            summaryFileUrl = "file://" + filePath.replace("\\", "/");
-
-        } catch (IOException e) {
-            logger.error("Failed to write local summary JSON file", e);
-        }
-
-        // Final summary to return in API/Kafka
         SummaryPayload summary = new SummaryPayload();
         summary.setBatchID(batchId);
-        summary.setHeader(new HeaderInfo(tenantCode, channelId, audienceId, new Date(), sourceSystem, product, jobName));
-        summary.setMetadata(new MetadataInfo(
-                customerSummaries.size(), // total files/customers processed
-                "Success",
-                "Success",
-                "All customer PDFs processed successfully"
-        ));
-        summary.setPayload(new PayloadInfo(
-                uniqueConsumerRef,
-                uniqueECPBatchRef,
-                List.of(uniqueECPBatchRef), // FilenetObjectID
-                repositoryId,
-                runPriority,
-                eventId,
-                eventType,
-                restartKey
-        ));
+        summary.setHeader(header);
+        summary.setMetadata(metadata);
+        summary.setPayload(payload);
         summary.setProcessedFiles(processedFiles);
-        summary.setSummaryFileURL(summaryFileUrl);
-        summary.setTimestamp(new Date());
+        summary.setSummaryFileURL(summaryFilePath);
+        summary.setTimestamp(ZonedDateTime.now().toString());
 
         return objectMapper.convertValue(summary, Map.class);
     }
 
+    private String writeSummaryToFile(String batchId, String fileName, String jobName,
+                                      List<CustomerSummary> customers, Map<String, Object> totals) {
+        try {
+            String userHome = System.getProperty("user.home");
+            File dir = new File(userHome + File.separator + "summary_outputs");
+            if (!dir.exists()) dir.mkdirs();
 
-    private boolean isEncrypted(String fileLocation, String extension) {
-        return (extension.equals(".pdf") || extension.equals(".html") || extension.equals(".txt")) &&
-                (fileLocation.toLowerCase().contains("mobstat") || fileLocation.toLowerCase().contains("email"));
+            String path = dir + File.separator + "summary_" + batchId + ".json";
+            Map<String, Object> summaryJson = new LinkedHashMap<>();
+            summaryJson.put("fileName", fileName);
+            summaryJson.put("jobName", jobName);
+            summaryJson.put("batchId", batchId);
+            summaryJson.put("timestamp", new Date().toString());
+            summaryJson.put("customers", customers);
+            summaryJson.put("totals", totals);
+
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(new File(path), summaryJson);
+            logger.info("Summary JSON written to: {}", path);
+
+            if (System.getProperty("os.name").toLowerCase().contains("win")) {
+                Runtime.getRuntime().exec(new String[]{"cmd", "/c", "start", "", path});
+            }
+
+            return "file://" + path.replace("\\", "/");
+        } catch (IOException e) {
+            logger.error("Failed to write summary JSON", e);
+            return null;
+        }
     }
 
-    private String determineType(String fileLocation, String extension) {
-        if (fileLocation.contains("mobstat")) return "pdf_mobstat";
-        if (fileLocation.contains("archive")) return "pdf_archive";
-        if (fileLocation.contains("email")) {
-            if (extension.equals(".html")) return "html_email";
-            if (extension.equals(".txt")) return "txt_email";
+    private boolean isEncrypted(String location, String ext) {
+        return (ext.equals(".pdf") || ext.equals(".html") || ext.equals(".txt"))
+                && (location.toLowerCase().contains("mobstat") || location.toLowerCase().contains("email"));
+    }
+
+    private String determineType(String location, String ext) {
+        if (location.contains("mobstat")) return "pdf_mobstat";
+        if (location.contains("archive")) return "pdf_archive";
+        if (location.contains("email")) {
+            if (ext.equals(".html")) return "html_email";
+            if (ext.equals(".txt")) return "txt_email";
             return "pdf_email";
         }
-        if (extension.equals(".ps")) return "ps_print";
+        if (ext.equals(".ps")) return "ps_print";
         return "unknown";
     }
 
-    private String getFileExtension(String fileLocation) {
-        int lastDotIndex = fileLocation.lastIndexOf('.');
-        return lastDotIndex > 0 ? fileLocation.substring(lastDotIndex) : "";
+    private String getFileExtension(String file) {
+        int lastDot = file.lastIndexOf('.');
+        return lastDot > 0 ? file.substring(lastDot) : "";
     }
 
-    private String extractField(JsonNode json, String fieldName) {
-        try {
-            JsonNode fieldNode = json.get(fieldName);
-            return fieldNode != null ? fieldNode.asText() : null;
-        } catch (Exception e) {
-            logger.error("Failed to extract field '{}': {}", fieldName, e.getMessage(), e);
-            throw new RuntimeException("Failed to extract " + fieldName, e);
-        }
+    private String extractField(JsonNode node, String field) {
+        return (node.has(field) && !node.get(field).isNull()) ? node.get(field).asText() : null;
     }
 
     private String convertPojoToJson(String raw) {
@@ -291,24 +272,5 @@ public class KafkaListenerService {
         raw = raw.replaceAll("objectId=\\{([^}]+)}", "\"objectId\": \"$1\"");
         raw = raw.replace("],", "], ");
         return "{" + raw + "}";
-    }
-
-    public PublishEvent parseToPublishEvent(String raw) {
-        try {
-            if (raw.startsWith("PublishEvent(")) {
-                raw = raw.substring("PublishEvent(".length(), raw.length() - 1);
-            }
-            raw = raw.replaceAll("BatchFile\\(", "\\{").replaceAll("\\)", "}");
-            raw = raw.replaceAll("objectId=\\{([^}]+)}", "objectId:\"$1\"");
-            raw = raw.replaceAll("(\\w+)=([^,\\[{]+)", "\"$1\":\"$2\"");
-            raw = raw.replace("\"batchFiles\":\"[", "\"batchFiles\":[");
-            raw = raw.replace("]\"", "]");
-            String json = "{" + raw + "}";
-            ObjectMapper mapper = new ObjectMapper();
-            mapper.findAndRegisterModules();
-            return mapper.readValue(json, PublishEvent.class);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to parse to PublishEvent", e);
-        }
     }
 }
