@@ -1,7 +1,6 @@
-C:\Users\CC437236\Docker image creation\file-manager>docker build -t file-manager-app .
-[+] Building 0.3s (1/1) FINISHED                                                                   docker:desktop-linux
- => [internal] load build definition from Dockerfile                                                               0.1s
- => => transferring dockerfile: 2B                                                                                 0.0s
-ERROR: failed to solve: failed to read dockerfile: open Dockerfile: no such file or directory
-
-C:\Users\CC437236\Docker image creation\file-manager>
+C:\Users\CC437236\Docker image creation\file-manager>docker images -a
+REPOSITORY         TAG           IMAGE ID       CREATED          SIZE
+file-manager-app   latest        7a090afeee52   52 seconds ago   408MB
+<none>             <none>        8a4d3e4226b1   13 days ago      485MB
+<none>             <none>        21369e430514   13 days ago      408MB
+openjdk            17-jdk-slim   37cb44321d04   3 years ago      408MB
