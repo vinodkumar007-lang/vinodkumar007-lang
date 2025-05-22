@@ -168,6 +168,9 @@ public class KafkaListenerService {
             return generateErrorResponse("601", "Failed to write summary file");
         }
 
+        // Get the path of the summary.json file to include in the response
+        String summaryFilePath = jsonFile.getAbsolutePath();
+
         Map<String, Object> kafkaMsg = new HashMap<>();
         kafkaMsg.put("fileName", fileName);
         kafkaMsg.put("jobName", jobName);
@@ -226,12 +229,17 @@ public class KafkaListenerService {
         summaryPayload.setPayload(payloadInfo);
         summaryPayload.setProcessedFileInfo(processedFileInfo);
 
-        return Map.of("summaryPayload", summaryPayload);
+        // Return the full enriched response with the file path
+        Map<String, Object> result = new HashMap<>();
+        result.put("status", "success");
+        result.put("message", "Batch processed successfully");
+        result.put("summaryFileUrl", summaryFilePath); // Returning the path to the summary.json
+
+        return result;
     }
 
     private boolean isEncrypted(String path, String ext) {
-        return (ext.equals(".pdf") || ext.equals(".html") || ext.equals(".txt"))
-                && (path.toLowerCase().contains("mobstat") || path.toLowerCase().contains("email"));
+        return ext.equals(".pdf") && path.toLowerCase().contains("email");
     }
 
     private String determineType(String path, String ext) {
