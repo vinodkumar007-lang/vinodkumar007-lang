@@ -251,6 +251,7 @@ public class KafkaListenerService {
         summaryPayload.setPayload(payloadInfo);
         summaryPayload.setMetaData(metaDataInfo);
 
+        Map<String, Object> response = null;
         response.put("response", summaryPayload);
 
         return response;
@@ -289,3 +290,15 @@ public class KafkaListenerService {
         return "unknown";
     }
 }
+
+java.lang.NullPointerException: Cannot invoke "java.util.Map.put(Object, Object)" because "response" is null
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.handleMessage(KafkaListenerService.java:255) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.processAllMessages(KafkaListenerService.java:62) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.controller.FileProcessingController.triggerFileProcessing(FileProcessingController.java:31) ~[classes/:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.m
