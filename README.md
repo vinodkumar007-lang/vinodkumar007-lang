@@ -223,8 +223,16 @@ public class KafkaListenerService {
         summaryPayload.setPayload(payloadInfo);
         summaryPayload.setMetaData(metaDataInfo);
         summaryPayload.setSummaryFileURL(jsonFile.getAbsolutePath());
+        
+        // Prepare API response to be sent via Kafka
         Map<String, Object> response = new HashMap<>();
-        response.put("response", summaryPayload);
+        response.put("message", "Batch processed successfully");
+        response.put("status", "success");
+        response.put("summaryPayload", summaryPayload);
+        
+        // Send API response to Kafka
+        kafkaTemplate.send(outputTopic, batchId, objectMapper.writeValueAsString(response));
+
         return response;
     }
 
@@ -261,37 +269,5 @@ public class KafkaListenerService {
     private String getFileExtension(String path) {
         int index = path.lastIndexOf('.');
         return (index >= 0) ? path.substring(index).toLowerCase() : "";
-    }
-}
-{
-    "message": "Batch processed successfully",
-    "status": "success",
-    "summaryPayload": {
-        "batchID": null,
-        "header": {
-            "tenantCode": null,
-            "channelID": null,
-            "audienceID": null,
-            "timestamp": "Thu May 22 05:44:21 SAST 2025",
-            "sourceSystem": "DEBTMAN",
-            "product": null,
-            "jobName": ""
-        },
-        "metadata": {
-            "totalFilesProcessed": 0,
-            "processingStatus": null,
-            "eventOutcomeCode": null,
-            "eventOutcomeDescription": null
-        },
-        "payload": {
-            "uniqueConsumerRef": null,
-            "uniqueECPBatchRef": null,
-            "runPriority": null,
-            "eventID": null,
-            "eventType": null,
-            "restartKey": null
-        },
-        "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-        "timestamp": null
     }
 }
