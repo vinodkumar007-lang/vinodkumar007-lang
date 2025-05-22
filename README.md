@@ -1,7 +1,13 @@
 public Map<String, Object> processAllMessages() {
     Consumer<String, String> consumer = consumerFactory.createConsumer();
     try (consumer) {
-        consumer.subscribe(Collections.singletonList(inputTopic));
+        List<TopicPartition> partitions = getPartitionsForTopic(inputTopic, consumer);
+        consumer.assign(partitions);
+
+        // Seek to the end of each assigned partition (ignore old messages)
+        consumer.seekToEnd(partitions);
+
+        // Poll after seeking
         ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(10));
         if (records.isEmpty()) {
             return generateErrorResponse("204", "No content processed from Kafka");
@@ -14,4 +20,12 @@ public Map<String, Object> processAllMessages() {
         logger.error("Error during Kafka message processing", e);
         return generateErrorResponse("500", "Internal Server Error while processing messages");
     }
+}
+
+private List<TopicPartition> getPartitionsForTopic(String topic, Consumer<String, String> consumer) {
+    List<TopicPartition> partitions = new ArrayList<>();
+    consumer.partitionsFor(topic).forEach(info -> 
+        partitions.add(new TopicPartition(topic, info.partition()))
+    );
+    return partitions;
 }
