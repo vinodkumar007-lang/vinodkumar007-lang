@@ -1,8 +1,3 @@
-// ✅ Include all structured payloads + summary.json file path
-Map<String, Object> result = new HashMap<>();
-result.put("status", "success");
-result.put("message", "Batch processed successfully");
-result.put("summaryFileUrl", summaryFilePath); // local file system path to summary.json
-result.put("summaryPayload", summaryPayload);  // all enriched info in structured form
-
-return result;
+PS C:\Users\CC437236> az login
+ERROR: HTTPSConnectionPool(host='login.microsoftonline.com', port=443): Max retries exceeded with url: /organizations/v2.0/.well-known/openid-configuration (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self signed certificate in certificate chain (_ssl.c:997)')))
+Certificate verification failed. This typically happens when using Azure CLI behind a proxy that intercepts traffic with a self-signed certificate. Please add this certificate to the trusted CA bundle. More info: https://docs.microsoft.com/cli/azure/use-cli-effectively#work-behind-a-proxy.
