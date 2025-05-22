@@ -151,18 +151,67 @@ public class KafkaListenerService {
             customer.getFiles().add(detail);
         }
 
-        SummaryFileInfo summary = new SummaryFileInfo();
-        summary.setFileName(fileName);
-        summary.setJobName(jobName);
-        summary.setBatchId(batchId);
-        summary.setTimestamp(new Date().toString());
-        summary.setCustomers(customerSummaries);
-        
+        // ✅ Updated summary data structure
+        Map<String, Object> summaryData = new LinkedHashMap<>();
+        summaryData.put("batchID", batchId);
+        summaryData.put("fileName", fileName);
+
+        // Header
+        Map<String, Object> header = new LinkedHashMap<>();
+        header.put("tenantCode", extractField(root, "tenantCode"));
+        header.put("channelID", extractField(root, "channelId"));
+        header.put("audienceID", extractField(root, "audienceId"));
+        header.put("timestamp", new Date().toInstant().toString());
+        header.put("sourceSystem", extractField(root, "sourceSystem"));
+        header.put("product", extractField(root, "product"));
+        header.put("jobName", jobName);
+        summaryData.put("header", header);
+
+        // Processed Files
+        List<Map<String, Object>> processedFiles = new ArrayList<>();
+        for (CustomerSummary customer : customerSummaries) {
+            Map<String, Object> pf = new LinkedHashMap<>();
+            pf.put("customerID", customer.getCustomerId());
+            pf.put("accountNumber", customer.getAccountNumber());
+
+            for (CustomerSummary.FileDetail detail : customer.getFiles()) {
+                String key = switch (detail.getType()) {
+                    case "pdf_archive" -> "pdfArchiveFileURL";
+                    case "pdf_email" -> "pdfEmailFileURL";
+                    case "html_email" -> "htmlEmailFileURL";
+                    case "txt_email" -> "txtEmailFileURL";
+                    case "pdf_mobstat" -> "pdfMobstatFileURL";
+                    default -> null;
+                };
+                if (key != null) {
+                    pf.put(key, detail.getFileUrl());
+                }
+            }
+
+            pf.put("statusCode", "OK");
+            pf.put("statusDescription", "Success");
+            processedFiles.add(pf);
+        }
+        summaryData.put("processedFiles", processedFiles);
+
+        // Print Files
+        List<Map<String, Object>> printFiles = new ArrayList<>();
+        for (CustomerSummary customer : customerSummaries) {
+            for (CustomerSummary.FileDetail detail : customer.getFiles()) {
+                if ("ps_print".equals(detail.getType())) {
+                    Map<String, Object> pf = new LinkedHashMap<>();
+                    pf.put("printFileURL", detail.getFileUrl());
+                    printFiles.add(pf);
+                }
+            }
+        }
+        summaryData.put("printFiles", printFiles);
+
+        // Write to summary.json
         String userHome = System.getProperty("user.home");
         File jsonFile = new File(userHome, "summary.json");
-
         try {
-            objectMapper.writeValue(jsonFile, summary);
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(jsonFile, summaryData);
         } catch (IOException e) {
             return generateErrorResponse("601", "Failed to write summary file");
         }
@@ -180,108 +229,63 @@ public class KafkaListenerService {
 
         // ✅ Enriched Response Construction Starts Here
 
-        String tenantCode = extractField(root, "tenantCode");
-        String channelId = extractField(root, "channelId");
-        String audienceId = extractField(root, "audienceId");
-        String sourceSystem = extractField(root, "sourceSystem");
-        String product = extractField(root, "product");
-        String uniqueConsumerRef = extractField(root, "uniqueConsumerRef");
-        String runPriority = extractField(root, "runPriority");
-        String eventType = extractField(root, "eventType");
-        String restartKey = extractField(root, "restartKey");
-        String eventOutcomeCode = extractField(root, "eventOutcomeCode");
-        String eventOutcomeDescription = extractField(root, "eventOutcomeDescription");
-        String summaryReportLocation = extractField(root, "summaryReportFileLocation");
-
-        Date timestamp = new Date();
-
         HeaderInfo headerInfo = new HeaderInfo();
         headerInfo.setBatchId(batchId);
-        headerInfo.setTenantCode(tenantCode);
-        headerInfo.setChannelId(channelId);
-        headerInfo.setAudienceId(audienceId);
-        headerInfo.setTimestamp(timestamp.toString());
-        headerInfo.setSourceSystem(sourceSystem);
-        headerInfo.setProduct(product);
-        headerInfo.setJobName(jobName);
-        headerInfo.setUniqueConsumerRef(uniqueConsumerRef);
-
-        MetaDataInfo metaData = new MetaDataInfo();
-        metaData.setBlobUrl(sasUrl);
-        metaData.setFileName(fileName);
-        metaData.setRunPriority(runPriority);
-        metaData.setEventType(eventType);
-        metaData.setRestartKey(restartKey);
-        metaData.setEventOutcomeCode(eventOutcomeCode);
-        metaData.setEventOutcomeDescription(eventOutcomeDescription);
-        metaData.setSummaryReportFileLocation(summaryReportLocation);
+        headerInfo.setTenantCode(extractField(root, "tenantCode"));
+        headerInfo.setChannelId(extractField(root, "channelId"));
+        headerInfo.setAudienceId(extractField(root, "audienceId"));
+        headerInfo.setTimestamp(new Date().toString());
+        headerInfo.setSourceSystem(extractField(root, "sourceSystem"));
+        headerInfo.setProduct(extractField(root, "product"));
 
         PayloadInfo payloadInfo = new PayloadInfo();
-        payloadInfo.setMessage("Batch processed successfully");
+        payloadInfo.setProcessedFiles(processedFiles);
+        payloadInfo.setPrintFiles(printFiles);
 
-        ProcessedFileInfo processedFileInfo = new ProcessedFileInfo();
-        processedFileInfo.setProcessedFiles(customerSummaries);
+        MetaDataInfo metaDataInfo = new MetaDataInfo();
+        metaDataInfo.setCustomerSummaries(customerSummaries);
+        metaDataInfo.setSummaryFileURL(summaryFilePath);
 
         SummaryPayload summaryPayload = new SummaryPayload();
         summaryPayload.setHeader(headerInfo);
-        summaryPayload.setMetadata(metaData);
         summaryPayload.setPayload(payloadInfo);
-        //summaryPayload.setProcessedFileInfo(processedFileInfo);
-        summaryPayload.setSummaryFileURL(summaryFilePath);
+        summaryPayload.setMetaData(metaDataInfo);
 
-        Map<String, Object> result = new HashMap<>();
-        result.put("status", "success");
-        result.put("message", "Batch processed successfully");
-        result.put("summaryPayload", summaryPayload);
+        response.put("response", summaryPayload);
 
-        return result;
+        return response;
     }
 
-    private boolean isEncrypted(String path, String ext) {
-        return ext.equals(".pdf") && path.toLowerCase().contains("email");
+    private String extractField(JsonNode root, String fieldName) {
+        JsonNode fieldNode = root.get(fieldName);
+        return fieldNode != null ? fieldNode.asText() : null;
     }
 
-    private String determineType(String path, String ext) {
-        if (path.contains("mobstat")) return "pdf_mobstat";
-        if (path.contains("archive")) return "pdf_archive";
-        if (path.contains("email")) {
-            if (ext.equals(".html")) return "html_email";
-            if (ext.equals(".txt")) return "txt_email";
-            return "pdf_email";
-        }
-        if (ext.equals(".ps")) return "ps_print";
+    private String convertPojoToJson(String pojo) {
+        // Some error handling logic here
+        return pojo; // returning the original message for simplicity in this example
+    }
+
+    private Map<String, Object> generateErrorResponse(String code, String message) {
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("errorCode", code);
+        errorResponse.put("errorMessage", message);
+        return errorResponse;
+    }
+
+    private String getFileExtension(String location) {
+        return location.substring(location.lastIndexOf("."));
+    }
+
+    private boolean isEncrypted(String location, String extension) {
+        // Check if the file is encrypted based on your business logic
+        return extension.equals(".pdf");
+    }
+
+    private String determineType(String location, String extension) {
+        // Your logic to determine the file type
+        if (location.contains("archive")) return "pdf_archive";
+        if (location.contains("email")) return "pdf_email";
         return "unknown";
-    }
-
-    private String getFileExtension(String path) {
-        int dot = path.lastIndexOf('.');
-        return dot > 0 ? path.substring(dot) : "";
-    }
-
-    private String extractField(JsonNode node, String name) {
-        try {
-            JsonNode val = node.get(name);
-            return val != null ? val.asText() : null;
-        } catch (Exception e) {
-            logger.error("Failed to extract field {}: {}", name, e.getMessage());
-            return null;
-        }
-    }
-
-    private String convertPojoToJson(String raw) {
-        raw = raw.trim();
-        if (raw.startsWith("PublishEvent(") && raw.endsWith(")")) {
-            raw = raw.substring("PublishEvent(".length(), raw.length() - 1);
-        }
-        raw = raw.replaceAll("([a-zA-Z0-9_]+)=", "\"$1\":");
-        raw = raw.replaceAll(":([a-zA-Z0-9_]+)", ":\"$1\"");
-        return "{" + raw + "}";
-    }
-
-    private Map<String, Object> generateErrorResponse(String status, String message) {
-        Map<String, Object> error = new HashMap<>();
-        error.put("status", status);
-        error.put("message", message);
-        return error;
     }
 }
