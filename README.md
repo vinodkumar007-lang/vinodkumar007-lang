@@ -1,36 +1,31 @@
-{
-    "message": "Batch processed successfully",
-    "status": "success",
-    "summaryPayload": {
-        "batchID": null,
-        "header": {
-            "tenantCode": null,
-            "channelID": null,
-            "audienceID": null,
-            "timestamp": "Fri May 23 12:28:59 SAST 2025",
-            "sourceSystem": null,
-            "product": null,
-            "jobName": "",
-            "batchId": ""
-        },
-        "metadata": {
-            "totalFilesProcessed": 0,
-            "processingStatus": null,
-            "eventOutcomeCode": null,
-            "eventOutcomeDescription": null,
-            "customerSummaries": []
-        },
-        "payload": {
-            "uniqueConsumerRef": null,
-            "uniqueECPBatchRef": null,
-            "runPriority": null,
-            "eventID": null,
-            "eventType": null,
-            "restartKey": null,
-            "processedFiles": null,
-            "printFiles": []
-        },
-        "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-        "timestamp": null
+Consumer<String, String> consumer = consumerFactory.createConsumer();
+try {
+    List<TopicPartition> partitions = consumer.partitionsFor(inputTopic).stream()
+            .map(info -> new TopicPartition(info.topic(), info.partition()))
+            .toList();
+
+    consumer.assign(partitions);
+    consumer.poll(Duration.ofMillis(100));
+    consumer.seekToEnd(partitions);  // <-- Changed here
+
+    List<String> allMessages = new ArrayList<>();
+    int emptyPollCount = 0;
+
+    while (emptyPollCount < 3) {
+        ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+        if (records.isEmpty()) {
+            emptyPollCount++;
+        } else {
+            emptyPollCount = 0;
+            for (ConsumerRecord<String, String> record : records) {
+                allMessages.add(record.value());
+            }
+        }
     }
-}
+
+    if (allMessages.isEmpty()) {
+        return generateErrorResponse("204", "No content processed from Kafka");
+    }
+
+    SummaryPayload summaryPayload = processMessages(allMessages);
+    // ... rest of your code
