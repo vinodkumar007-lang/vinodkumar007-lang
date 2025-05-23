@@ -40,7 +40,7 @@ public class KafkaListenerService {
     private String outputTopic;
 
     @Value("${azure.blob.storage.account}")
-    private String azureBlobStorageAccount; // For blob storage account URL
+    private String azureBlobStorageAccount;
 
     public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
                                 BlobStorageService blobStorageService,
@@ -53,24 +53,23 @@ public class KafkaListenerService {
     public Map<String, Object> processAllMessages() {
         Consumer<String, String> consumer = consumerFactory.createConsumer();
         try {
-            // Get all partitions of the topic
             List<TopicPartition> partitions = consumer.partitionsFor(inputTopic).stream()
                     .map(info -> new TopicPartition(info.topic(), info.partition()))
                     .toList();
 
             consumer.assign(partitions);
-            consumer.poll(Duration.ofMillis(100)); // Ensure assignment
-            consumer.seekToBeginning(partitions);  // Start from beginning
+            consumer.poll(Duration.ofMillis(100));
+            consumer.seekToBeginning(partitions);
 
             List<String> allMessages = new ArrayList<>();
             int emptyPollCount = 0;
 
-            while (emptyPollCount < 3) {  // Allow a few empty polls to ensure end of messages
+            while (emptyPollCount < 3) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
                 if (records.isEmpty()) {
                     emptyPollCount++;
                 } else {
-                    emptyPollCount = 0; // Reset if we get data
+                    emptyPollCount = 0;
                     for (ConsumerRecord<String, String> record : records) {
                         allMessages.add(record.value());
                     }
@@ -81,13 +80,10 @@ public class KafkaListenerService {
                 return generateErrorResponse("204", "No content processed from Kafka");
             }
 
-            // Process all messages in bulk
             for (String msg : allMessages) {
                 Map<String, Object> result = handleMessage(msg);
-                // Optionally, collect or merge results here if needed
             }
 
-            // Just return the last processed message's result or customize
             return Map.of("200", "success", "processedMessages", allMessages.size());
 
         } catch (Exception e) {
@@ -97,7 +93,7 @@ public class KafkaListenerService {
             consumer.close();
         }
     }
-    
+
     private Map<String, Object> handleMessage(String message) throws JsonProcessingException {
         logger.info("Received kafka response--" + message);
         JsonNode root;
@@ -177,7 +173,6 @@ public class KafkaListenerService {
             customer.getFiles().add(detail);
         }
 
-        // Create the response for Kafka
         List<Map<String, Object>> processedFiles = new ArrayList<>();
         for (CustomerSummary customer : customerSummaries) {
             Map<String, Object> pf = new HashMap<>();
@@ -190,128 +185,3 @@ public class KafkaListenerService {
                     case "pdf_email" -> "pdfEmailFileURL";
                     case "html_email" -> "htmlEmailFileURL";
                     case "txt_email" -> "txtEmailFileURL";
-                    case "pdf_mobstat" -> "pdfMobstatFileURL";
-                    default -> null;
-                };
-                if (key != null) {
-                    pf.put(key, detail.getFileUrl());
-                }
-            }
-
-            pf.put("statusCode", "OK");
-            pf.put("statusDescription", "Success");
-            processedFiles.add(pf);
-        }
-
-        // Create the print files list
-        List<Map<String, Object>> printFiles = new ArrayList<>();
-        for (CustomerSummary customer : customerSummaries) {
-            for (CustomerSummary.FileDetail detail : customer.getFiles()) {
-                if ("ps_print".equals(detail.getType())) {
-                    Map<String, Object> pf = new HashMap<>();
-                    pf.put("printFileURL", "https://" + azureBlobStorageAccount + "/pdfs/mobstat/" + detail.getObjectId());
-                    printFiles.add(pf);
-                }
-            }
-        }
-
-        // Write the summary.json file
-        String userHome = System.getProperty("user.home");
-        File jsonFile = new File(userHome, "summary.json");
-        try {
-            Map<String, Object> summaryData = new HashMap<>();
-            summaryData.put("batchID", batchId);
-            summaryData.put("fileName", fileName);
-            summaryData.put("header", buildHeader(root, jobName));
-            summaryData.put("processedFiles", processedFiles);
-            summaryData.put("printFiles", printFiles);
-
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(jsonFile, summaryData);
-        } catch (IOException e) {
-            return generateErrorResponse("601", "Failed to write summary file");
-        }
-
-        // Send the API response to Kafka
-        Map<String, Object> kafkaMsg = new HashMap<>();
-        kafkaMsg.put("fileName", fileName);
-        kafkaMsg.put("jobName", jobName);
-        kafkaMsg.put("batchId", batchId);
-        kafkaMsg.put("timestamp", new Date().toString());
-        kafkaMsg.put("pdfFileURL", sasUrl);
-        kafkaTemplate.send(outputTopic, batchId, objectMapper.writeValueAsString(kafkaMsg));
-
-        // Prepare enriched response
-        HeaderInfo headerInfo = buildHeader(root, jobName);
-        PayloadInfo payloadInfo = new PayloadInfo();
-        payloadInfo.setProcessedFiles(processedFiles);
-        payloadInfo.setPrintFiles(printFiles);
-
-        MetaDataInfo metaDataInfo = new MetaDataInfo();
-        metaDataInfo.setCustomerSummaries(customerSummaries);
-        metaDataInfo.setSummaryFileURL(jsonFile.getAbsolutePath());
-
-        SummaryPayload summaryPayload = new SummaryPayload();
-        summaryPayload.setHeader(headerInfo);
-        summaryPayload.setPayload(payloadInfo);
-        summaryPayload.setMetaData(metaDataInfo);
-        summaryPayload.setSummaryFileURL(jsonFile.getAbsolutePath());
-
-        // Send the API response with the enriched data
-        Map<String, Object> response = new HashMap<>();
-        response.put("message", "Batch processed successfully");
-        response.put("status", "success");
-        response.put("summaryPayload", summaryPayload);
-
-        kafkaTemplate.send(outputTopic, batchId, objectMapper.writeValueAsString(response));
-
-        return response;
-    }
-
-    private HeaderInfo buildHeader(JsonNode root, String jobName) {
-        HeaderInfo headerInfo = new HeaderInfo();
-        headerInfo.setBatchId(extractField(root, "consumerReference"));
-        headerInfo.setTenantCode(extractField(root, "tenantCode"));
-        headerInfo.setChannelId(extractField(root, "channelId"));
-        headerInfo.setAudienceId(extractField(root, "audienceId"));
-        headerInfo.setTimestamp(new Date().toString());
-        headerInfo.setSourceSystem(extractField(root, "sourceSystem"));
-        headerInfo.setProduct(extractField(root, "product"));
-        headerInfo.setJobName(jobName);
-        return headerInfo;
-    }
-
-    private String extractField(JsonNode root, String fieldName) {
-        JsonNode fieldNode = root.get(fieldName);
-        return fieldNode != null ? fieldNode.asText() : null;
-    }
-
-    private String convertPojoToJson(String pojo) {
-        return pojo;
-    }
-
-    private Map<String, Object> generateErrorResponse(String code, String message) {
-        Map<String, Object> error = new HashMap<>();
-        error.put("statusCode", code);
-        error.put("statusMessage", message);
-        return Collections.singletonMap("error", error);
-    }
-
-    private boolean isEncrypted(String location, String extension) {
-        return extension.equals(".pdf") && location.contains("encrypted");
-    }
-
-    private String determineType(String location, String extension) {
-        if (extension.equals(".pdf") && location.contains("archive")) return "pdf_archive";
-        if (extension.equals(".pdf") && location.contains("email")) return "pdf_email";
-        if (extension.equals(".html") && location.contains("email")) return "html_email";
-        if (extension.equals(".txt") && location.contains("email")) return "txt_email";
-        if (extension.equals(".pdf") && location.contains("mobstat")) return "pdf_mobstat";
-        if (extension.equals(".ps")) return "ps_print";
-        return "unknown";
-    }
-
-    private String getFileExtension(String path) {
-        int index = path.lastIndexOf('.');
-        return (index >= 0) ? path.substring(index).toLowerCase() : "";
-    }
-}
