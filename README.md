@@ -24,7 +24,10 @@ import java.io.IOException;
 import java.time.Duration;
 import java.util.*;
 
-@Service public class KafkaListenerService { private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+@Service
+public class KafkaListenerService {
+
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final BlobStorageService blobStorageService;
@@ -110,7 +113,7 @@ import java.util.*;
                 batchId = safeGetText(root, "BatchId", false);
             }
 
-            JsonNode batchFilesNode = root.get("BatchFiles");
+            JsonNode batchFilesNode = root.has("BatchFiles") ? root.get("BatchFiles") : root.get("batchFiles");
             if (batchFilesNode == null || !batchFilesNode.isArray()) {
                 logger.warn("No BatchFiles found");
                 continue;
@@ -156,11 +159,14 @@ import java.util.*;
                 customer.getFiles().add(detail);
             }
 
-            if (jobName.isEmpty()) {
-                jobName = safeGetText(root, "JobName", false);
+            if ((jobName == null || jobName.isEmpty())) {
+                String jName = safeGetText(root, "JobName", false);
+                if (jName != null && !jName.isEmpty()) {
+                    jobName = jName;
+                }
             }
 
-            if (fileName.isEmpty()) {
+            if ((fileName == null || fileName.isEmpty()) && batchFilesNode.size() > 0) {
                 JsonNode firstFileNode = batchFilesNode.get(0);
                 fileName = safeGetText(firstFileNode, "Filename", false);
             }
@@ -237,52 +243,52 @@ import java.util.*;
 
         kafkaTemplate.send(outputTopic, summaryPayload.getHeader().getBatchId(), objectMapper.writeValueAsString(kafkaMsg));
         kafkaTemplate.send(outputTopic, summaryPayload.getHeader().getBatchId(), objectMapper.writeValueAsString(Map.of(
-                "message", "Batch processed successfully",
-                "status", "success",
-                "summaryPayload", summaryPayload
-        )));
-    }
+"message", "Batch processed successfully",
+"status", "success",
+"summaryPayload", summaryPayload
+)));
+}
 
-    private HeaderInfo buildHeader(String messageJson, String jobName) throws JsonProcessingException {
-        JsonNode root = objectMapper.readTree(messageJson);
-        HeaderInfo headerInfo = new HeaderInfo();
-        headerInfo.setBatchId(safeGetText(root, "BatchId", false));
-        headerInfo.setTenantCode(safeGetText(root, "TenantCode", false));
-        headerInfo.setChannelID(safeGetText(root, "ChannelID", false));
-        headerInfo.setAudienceID(safeGetText(root, "AudienceID", false));
-        headerInfo.setSourceSystem(safeGetText(root, "SourceSystem", false));
-        headerInfo.setProduct(safeGetText(root, "Product", false));
-        headerInfo.setJobName(jobName != null ? jobName : "");
-        headerInfo.setTimestamp(new Date().toString());
-        return headerInfo;
-    }
+private HeaderInfo buildHeader(String messageJson, String jobName) throws JsonProcessingException {
+    JsonNode root = objectMapper.readTree(messageJson);
+    HeaderInfo headerInfo = new HeaderInfo();
+    headerInfo.setBatchId(safeGetText(root, "BatchId", false));
+    headerInfo.setTenantCode(safeGetText(root, "TenantCode", false));
+    headerInfo.setChannelID(safeGetText(root, "ChannelID", false));
+    headerInfo.setAudienceID(safeGetText(root, "AudienceID", false));
+    headerInfo.setSourceSystem(safeGetText(root, "SourceSystem", false));
+    headerInfo.setProduct(safeGetText(root, "Product", false));
+    headerInfo.setJobName(jobName != null ? jobName : "");
+    headerInfo.setTimestamp(new Date().toString());
+    return headerInfo;
+}
 
-    private String safeGetText(JsonNode node, String fieldName, boolean required) {
-        if (node != null && node.has(fieldName) && !node.get(fieldName).isNull()) {
-            String value = node.get(fieldName).asText();
-            return value.equalsIgnoreCase("null") ? "" : value;
-        }
-        return required ? "" : null;
+private String safeGetText(JsonNode node, String fieldName, boolean required) {
+    if (node != null && node.has(fieldName) && !node.get(fieldName).isNull()) {
+        String value = node.get(fieldName).asText();
+        return value.equalsIgnoreCase("null") ? "" : value;
     }
+    return required ? "" : null;
+}
 
-    private boolean isEncrypted(String filePath, String extension) {
-        return extension.equals("pdf") && filePath.contains("ENCRYPTED");
-    }
+private boolean isEncrypted(String filePath, String extension) {
+    return extension.equals("pdf") && filePath.contains("ENCRYPTED");
+}
 
-    private String determineType(String filePath, String extension) {
-        return filePath.toUpperCase().contains("PRINT") ? "print" : "processed";
-    }
+private String determineType(String filePath, String extension) {
+    return filePath.toUpperCase().contains("PRINT") ? "print" : "processed";
+}
 
-    private String getFileExtension(String filePath) {
-        int dotIndex = filePath.lastIndexOf(".");
-        return dotIndex >= 0 ? filePath.substring(dotIndex + 1).toLowerCase() : "";
-    }
+private String getFileExtension(String filePath) {
+    int dotIndex = filePath.lastIndexOf(".");
+    return dotIndex >= 0 ? filePath.substring(dotIndex + 1).toLowerCase() : "";
+}
 
-    private Map<String, Object> generateErrorResponse(String code, String message) {
-        Map<String, Object> errorResponse = new HashMap<>();
-        errorResponse.put("status", "error");
-        errorResponse.put("code", code);
-        errorResponse.put("message", message);
-        return errorResponse;
-    }
+private Map<String, Object> generateErrorResponse(String code, String message) {
+    Map<String, Object> errorResponse = new HashMap<>();
+    errorResponse.put("status", "error");
+    errorResponse.put("code", code);
+    errorResponse.put("message", message);
+    return errorResponse;
+}
 }
