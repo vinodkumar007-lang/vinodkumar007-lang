@@ -1,172 +1,236 @@
-package com.nedbank.kafka.filemanage.service;
+package com.nedbank.kafka.filemanage.model;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nedbank.kafka.filemanage.model.CustomerSummary;
-import com.nedbank.kafka.filemanage.model.HeaderInfo;
-import com.nedbank.kafka.filemanage.model.MetaDataInfo;
-import com.nedbank.kafka.filemanage.model.PayloadInfo;
-import com.nedbank.kafka.filemanage.model.SummaryPayload;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.stereotype.Service;
+public class SummaryPayload {
+    private HeaderInfo header;
+    private PayloadInfo payload;
+    private MetaDataInfo metadata;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
+    public HeaderInfo getHeader() {
+        return header;
+    }
+
+    public void setHeader(HeaderInfo header) {
+        this.header = header;
+    }
+
+    public PayloadInfo getPayload() {
+        return payload;
+    }
+
+    public void setPayload(PayloadInfo payload) {
+        this.payload = payload;
+    }
+
+    public MetaDataInfo getMetadata() {
+        return metadata;
+    }
+
+    public void setMetadata(MetaDataInfo metadata) {
+        this.metadata = metadata;
+    }
+}
+package com.nedbank.kafka.filemanage.model;
+
+public class HeaderInfo {
+    private String BatchId;
+    private String TenantCode;
+    private String ChannelID;
+    private String AudienceID;
+    private String SourceSystem;
+    private String Product;
+    private String JobName;
+    private String Timestamp;
+
+    public String getBatchId() {
+        return BatchId;
+    }
+
+    public void setBatchId(String batchId) {
+        BatchId = batchId;
+    }
+
+    public String getTenantCode() {
+        return TenantCode;
+    }
+
+    public void setTenantCode(String tenantCode) {
+        TenantCode = tenantCode;
+    }
+
+    public String getChannelID() {
+        return ChannelID;
+    }
+
+    public void setChannelID(String channelID) {
+        ChannelID = channelID;
+    }
+
+    public String getAudienceID() {
+        return AudienceID;
+    }
+
+    public void setAudienceID(String audienceID) {
+        AudienceID = audienceID;
+    }
+
+    public String getSourceSystem() {
+        return SourceSystem;
+    }
+
+    public void setSourceSystem(String sourceSystem) {
+        SourceSystem = sourceSystem;
+    }
+
+    public String getProduct() {
+        return Product;
+    }
+
+    public void setProduct(String product) {
+        Product = product;
+    }
+
+    public String getJobName() {
+        return JobName;
+    }
+
+    public void setJobName(String jobName) {
+        JobName = jobName;
+    }
+
+    public String getTimestamp() {
+        return Timestamp;
+    }
+
+    public void setTimestamp(String timestamp) {
+        Timestamp = timestamp;
+    }
+}
+package com.nedbank.kafka.filemanage.model;
+
 import java.util.List;
 
-@Service
-public class KafkaListenerService {
+public class PayloadInfo {
+    private List<Object> printFiles;  // Assuming List<Object>, adjust type if needed
 
-    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @Value("${azure.blob.storage.account}")
-    private String azureBlobStorageAccount;
-
-    private final BlobStorageService blobStorageService;
-
-    public KafkaListenerService(BlobStorageService blobStorageService) {
-        this.blobStorageService = blobStorageService;
+    public List<Object> getPrintFiles() {
+        return printFiles;
     }
 
-    @KafkaListener(topics = "${kafka.topic.name}", groupId = "${kafka.group.id}")
-    public void listen(List<String> messages) {
-        try {
-            SummaryPayload payload = processMessages(messages);
-            // Do something with payload, e.g., send to another topic or service
-            logger.info("Processed batch with BatchId: {}", payload.getHeader().getBatchId());
-        } catch (Exception e) {
-            logger.error("Error processing Kafka messages", e);
-        }
+    public void setPrintFiles(List<Object> printFiles) {
+        this.printFiles = printFiles;
+    }
+}
+package com.nedbank.kafka.filemanage.model;
+
+import java.util.List;
+
+public class MetaDataInfo {
+    private List<CustomerSummary> customerSummaries;
+
+    public List<CustomerSummary> getCustomerSummaries() {
+        return customerSummaries;
     }
 
-    private SummaryPayload processMessages(List<String> allMessages) throws IOException {
-        List<CustomerSummary> customerSummaries = new ArrayList<>();
-        String batchId = null;
-        String jobName = null;
+    public void setCustomerSummaries(List<CustomerSummary> customerSummaries) {
+        this.customerSummaries = customerSummaries;
+    }
+}
+package com.nedbank.kafka.filemanage.model;
 
-        for (String message : allMessages) {
-            JsonNode root = objectMapper.readTree(message);
+import java.util.List;
 
-            if (batchId == null) {
-                batchId = safeGetText(root, "BatchId", false);
-            }
-            if (jobName == null) {
-                jobName = safeGetText(root, "JobName", false);
-            }
+public class CustomerSummary {
+    private String customerId;
+    private String accountNumber;
+    private List<FileDetail> files;
 
-            JsonNode batchFilesNode = root.get("BatchFiles");
-            if (batchFilesNode == null || !batchFilesNode.isArray()) {
-                logger.warn("No BatchFiles array found in message.");
-                continue;
-            }
+    public String getCustomerId() {
+        return customerId;
+    }
 
-            for (JsonNode fileNode : batchFilesNode) {
-                String objectId = safeGetText(fileNode, "ObjectId", false);
-                String blobUrl = safeGetText(fileNode, "BlobUrl", false);
-                String filename = safeGetText(fileNode, "Filename", false);
-                String validationStatus = safeGetText(fileNode, "ValidationStatus", false);
-                String repositoryId = safeGetText(fileNode, "RepositoryId", false);
+    public void setCustomerId(String customerId) {
+        this.customerId = customerId;
+    }
 
-                if (objectId == null || blobUrl == null) {
-                    logger.warn("Skipping file entry due to missing ObjectId or BlobUrl.");
-                    continue;
-                }
+    public String getAccountNumber() {
+        return accountNumber;
+    }
 
-                try {
-                    blobStorageService.uploadFileAndGenerateSasUrl(blobUrl, batchId, objectId);
-                } catch (Exception e) {
-                    logger.warn("Blob upload failed for {}: {}", blobUrl, e.getMessage());
-                }
+    public void setAccountNumber(String accountNumber) {
+        this.accountNumber = accountNumber;
+    }
 
-                String extension = getFileExtension(blobUrl);
+    public List<FileDetail> getFiles() {
+        return files;
+    }
 
-                CustomerSummary.FileDetail fileDetail = new CustomerSummary.FileDetail();
-                fileDetail.setObjectId(objectId);
-                fileDetail.setFileLocation(blobUrl);
-                fileDetail.setFileUrl("https://" + azureBlobStorageAccount + "/" + blobUrl);
-                fileDetail.setEncrypted(isEncrypted(blobUrl, extension));
-                fileDetail.setStatus(validationStatus != null ? validationStatus : "OK");
-                fileDetail.setType(determineType(blobUrl, extension));
-                fileDetail.setRepositoryId(repositoryId);
+    public void setFiles(List<FileDetail> files) {
+        this.files = files;
+    }
 
-                // Use objectId as customerId for grouping
-                String customerId = objectId;
-                CustomerSummary customer = customerSummaries.stream()
-                        .filter(c -> c.getCustomerId().equals(customerId))
-                        .findFirst()
-                        .orElseGet(() -> {
-                            CustomerSummary newCustomer = new CustomerSummary();
-                            newCustomer.setCustomerId(customerId);
-                            newCustomer.setAccountNumber(""); // If applicable
-                            newCustomer.setFiles(new ArrayList<>());
-                            customerSummaries.add(newCustomer);
-                            return newCustomer;
-                        });
+    public static class FileDetail {
+        private String objectId;
+        private String fileLocation;
+        private String fileUrl;
+        private boolean encrypted;
+        private String status;
+        private String type;
+        private String repositoryId;
 
-                customer.getFiles().add(fileDetail);
-            }
+        public String getObjectId() {
+            return objectId;
         }
 
-        // Construct header info from first message
-        JsonNode firstMessage = objectMapper.readTree(allMessages.get(0));
-        HeaderInfo headerInfo = new HeaderInfo();
-        headerInfo.setBatchId(safeGetText(firstMessage, "BatchId", false));
-        headerInfo.setTenantCode(safeGetText(firstMessage, "TenantCode", false));
-        headerInfo.setChannelID(safeGetText(firstMessage, "ChannelID", false));
-        headerInfo.setAudienceID(safeGetText(firstMessage, "AudienceID", false));
-        headerInfo.setSourceSystem(safeGetText(firstMessage, "SourceSystem", false));
-        headerInfo.setProduct(safeGetText(firstMessage, "Product", false));
-        headerInfo.setJobName(jobName != null ? jobName : "");
-        headerInfo.setTimestamp(new Date().toString());
-
-        SummaryPayload summaryPayload = new SummaryPayload();
-        summaryPayload.setHeader(headerInfo);
-
-        PayloadInfo payloadInfo = new PayloadInfo();
-        payloadInfo.setPrintFiles(Collections.emptyList()); // Adjust if needed
-        summaryPayload.setPayload(payloadInfo);
-
-        MetaDataInfo metaDataInfo = new MetaDataInfo();
-        metaDataInfo.setCustomerSummaries(customerSummaries);
-        summaryPayload.setMetadata(metaDataInfo);
-
-        return summaryPayload;
-    }
-
-    // Helper to safely get text fields with case-sensitive key
-    private String safeGetText(JsonNode node, String fieldName, boolean required) {
-        if (node != null && node.has(fieldName) && !node.get(fieldName).isNull()) {
-            String value = node.get(fieldName).asText();
-            return value.equalsIgnoreCase("null") ? null : value;
+        public void setObjectId(String objectId) {
+            this.objectId = objectId;
         }
-        return required ? "" : null;
-    }
 
-    private String getFileExtension(String fileName) {
-        if (fileName == null) return "";
-        int lastDot = fileName.lastIndexOf('.');
-        return lastDot == -1 ? "" : fileName.substring(lastDot + 1);
-    }
-
-    private boolean isEncrypted(String blobUrl, String extension) {
-        // Add your encryption detection logic here, dummy example:
-        return extension.equalsIgnoreCase("enc");
-    }
-
-    private String determineType(String blobUrl, String extension) {
-        // Determine file type logic, dummy example:
-        if ("csv".equalsIgnoreCase(extension)) {
-            return "CSV";
-        } else if ("json".equalsIgnoreCase(extension)) {
-            return "JSON";
+        public String getFileLocation() {
+            return fileLocation;
         }
-        return "UNKNOWN";
+
+        public void setFileLocation(String fileLocation) {
+            this.fileLocation = fileLocation;
+        }
+
+        public String getFileUrl() {
+            return fileUrl;
+        }
+
+        public void setFileUrl(String fileUrl) {
+            this.fileUrl = fileUrl;
+        }
+
+        public boolean isEncrypted() {
+            return encrypted;
+        }
+
+        public void setEncrypted(boolean encrypted) {
+            this.encrypted = encrypted;
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
+        }
+
+        public String getType() {
+            return type;
+        }
+
+        public void setType(String type) {
+            this.type = type;
+        }
+
+        public String getRepositoryId() {
+            return repositoryId;
+        }
+
+        public void setRepositoryId(String repositoryId) {
+            this.repositoryId = repositoryId;
+        }
     }
 }
