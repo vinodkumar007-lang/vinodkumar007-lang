@@ -6,16 +6,13 @@ public Map<String, Object> processAllMessages() {
                 .toList();
 
         consumer.assign(partitions);
-
-        // 👇 Go back to earliest to be able to filter based on timestamp
+        consumer.poll(Duration.ofMillis(100));
         consumer.seekToBeginning(partitions);
-
-        // 👇 Define your time window (e.g., 3 days ago)
-        long currentTimeMillis = System.currentTimeMillis();
-        long threeDaysAgo = currentTimeMillis - Duration.ofDays(3).toMillis();
 
         List<String> recentMessages = new ArrayList<>();
         int emptyPollCount = 0;
+
+        long threeDaysAgo = System.currentTimeMillis() - Duration.ofDays(3).toMillis();
 
         while (emptyPollCount < 3) {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
@@ -25,14 +22,17 @@ public Map<String, Object> processAllMessages() {
                 emptyPollCount = 0;
                 for (ConsumerRecord<String, String> record : records) {
                     if (record.timestamp() >= threeDaysAgo) {
+                        logger.info("✅ Received message from Kafka (offset={}): {}", record.offset(), record.value());
                         recentMessages.add(record.value());
+                    } else {
+                        logger.debug("⏩ Skipping old message (timestamp={}): {}", record.timestamp(), record.value());
                     }
                 }
             }
         }
 
         if (recentMessages.isEmpty()) {
-            return generateErrorResponse("204", "No recent messages found in Kafka (last 3 days)");
+            return generateErrorResponse("204", "No content processed from Kafka");
         }
 
         SummaryPayload summaryPayload = processMessages(recentMessages);
@@ -47,7 +47,7 @@ public Map<String, Object> processAllMessages() {
         return response;
 
     } catch (Exception e) {
-        logger.error("Error during Kafka message processing", e);
+        logger.error("❌ Error during Kafka message processing", e);
         return generateErrorResponse("500", "Internal Server Error while processing messages");
     } finally {
         consumer.close();
