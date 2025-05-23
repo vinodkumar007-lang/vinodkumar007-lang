@@ -1,103 +1,229 @@
-public Map<String, Object> listen() {
-    Consumer<String, String> consumer = consumerFactory.createConsumer();
-    try {
-        List<TopicPartition> partitions = new ArrayList<>();
-        consumer.partitionsFor(inputTopic).forEach(partitionInfo ->
-                partitions.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()))
-        );
+	
+Field
+	
+Description
+	
+Type
+	
+Kafka Topic
+	
+Remarks
 
-        consumer.assign(partitions);
-        consumer.seekToBeginning(partitions);
+ 	
+BatchID (golden thread)
+	
+Unique identifier for the batch.
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-        List<String> recentMessages = new ArrayList<>();
-        int emptyPollCount = 0;
-        long threeDaysAgo = System.currentTimeMillis() - Duration.ofDays(3).toMillis();
+ 	
+TenantCode (golden thread)
+	
+Tenant identifier (e.g., ZANBL).
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publisg message
 
-        while (emptyPollCount < 3) {
-            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
-            if (records.isEmpty()) {
-                emptyPollCount++;
-            } else {
-                emptyPollCount = 0;
-                for (ConsumerRecord<String, String> record : records) {
-                    if (record.timestamp() >= threeDaysAgo) {
-                        logger.info("Received message (offset={}): {}", record.offset(), record.value());
-                        recentMessages.add(record.value());
-                    } else {
-                        logger.debug("Skipping old message (timestamp={}): {}", record.timestamp(), record.value());
-                    }
-                }
-            }
-        }
+ 	
+ChannelID (golden thread)
+	
+Channel ID (e.g., 100 = consumer).
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-        if (recentMessages.isEmpty()) {
-            return generateErrorResponse("204", "No recent messages found in Kafka topic.");
-        }
 
-        // Process each message individually and append/update summary.json
-        List<SummaryPayload> processedPayloads = new ArrayList<>();
-        for (String message : recentMessages) {
-            SummaryPayload summaryPayload = processSingleMessage(message);
-            appendSummaryToFile(summaryPayload);
-            processedPayloads.add(summaryPayload);
-        }
+not in use yet
+	
+AudienceID (golden thread)
+	
+GUID for audience, often for security.
+	
+GUID
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-        // Combine all SummaryPayloads into one final summary
-        SummaryPayload finalSummary = mergeSummaryPayloads(processedPayloads);
+ 	
+Timestamp
+	
+Time the event occurred.
+	
+DateTime
+	
+Both
+	
+Kafka generated
 
-        // Serialize final summary to JSON string and send to output Kafka topic
-        String finalSummaryJson = objectMapper.writeValueAsString(finalSummary);
-        kafkaTemplate.send(outputTopic, finalSummaryJson);
-        logger.info("Final combined summary sent to topic: {}", outputTopic);
+ 	
+SourceSystem (golden thread)
+	
+Source system of origin (e.g., CARD).
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-        // Return the final summary as Map (for your REST response)
-        return objectMapper.convertValue(finalSummary, Map.class);
+ 	
+Product (golden thread)
+	
+Product associated with the batch (e.g., CASA).
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-    } catch (Exception e) {
-        logger.error("Error during Kafka message processing", e);
-        return generateErrorResponse("500", "Internal Server Error while processing messages.");
-    } finally {
-        consumer.close();
-    }
-}
+ 	
+JobName (golden thread)
+	
+Job identifier (e.g., SMM815).
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-/**
- * Merge multiple SummaryPayload objects into one combined SummaryPayload.
- * Adjust merging logic as needed.
- */
-private SummaryPayload mergeSummaryPayloads(List<SummaryPayload> payloads) {
-    if (payloads.isEmpty()) {
-        return new SummaryPayload();
-    }
-    SummaryPayload merged = new SummaryPayload();
+ 	
+UniqueConsumerRef (golden thread)
+	
+GUID for identifying the consumer.
+	
+GUID
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
 
-    // Merge Headers - example: take first or combine fields intelligently
-    HeaderInfo mergedHeader = new HeaderInfo();
-    // You can customize this; here we take first payload's header for simplicity
-    mergedHeader = payloads.get(0).getHeader();
-    merged.setHeader(mergedHeader);
+ 	
+Blob URL (storage name where input data is)
+	
+GUID for identifying the ECP batch.
+	
+GUID
+	
+str-ecp-batch-composition
+	
+ECP process will populate on str-ecp-batch-composition
 
-    // Merge PayloadInfo - you can customize merging strategy here
-    PayloadInfo mergedPayloadInfo = new PayloadInfo();
-    List<Object> combinedPrintFiles = new ArrayList<>();
-    for (SummaryPayload sp : payloads) {
-        if (sp.getPayload() != null && sp.getPayload().getPrintFiles() != null) {
-            combinedPrintFiles.addAll(sp.getPayload().getPrintFiles());
-        }
-    }
-    mergedPayloadInfo.setPrintFiles(combinedPrintFiles);
-    merged.setPayload(mergedPayloadInfo);
+ 	
+Filename on blob storage 
+	
+ 
+	
+ 
+	
+str-ecp-batch-composition
+	
+ECP process will populate on str-ecp-batch-composition
 
-    // Merge MetadataInfo (customer summaries)
-    MetaDataInfo mergedMeta = new MetaDataInfo();
-    List<CustomerSummary> combinedCustomers = new ArrayList<>();
-    for (SummaryPayload sp : payloads) {
-        if (sp.getMetadata() != null && sp.getMetadata().getCustomerSummaries() != null) {
-            combinedCustomers.addAll(sp.getMetadata().getCustomerSummaries());
-        }
-    }
-    mergedMeta.setCustomerSummaries(combinedCustomers);
-    merged.setMetadata(mergedMeta);
 
-    return merged;
-}
+not in use yet
+	
+RunPriority
+	
+Batch priority (High, Medium, Low).
+	
+String
+	
+str-ecp-batch-composition
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
+
+
+not in use yet
+	
+EventType
+	
+Type of event (e.g., Completion, Restart).
+	
+String
+	
+Both
+	
+ECP process will populate on str-ecp-batch-composition, use in publish message
+
+
+not in use yet, rerun/reprocess to be defined
+	
+RestartKey
+	
+Key used to support restart events.
+	
+String
+	
+str-ecp-batch-composition
+	
+First field customer
+
+ 	
+TotalFilesProcessed
+	
+Number of successfully processed files.
+	
+Integer
+	
+str-ecp-batch-composition-complete
+	
+OT team
+
+ 	
+ProcessingStatus
+	
+Overall status (Success, Failure, Partial).
+	
+String
+	
+str-ecp-batch-composition-complete
+	
+OT team
+
+
+what are the valid values? Eg. RC = 00. To be defined during testing
+	
+EventOutcomeCode
+	
+Code indicating result (Success, Tech Error, etc.).
+	
+String
+	
+str-ecp-batch-composition-complete
+	
+OT team
+
+ 	
+EventOutcomeDescription
+	
+Human-readable explanation of the outcome.
+	
+String
+	
+str-ecp-batch-composition-complete
+	
+OT team
+
+ 	
+SummaryReportFileLocation
+	
+URL or path of the summary report file.
+	
+URL
+	
+str-ecp-batch-composition-complete
+	
+OT team
