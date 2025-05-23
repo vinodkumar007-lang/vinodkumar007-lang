@@ -1,56 +1,136 @@
-2025-05-23T08:10:56.819+02:00 ERROR 10408 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Error during Kafka message processing
+private SummaryPayload processMessages(List<String> allMessages) throws IOException {
+    List<CustomerSummary> customerSummaries = new ArrayList<>();
+    String fileName = "";
+    String jobName = "";
+    String batchId = null;
 
-java.lang.NullPointerException: Cannot invoke "com.fasterxml.jackson.databind.JsonNode.asText()" because the return value of "com.fasterxml.jackson.databind.JsonNode.get(String)" is null
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.processMessages(KafkaListenerService.java:130) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.processAllMessages(KafkaListenerService.java:84) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.controller.FileProcessingController.triggerFileProcessing(FileProcessingController.java:31) ~[classes/:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
-	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:884) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:797) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1080) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:973) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1003) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:906) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:731) ~[tomcat-embed-core-10.1.1.jar:6.0]
-	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:880) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:814) ~[tomcat-embed-core-10.1.1.jar:6.0]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:223) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:53) ~[tomcat-embed-websocket-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:197) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:97) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:542) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:119) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:92) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:78) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:357) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:400) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:65) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:861) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1739) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1191) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:61) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at java.base/java.lang.Thread.run(Thread.java:842) ~[na:na]
+    Set<String> archived = new HashSet<>();
+    Set<String> emailed = new HashSet<>();
+    Set<String> mobstat = new HashSet<>();
+    Set<String> printed = new HashSet<>();
+
+    for (String message : allMessages) {
+        JsonNode root = objectMapper.readTree(message);
+        if (batchId == null) {
+            batchId = safeGetText(root, "consumerReference", false);
+        }
+
+        JsonNode batchFilesNode = root.get("BatchFiles");
+        if (batchFilesNode == null || !batchFilesNode.isArray() || batchFilesNode.isEmpty()) {
+            logger.warn("No BatchFiles found in message: {}", message);
+            continue; // skip this message instead of throwing
+        }
+
+        for (JsonNode fileNode : batchFilesNode) {
+            String filePath = safeGetText(fileNode, "fileLocation", false);
+            String objectId = safeGetText(fileNode, "ObjectId", false);
+
+            if (filePath == null || objectId == null) {
+                logger.warn("Missing fileLocation or ObjectId in BatchFile: {}", fileNode.toString());
+                continue; // skip malformed file
+            }
+
+            try {
+                blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
+            } catch (Exception e) {
+                logger.warn("Failed to generate SAS URL for file {}", filePath, e);
+            }
+
+            String extension = getFileExtension(filePath).toLowerCase();
+            String customerId = objectId.split("_")[0];
+
+            if (fileNode.has("fileName")) {
+                fileName = safeGetText(fileNode, "fileName", false);
+            }
+
+            if (fileNode.has("jobName")) {
+                jobName = safeGetText(fileNode, "jobName", false);
+            }
+
+            CustomerSummary.FileDetail detail = new CustomerSummary.FileDetail();
+            detail.setObjectId(objectId);
+            detail.setFileLocation(filePath);
+            detail.setFileUrl("https://" + azureBlobStorageAccount + "/" + filePath);
+            detail.setStatus(extension.equals(".ps") ? "failed" : "OK");
+            detail.setEncrypted(isEncrypted(filePath, extension));
+            detail.setType(determineType(filePath, extension));
+
+            if (filePath.contains("mobstat")) mobstat.add(customerId);
+            if (filePath.contains("archive")) archived.add(customerId);
+            if (filePath.contains("email")) emailed.add(customerId);
+            if (extension.equals(".ps")) printed.add(customerId);
+
+            CustomerSummary customer = customerSummaries.stream()
+                    .filter(c -> c.getCustomerId().equals(customerId))
+                    .findFirst()
+                    .orElseGet(() -> {
+                        CustomerSummary c = new CustomerSummary();
+                        c.setCustomerId(customerId);
+                        c.setAccountNumber("");
+                        c.setFiles(new ArrayList<>());
+                        customerSummaries.add(c);
+                        return c;
+                    });
+
+            customer.getFiles().add(detail);
+        }
+    }
+
+    List<Map<String, Object>> processedFiles = new ArrayList<>();
+    for (CustomerSummary customer : customerSummaries) {
+        Map<String, Object> pf = new HashMap<>();
+        pf.put("customerID", customer.getCustomerId());
+        pf.put("accountNumber", customer.getAccountNumber());
+
+        for (CustomerSummary.FileDetail detail : customer.getFiles()) {
+            String key = switch (detail.getType()) {
+                case "pdf_archive" -> "pdfArchiveFileURL";
+                case "pdf_email" -> "pdfEmailFileURL";
+                case "html_email" -> "htmlEmailFileURL";
+                case "txt_email" -> "txtEmailFileURL";
+                case "pdf_mobstat" -> "pdfMobstatFileURL";
+                default -> null;
+            };
+            if (key != null) {
+                pf.put(key, detail.getFileUrl());
+            }
+        }
+
+        pf.put("statusCode", "OK");
+        pf.put("statusDescription", "Success");
+        processedFiles.add(pf);
+    }
+
+    List<Map<String, Object>> printFiles = new ArrayList<>();
+    for (CustomerSummary customer : customerSummaries) {
+        for (CustomerSummary.FileDetail detail : customer.getFiles()) {
+            if ("ps_print".equals(detail.getType())) {
+                Map<String, Object> pf = new HashMap<>();
+                pf.put("printFileURL", "https://" + azureBlobStorageAccount + "/pdfs/mobstat/" + detail.getObjectId());
+                printFiles.add(pf);
+            }
+        }
+    }
+
+    HeaderInfo headerInfo = null;
+    if (!allMessages.isEmpty()) {
+        JsonNode firstRoot = objectMapper.readTree(allMessages.get(0));
+        headerInfo = buildHeader(firstRoot, jobName);
+    } else {
+        headerInfo = new HeaderInfo();
+    }
+
+    PayloadInfo payloadInfo = new PayloadInfo();
+    payloadInfo.setProcessedFiles(processedFiles);
+    payloadInfo.setPrintFiles(printFiles);
+
+    MetaDataInfo metaDataInfo = new MetaDataInfo();
+    metaDataInfo.setCustomerSummaries(customerSummaries);
+
+    SummaryPayload summaryPayload = new SummaryPayload();
+    summaryPayload.setHeader(headerInfo);
+    summaryPayload.setPayload(payloadInfo);
+    summaryPayload.setMetadata(metaDataInfo);
+
+    return summaryPayload;
+}
