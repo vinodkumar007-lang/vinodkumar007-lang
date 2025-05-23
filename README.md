@@ -1,249 +1,88 @@
-package com.nedbank.kafka.filemanage.service;
+package com.nedbank.kafka.filemanage.util;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nedbank.kafka.filemanage.model.*;
-import com.nedbank.kafka.filemanage.util.SummaryJsonWriter;
-import org.apache.kafka.clients.consumer.*;
-import org.apache.kafka.common.TopicPartition;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.nedbank.kafka.filemanage.model.CustomerSummary;
+import com.nedbank.kafka.filemanage.model.HeaderInfo;
+import com.nedbank.kafka.filemanage.model.SummaryPayload;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.ConsumerFactory;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
 
 import java.io.File;
-import java.time.Duration;
+import java.io.IOException;
 import java.util.*;
 
-@Service
-public class KafkaListenerService {
+public class SummaryJsonWriter {
 
-    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
+    private static final ObjectMapper mapper = new ObjectMapper();
 
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final BlobStorageService blobStorageService;
-    private final ConsumerFactory<String, String> consumerFactory;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @Value("${kafka.topic.input}")
-    private String inputTopic;
-
-    @Value("${kafka.topic.output}")
-    private String outputTopic;
-
-    @Value("${azure.blob.storage.account}")
-    private String azureBlobStorageAccount;
-
-    private final File summaryFile = new File(System.getProperty("user.home"), "summary.json");
-
-    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
-                                BlobStorageService blobStorageService,
-                                ConsumerFactory<String, String> consumerFactory) {
-        this.kafkaTemplate = kafkaTemplate;
-        this.blobStorageService = blobStorageService;
-        this.consumerFactory = consumerFactory;
-    }
-
-    public Map<String, Object> listen() {
-        Consumer<String, String> consumer = consumerFactory.createConsumer();
+    public static void writeUpdatedSummaryJson(SummaryPayload payload, File summaryFile, String azureBlobStorageAccount) {
         try {
-            List<TopicPartition> partitions = new ArrayList<>();
-            consumer.partitionsFor(inputTopic).forEach(p ->
-                    partitions.add(new TopicPartition(p.topic(), p.partition()))
-            );
+            ObjectNode rootNode = mapper.createObjectNode();
 
-            consumer.assign(partitions);
-            consumer.seekToBeginning(partitions);
+            HeaderInfo header = payload.getHeader();
+            rootNode.put("batchID", header.getBatchId());
+            rootNode.put("fileName", header.getJobName() + "_" + header.getBatchId() + ".csv");
 
-            List<String> recentMessages = new ArrayList<>();
-            int emptyPollCount = 0;
-            long threeDaysAgo = System.currentTimeMillis() - Duration.ofDays(3).toMillis();
+            // Header info
+            ObjectNode headerNode = mapper.createObjectNode();
+            headerNode.put("tenantCode", header.getTenantCode());
+            headerNode.put("channelID", header.getChannelID());
+            headerNode.put("audienceID", header.getAudienceID());
+            headerNode.put("timestamp", header.getTimestamp());
+            headerNode.put("sourceSystem", header.getSourceSystem());
+            headerNode.put("product", header.getProduct());
+            headerNode.put("jobName", header.getJobName());
+            rootNode.set("header", headerNode);
 
-            while (emptyPollCount < 3) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
-                if (records.isEmpty()) {
-                    emptyPollCount++;
-                } else {
-                    emptyPollCount = 0;
-                    for (ConsumerRecord<String, String> record : records) {
-                        if (record.timestamp() >= threeDaysAgo) {
-                            logger.info("Received message (offset={}): {}", record.offset(), record.value());
-                            recentMessages.add(record.value());
-                        } else {
-                            logger.debug("Skipping old message (timestamp={}): {}", record.timestamp(), record.value());
-                        }
+            // Processed Files
+            List<ObjectNode> processedList = new ArrayList<>();
+            for (CustomerSummary customer : payload.getMetadata().getCustomerSummaries()) {
+                ObjectNode custNode = mapper.createObjectNode();
+                custNode.put("customerID", customer.getCustomerId());
+                custNode.put("accountNumber", customer.getAccountNumber() != null ? customer.getAccountNumber() : "");
+
+                customer.getFiles().forEach(file -> {
+                    String path = file.getFileLocation().toLowerCase();
+                    if (path.contains("archive")) {
+                        custNode.put("pdfArchiveFileURL", "https://" + azureBlobStorageAccount + "/" + file.getFileLocation());
+                    } else if (path.contains("email") && path.endsWith(".pdf")) {
+                        custNode.put("pdfEmailFileURL", "https://" + azureBlobStorageAccount + "/" + file.getFileLocation());
+                    } else if (path.contains("email") && path.endsWith(".html")) {
+                        custNode.put("htmlEmailFileURL", "https://" + azureBlobStorageAccount + "/" + file.getFileLocation());
+                    } else if (path.contains("email") && path.endsWith(".txt")) {
+                        custNode.put("txtEmailFileURL", "https://" + azureBlobStorageAccount + "/" + file.getFileLocation());
+                    } else if (path.contains("mobstat") && path.endsWith(".pdf")) {
+                        custNode.put("pdfMobstatFileURL", "https://" + azureBlobStorageAccount + "/" + file.getFileLocation());
+                    }
+                });
+
+                custNode.put("statusCode", "OK");
+                custNode.put("statusDescription", "Success");
+                processedList.add(custNode);
+            }
+            rootNode.set("processedFiles", mapper.valueToTree(processedList));
+
+            // Print Files
+            List<Map<String, String>> printFilesList = new ArrayList<>();
+            if (payload.getPayload().getPrintFiles() != null) {
+                for (Object printFileObj : payload.getPayload().getPrintFiles()) {
+                    if (printFileObj instanceof String printFilePath) {
+                        Map<String, String> map = new HashMap<>();
+                        map.put("printFileURL", "https://" + azureBlobStorageAccount + "/" + printFilePath);
+                        printFilesList.add(map);
                     }
                 }
             }
+            rootNode.set("printFiles", mapper.valueToTree(printFilesList));
 
-            if (recentMessages.isEmpty()) {
-                return generateErrorResponse("204", "No recent messages found in Kafka topic.");
-            }
+            // Write to file
+            mapper.writerWithDefaultPrettyPrinter().writeValue(summaryFile, rootNode);
+            logger.info("Successfully wrote updated summary to {}", summaryFile.getAbsolutePath());
 
-            List<SummaryPayload> processedPayloads = new ArrayList<>();
-            for (String message : recentMessages) {
-                SummaryPayload summaryPayload = processSingleMessage(message);
-                SummaryJsonWriter.writeUpdatedSummaryJson(summaryPayload, summaryFile, azureBlobStorageAccount);
-                processedPayloads.add(summaryPayload);
-            }
-
-            SummaryPayload finalSummary = mergeSummaryPayloads(processedPayloads);
-            String finalSummaryJson = objectMapper.writeValueAsString(finalSummary);
-            kafkaTemplate.send(outputTopic, finalSummaryJson);
-            logger.info("Final combined summary sent to topic: {}", outputTopic);
-
-            Map<String, Object> finalResponse = new HashMap<>();
-            finalResponse.put("message", "Batch processed successfully");
-            finalResponse.put("status", "success");
-            finalResponse.put("summaryPayload", finalSummary);
-            return finalResponse;
-
-        } catch (Exception e) {
-            logger.error("Error during Kafka message processing", e);
-            return generateErrorResponse("500", "Internal Server Error while processing messages.");
-        } finally {
-            consumer.close();
+        } catch (IOException e) {
+            logger.error("Failed to write summary.json", e);
         }
-    }
-
-    private SummaryPayload processSingleMessage(String message) throws Exception {
-        JsonNode root = objectMapper.readTree(message);
-        String jobName = safeGetText(root, "JobName", false);
-        String batchId = safeGetText(root, "BatchId", true);
-        if (batchId == null) batchId = UUID.randomUUID().toString();
-
-        List<CustomerSummary> customerSummaries = new ArrayList<>();
-        JsonNode batchFilesNode = root.get("BatchFiles");
-        if (batchFilesNode != null && batchFilesNode.isArray()) {
-            for (JsonNode fileNode : batchFilesNode) {
-                String filePath = safeGetText(fileNode, "BlobUrl", true);
-                String objectId = safeGetText(fileNode, "ObjectId", true);
-                String validationStatus = safeGetText(fileNode, "ValidationStatus", false);
-
-                if (filePath == null || objectId == null) continue;
-
-                try {
-                    blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
-                } catch (Exception e) {
-                    logger.warn("Blob upload failed for {}: {}", filePath, e.getMessage());
-                }
-
-                String extension = getFileExtension(filePath);
-                CustomerSummary.FileDetail detail = new CustomerSummary.FileDetail();
-                detail.setObjectId(objectId);
-                detail.setFileLocation(filePath);
-                detail.setFileUrl("https://" + azureBlobStorageAccount + "/" + filePath);
-                detail.setEncrypted(isEncrypted(filePath, extension));
-                detail.setStatus(validationStatus != null ? validationStatus : "OK");
-                detail.setType(determineType(filePath));
-
-                CustomerSummary customer = customerSummaries.stream()
-                        .filter(c -> c.getCustomerId().equals(objectId))
-                        .findFirst()
-                        .orElseGet(() -> {
-                            CustomerSummary c = new CustomerSummary();
-                            c.setCustomerId(objectId);
-                            c.setAccountNumber(""); // Placeholder
-                            c.setFiles(new ArrayList<>());
-                            customerSummaries.add(c);
-                            return c;
-                        });
-
-                customer.getFiles().add(detail);
-            }
-        }
-
-        HeaderInfo headerInfo = buildHeader(root, jobName);
-        SummaryPayload summaryPayload = new SummaryPayload();
-        summaryPayload.setHeader(headerInfo);
-
-        PayloadInfo payloadInfo = new PayloadInfo();
-        payloadInfo.setPrintFiles(Collections.emptyList());
-        summaryPayload.setPayload(payloadInfo);
-
-        MetaDataInfo metaDataInfo = new MetaDataInfo();
-        metaDataInfo.setCustomerSummaries(customerSummaries);
-        summaryPayload.setMetadata(metaDataInfo);
-        summaryPayload.setBatchId(batchId);
-        return summaryPayload;
-    }
-
-    private HeaderInfo buildHeader(JsonNode root, String jobName) {
-        HeaderInfo headerInfo = new HeaderInfo();
-        headerInfo.setBatchId(safeGetText(root, "BatchId", true));
-        headerInfo.setTenantCode(safeGetText(root, "TenantCode", false));
-        headerInfo.setChannelID(safeGetText(root, "ChannelID", false));
-        headerInfo.setAudienceID(safeGetText(root, "AudienceID", false));
-        headerInfo.setSourceSystem(safeGetText(root, "SourceSystem", false));
-        headerInfo.setProduct(safeGetText(root, "Product", false));
-        headerInfo.setJobName(jobName != null ? jobName : "");
-        headerInfo.setTimestamp(new Date().toString());
-        return headerInfo;
-    }
-
-    private SummaryPayload mergeSummaryPayloads(List<SummaryPayload> payloads) {
-        if (payloads.isEmpty()) return new SummaryPayload();
-        SummaryPayload merged = new SummaryPayload();
-        merged.setHeader(payloads.get(0).getHeader());
-
-        List<Object> combinedPrintFiles = new ArrayList<>();
-        for (SummaryPayload sp : payloads) {
-            if (sp.getPayload() != null && sp.getPayload().getPrintFiles() != null) {
-                combinedPrintFiles.addAll(sp.getPayload().getPrintFiles());
-            }
-        }
-
-        PayloadInfo payloadInfo = new PayloadInfo();
-        payloadInfo.setPrintFiles(combinedPrintFiles);
-        merged.setPayload(payloadInfo);
-
-        List<CustomerSummary> allCustomers = new ArrayList<>();
-        for (SummaryPayload sp : payloads) {
-            if (sp.getMetadata() != null && sp.getMetadata().getCustomerSummaries() != null) {
-                allCustomers.addAll(sp.getMetadata().getCustomerSummaries());
-            }
-        }
-
-        MetaDataInfo metadata = new MetaDataInfo();
-        metadata.setCustomerSummaries(allCustomers);
-        merged.setMetadata(metadata);
-        return merged;
-    }
-
-    private String safeGetText(JsonNode node, String fieldName, boolean required) {
-        if (node != null && node.has(fieldName) && !node.get(fieldName).isNull()) {
-            String val = node.get(fieldName).asText();
-            return "null".equalsIgnoreCase(val) ? null : val;
-        }
-        if (required) logger.warn("Required field '{}' missing or null", fieldName);
-        return null;
-    }
-
-    private String getFileExtension(String path) {
-        int lastDot = path.lastIndexOf('.');
-        return (lastDot > 0 && lastDot < path.length() - 1) ? path.substring(lastDot + 1).toLowerCase() : "";
-    }
-
-    private boolean isEncrypted(String path, String extension) {
-        return path.contains("encrypted") || "enc".equals(extension);
-    }
-
-    private String determineType(String path) {
-        String ext = getFileExtension(path);
-        return switch (ext) {
-            case "csv" -> "CSV";
-            case "pdf" -> "PDF";
-            default -> "UNKNOWN";
-        };
-    }
-
-    private Map<String, Object> generateErrorResponse(String code, String message) {
-        Map<String, Object> error = new HashMap<>();
-        error.put("status", "error");
-        error.put("code", code);
-        error.put("message", message);
-        return error;
     }
 }
