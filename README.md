@@ -1,6 +1,9 @@
-import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectWriter;
 
 import java.time.Duration;
 import java.util.Collections;
@@ -30,16 +33,25 @@ public class KafkaConsumerApp {
         props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
 
-        // Create Kafka consumer
+        // Jackson setup for pretty-printing JSON
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectWriter writer = mapper.writerWithDefaultPrettyPrinter();
+
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             consumer.subscribe(Collections.singletonList("str-ecp-batch-composition"));
-            System.out.println("Subscribed to topic: str-ecp-batch-composition");
+            System.out.println("Listening to Kafka topic: str-ecp-batch-composition...");
 
             while (true) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
                 for (ConsumerRecord<String, String> record : records) {
-                    System.out.printf("Consumed message - Key: %s, Value: %s, Partition: %d, Offset: %d%n",
-                            record.key(), record.value(), record.partition(), record.offset());
+                    try {
+                        // Parse and pretty-print JSON
+                        String prettyJson = writer.writeValueAsString(mapper.readTree(record.value()));
+                        System.out.printf("Consumed message [Key=%s, Partition=%d, Offset=%d]:\n%s\n",
+                                record.key(), record.partition(), record.offset(), prettyJson);
+                    } catch (Exception e) {
+                        System.err.println("Invalid JSON message: " + record.value());
+                    }
                 }
             }
         } catch (Exception e) {
