@@ -1,31 +1,51 @@
-public Map<String, Object> processAllMessages() {
-    Consumer<String, String> consumer = consumerFactory.createConsumer();
-    try (consumer) {
-        List<TopicPartition> partitions = getPartitionsForTopic(inputTopic, consumer);
-        consumer.assign(partitions);
+# Kafka Consumer Configuration
+kafka.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
+kafka.consumer.group.id=str-ecp-batch
+kafka.consumer.auto.offset.reset=earliest
+kafka.consumer.enable.auto.commit=true
 
-        // Seek to the end of each assigned partition (ignore old messages)
-        consumer.seekToEnd(partitions);
+# SSL Configuration
+kafka.consumer.security.protocol=SSL
+kafka.consumer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
+kafka.consumer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
+kafka.consumer.ssl.key.password=3dX7y3Yz9Jv6L4F
+kafka.consumer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
+kafka.consumer.ssl.truststore.password=nedbank1
+kafka.consumer.ssl.protocol=TLSv1.2
 
-        // Poll after seeking
-        ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(10));
-        if (records.isEmpty()) {
-            return generateErrorResponse("204", "No content processed from Kafka");
-        }
+# Kafka Consumer Deserialization
+kafka.consumer.key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+kafka.consumer.value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
 
-        for (ConsumerRecord<String, String> record : records) {
-            return handleMessage(record.value());
-        }
-    } catch (Exception e) {
-        logger.error("Error during Kafka message processing", e);
-        return generateErrorResponse("500", "Internal Server Error while processing messages");
-    }
-}
+# Kafka Producer Configuration (to send Summary File URL)
+kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
+kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
+kafka.producer.security.protocol=SSL
+kafka.producer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
+kafka.producer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
+kafka.producer.ssl.key.password=3dX7y3Yz9Jv6L4F
+kafka.producer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
+kafka.producer.ssl.truststore.password=nedbank1
+kafka.producer.ssl.protocol=TLSv1.2
+kafka.producer.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
 
-private List<TopicPartition> getPartitionsForTopic(String topic, Consumer<String, String> consumer) {
-    List<TopicPartition> partitions = new ArrayList<>();
-    consumer.partitionsFor(topic).forEach(info -> 
-        partitions.add(new TopicPartition(topic, info.partition()))
-    );
-    return partitions;
-}
+azure.keyvault.uri=https://nsn-dev-ecm-kva-001.vault.azure.net/secrets
+
+logging.level.org.springframework.kafka=DEBUG
+
+kafka.topic.input=str-ecp-batch-composition
+kafka.topic.output=str-ecp-batch-composition-complete
+
+vault.hashicorp.url=https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200
+vault.hashicorp.namespace =admin/espire
+
+vault.hashicorp.passwordDev=Dev+Cred4#
+vault.hashicorp.passwordNbhDev=nbh_dev1
+
+azure.blob.storage.account =https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001
+
+proxy.host=proxyprod.africa.nedcor.net
+proxy.port=80
+proxy.username=CC437236
+proxy.password=34dYaB@jEh56
+use.proxy=false
