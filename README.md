@@ -1,21 +1,24 @@
+package com.nedbank.kafka.filemanage.service;
+
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
+import org.apache.kafka.common.TopicPartition;
 
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Properties;
 
-public class KafkaConsumerLatest {
+public class KafkaConsumerApp {
 
     public static void main(String[] args) {
         Properties props = new Properties();
 
         // Kafka Consumer Configuration
         props.put("bootstrap.servers", "nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093");
-        props.put("group.id", "str-ecp-batch-latest");  // ⚠️ Use a new consumer group to avoid old committed offsets
+        props.put("group.id", "str-ecp-batch");  // ⚠️ Use a new consumer group to avoid old committed offsets
         props.put("auto.offset.reset", "latest");       // 🟢 This is key
         props.put("enable.auto.commit", "true");
 
@@ -36,7 +39,10 @@ public class KafkaConsumerLatest {
         ObjectWriter writer = mapper.writerWithDefaultPrettyPrinter();
 
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-            consumer.subscribe(Collections.singletonList("str-ecp-batch-composition"));
+            //consumer.subscribe(Collections.singletonList("str-ecp-batch-composition"));
+            consumer.assign(Collections.singletonList(new TopicPartition("str-ecp-batch-composition", 0)));
+            //consumer.seekToEnd(Collections.singletonList(new TopicPartition("str-ecp-batch-composition", 0)));
+            consumer.seekToBeginning(Collections.singletonList(new TopicPartition("str-ecp-batch-composition", 0)));
             System.out.println("Subscribed. Waiting for NEW messages...");
 
             while (true) {
