@@ -185,3 +185,128 @@ public class KafkaListenerService {
                     case "pdf_email" -> "pdfEmailFileURL";
                     case "html_email" -> "htmlEmailFileURL";
                     case "txt_email" -> "txtEmailFileURL";
+                    case "pdf_mobstat" -> "pdfMobstatFileURL";
+                    default -> null;
+                };
+                if (key != null) {
+                    pf.put(key, detail.getFileUrl());
+                }
+            }
+
+            pf.put("statusCode", "OK");
+            pf.put("statusDescription", "Success");
+            processedFiles.add(pf);
+        }
+
+        // Create the print files list
+        List<Map<String, Object>> printFiles = new ArrayList<>();
+        for (CustomerSummary customer : customerSummaries) {
+            for (CustomerSummary.FileDetail detail : customer.getFiles()) {
+                if ("ps_print".equals(detail.getType())) {
+                    Map<String, Object> pf = new HashMap<>();
+                    pf.put("printFileURL", "https://" + azureBlobStorageAccount + "/pdfs/mobstat/" + detail.getObjectId());
+                    printFiles.add(pf);
+                }
+            }
+        }
+
+        // Write the summary.json file
+        String userHome = System.getProperty("user.home");
+        File jsonFile = new File(userHome, "summary.json");
+        try {
+            Map<String, Object> summaryData = new HashMap<>();
+            summaryData.put("batchID", batchId);
+            summaryData.put("fileName", fileName);
+            summaryData.put("header", buildHeader(root, jobName));
+            summaryData.put("processedFiles", processedFiles);
+            summaryData.put("printFiles", printFiles);
+
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(jsonFile, summaryData);
+        } catch (IOException e) {
+            return generateErrorResponse("601", "Failed to write summary file");
+        }
+
+        // Send the API response to Kafka
+        Map<String, Object> kafkaMsg = new HashMap<>();
+        kafkaMsg.put("fileName", fileName);
+        kafkaMsg.put("jobName", jobName);
+        kafkaMsg.put("batchId", batchId);
+        kafkaMsg.put("timestamp", new Date().toString());
+        kafkaMsg.put("pdfFileURL", sasUrl);
+        kafkaTemplate.send(outputTopic, batchId, objectMapper.writeValueAsString(kafkaMsg));
+
+        // Prepare enriched response
+        HeaderInfo headerInfo = buildHeader(root, jobName);
+        PayloadInfo payloadInfo = new PayloadInfo();
+        payloadInfo.setProcessedFiles(processedFiles);
+        payloadInfo.setPrintFiles(printFiles);
+
+        MetaDataInfo metaDataInfo = new MetaDataInfo();
+        metaDataInfo.setCustomerSummaries(customerSummaries);
+        metaDataInfo.setSummaryFileURL(jsonFile.getAbsolutePath());
+
+        SummaryPayload summaryPayload = new SummaryPayload();
+        summaryPayload.setHeader(headerInfo);
+        summaryPayload.setPayload(payloadInfo);
+        summaryPayload.setMetaData(metaDataInfo);
+        summaryPayload.setSummaryFileURL(jsonFile.getAbsolutePath());
+
+        // Send the API response with the enriched data
+        Map<String, Object> response = new HashMap<>();
+        response.put("message", "Batch processed successfully");
+        response.put("status", "success");
+        response.put("summaryPayload", summaryPayload);
+
+        kafkaTemplate.send(outputTopic, batchId, objectMapper.writeValueAsString(response));
+
+        return response;
+    }
+
+    private HeaderInfo buildHeader(JsonNode root, String jobName) {
+        HeaderInfo headerInfo = new HeaderInfo();
+        headerInfo.setBatchId(extractField(root, "consumerReference"));
+        headerInfo.setTenantCode(extractField(root, "tenantCode"));
+        headerInfo.setChannelId(extractField(root, "channelId"));
+        headerInfo.setAudienceId(extractField(root, "audienceId"));
+        headerInfo.setTimestamp(new Date().toString());
+        headerInfo.setSourceSystem(extractField(root, "sourceSystem"));
+        headerInfo.setProduct(extractField(root, "product"));
+        headerInfo.setJobName(jobName);
+        return headerInfo;
+    }
+
+    private String extractField(JsonNode root, String fieldName) {
+        JsonNode fieldNode = root.get(fieldName);
+        return fieldNode != null ? fieldNode.asText() : null;
+    }
+
+    private String convertPojoToJson(String pojo) {
+        return pojo;
+    }
+
+    private Map<String, Object> generateErrorResponse(String code, String message) {
+        Map<String, Object> error = new HashMap<>();
+        error.put("statusCode", code);
+        error.put("statusMessage", message);
+        return Collections.singletonMap("error", error);
+    }
+
+    private boolean isEncrypted(String location, String extension) {
+        return extension.equals(".pdf") && location.contains("encrypted");
+    }
+
+    private String determineType(String location, String extension) {
+        if (extension.equals(".pdf") && location.contains("archive")) return "pdf_archive";
+        if (extension.equals(".pdf") && location.contains("email")) return "pdf_email";
+        if (extension.equals(".html") && location.contains("email")) return "html_email";
+        if (extension.equals(".txt") && location.contains("email")) return "txt_email";
+        if (extension.equals(".pdf") && location.contains("mobstat")) return "pdf_mobstat";
+        if (extension.equals(".ps")) return "ps_print";
+        return "unknown";
+    }
+
+    private String getFileExtension(String path) {
+        int index = path.lastIndexOf('.');
+        return (index >= 0) ? path.substring(index).toLowerCase() : "";
+    }
+}
