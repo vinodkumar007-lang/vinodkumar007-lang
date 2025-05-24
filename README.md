@@ -1,9 +1,2 @@
-FROM openjdk:17-jdk-slim
-
-WORKDIR /app
-
-COPY target/file-manager-app.jar .
-
-EXPOSE 8080
-
-CMD ["java", "-jar", "file-manager-app.jar"]
+docker run -p 8080:8080 --name file-manager-container file-manager-app
+docker stop file-manager-container
