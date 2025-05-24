@@ -13,10 +13,6 @@
             </executions>
             <configuration>
                 <mainClass>com.org.filemanager.Application</mainClass>
-                <manifestEntries>
-                    <Implementation-Title>File Manager App</Implementation-Title>
-                    <Implementation-Version>${project.version}</Implementation-Version>
-                </manifestEntries>
             </configuration>
         </plugin>
     </plugins>
