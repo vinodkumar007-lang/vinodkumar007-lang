@@ -412,3 +412,111 @@ public class KafkaListenerService {
         return valueNode.asText();
     }
 }
+package com.nedbank.kafka.filemanage.utils;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.nedbank.kafka.filemanage.model.CustomerSummary;
+import com.nedbank.kafka.filemanage.model.SummaryPayload;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.List;
+
+public class SummaryJsonWriter {
+    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
+    private static final ObjectMapper mapper = new ObjectMapper();
+
+    /**
+     * Appends or merges the given SummaryPayload into existing summary.json file.
+     * Creates new file if doesn't exist.
+     */
+    public static void writeUpdatedSummaryJson(File summaryFile, SummaryPayload payload, String azureBlobStorageAccount) {
+        try {
+            ObjectNode rootNode;
+
+            if (summaryFile.exists()) {
+                rootNode = (ObjectNode) mapper.readTree(summaryFile);
+            } else {
+                rootNode = mapper.createObjectNode();
+                rootNode.put("batchId", payload.getHeader().getBatchId());
+                rootNode.put("batchStatus", payload.getHeader().getBatchStatus());
+                rootNode.put("jobName", payload.getHeader().getJobName());
+                rootNode.put("sourceSystem", payload.getHeader().getSourceSystem());
+                rootNode.put("queueName", payload.getHeader().getQueueName());
+            }
+
+            // Ensure metadata node exists and customerSummaries array exists
+            ObjectNode metadataNode = (ObjectNode) rootNode.get("metadata");
+            if (metadataNode == null) {
+                metadataNode = mapper.createObjectNode();
+                rootNode.set("metadata", metadataNode);
+            }
+
+            ArrayNode customerSummariesNode = (ArrayNode) metadataNode.get("customerSummaries");
+            if (customerSummariesNode == null) {
+                customerSummariesNode = mapper.createArrayNode();
+                metadataNode.set("customerSummaries", customerSummariesNode);
+            }
+
+            // Append new customer summaries from payload (convert POJO to JSON)
+            List<CustomerSummary> newCustomers = payload.getMetaData().getCustomerSummaries();
+            if (newCustomers != null) {
+                for (CustomerSummary cs : newCustomers) {
+                    ObjectNode csNode = mapper.valueToTree(cs);
+                    customerSummariesNode.add(csNode);
+                }
+            }
+
+            // Optionally update other header info if needed
+            rootNode.put("batchId", payload.getHeader().getBatchId());
+            rootNode.put("batchStatus", payload.getHeader().getBatchStatus());
+            rootNode.put("jobName", payload.getHeader().getJobName());
+
+            // Write back updated JSON file
+            mapper.writerWithDefaultPrettyPrinter().writeValue(summaryFile, rootNode);
+            logger.info("Updated summary.json at {}", summaryFile.getAbsolutePath());
+
+        } catch (IOException e) {
+            logger.error("Failed to update summary.json", e);
+        }
+    }
+}
+{
+    "message": "Batch processed successfully",
+    "status": "success",
+    "summaryPayload": {
+        "batchID": null,
+        "header": {
+            "tenantCode": null,
+            "channelID": null,
+            "audienceID": null,
+            "timestamp": "Thu May 22 05:44:21 SAST 2025",
+            "sourceSystem": "DEBTMAN",
+            "product": null,
+            "jobName": ""
+        },
+        "metadata": {
+            "totalFilesProcessed": 0,
+            "processingStatus": null,
+            "eventOutcomeCode": null,
+            "eventOutcomeDescription": null
+        },
+        "payload": {
+            "uniqueConsumerRef": null,
+            "uniqueECPBatchRef": null,
+            "filenetObjectID": null,
+            "repositoryID": null,
+            "runPriority": null,
+            "eventID": null,
+            "eventType": null,
+            "restartKey": null
+        },
+        "processedFiles": null,
+        "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
+        "timestamp": null
+    }
+}
