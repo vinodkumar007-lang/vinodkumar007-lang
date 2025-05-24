@@ -1,522 +1,159 @@
-package com.nedbank.kafka.filemanage.service;
+package com.nedbank.kafka.filemanage.model;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nedbank.kafka.filemanage.model.CustomerSummary;
-import com.nedbank.kafka.filemanage.model.HeaderInfo;
-import com.nedbank.kafka.filemanage.model.MetaDataInfo;
-import com.nedbank.kafka.filemanage.model.PayloadInfo;
-import com.nedbank.kafka.filemanage.model.SummaryPayload;
-import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.ConsumerFactory;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
+public class HeaderInfo {
 
-import java.io.File;
-import java.io.IOException;
-import java.time.Duration;
-import java.util.*;
+    private String jobName;
+    private String batchId;
+    private String batchStatus;
+    private String sourceSystem;
+    private String queueName;
 
-@Service
-public class KafkaListenerService {
+    // ✅ Newly added fields
+    private String tenantCode;
+    private String channelID;
+    private String audienceID;
 
-    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
-
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final BlobStorageService blobStorageService;
-    private final ConsumerFactory<String, String> consumerFactory;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-
-    @Value("${kafka.topic.input}")
-    private String inputTopic;
-
-    @Value("${kafka.topic.output}")
-    private String outputTopic;
-
-    @Value("${azure.blob.storage.account}")
-    private String azureBlobStorageAccount;
-
-    private final File summaryFile = new File(System.getProperty("user.home"), "summary.json");
-
-    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
-                                BlobStorageService blobStorageService,
-                                ConsumerFactory<String, String> consumerFactory) {
-        this.kafkaTemplate = kafkaTemplate;
-        this.blobStorageService = blobStorageService;
-        this.consumerFactory = consumerFactory;
+    // Getters and setters
+    public String getJobName() {
+        return jobName;
     }
 
-    public Map<String, Object> listen() {
-        Consumer<String, String> consumer = consumerFactory.createConsumer();
-        try {
-            List<TopicPartition> partitions = new ArrayList<>();
-            consumer.partitionsFor(inputTopic).forEach(partitionInfo ->
-                    partitions.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()))
-            );
-
-            consumer.assign(partitions);
-            consumer.seekToBeginning(partitions);
-
-            List<String> recentMessages = new ArrayList<>();
-            int emptyPollCount = 0;
-            long threeDaysAgo = System.currentTimeMillis() - Duration.ofDays(3).toMillis();
-
-            while (emptyPollCount < 3) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
-                if (records.isEmpty()) {
-                    emptyPollCount++;
-                } else {
-                    emptyPollCount = 0;
-                    for (ConsumerRecord<String, String> record : records) {
-                        if (record.timestamp() >= threeDaysAgo) {
-                            logger.info("Received message (offset={}): {}", record.offset(), record.value());
-                            recentMessages.add(record.value());
-                        } else {
-                            logger.debug("Skipping old message (timestamp={}): {}", record.timestamp(), record.value());
-                        }
-                    }
-                }
-            }
-
-            if (recentMessages.isEmpty()) {
-                return generateErrorResponse("204", "No recent messages found in Kafka topic.");
-            }
-
-            List<SummaryPayload> processedPayloads = new ArrayList<>();
-            for (String message : recentMessages) {
-                SummaryPayload summaryPayload = processSingleMessage(message);
-                SummaryJsonWriter.writeUpdatedSummaryJson(summaryFile, summaryPayload, azureBlobStorageAccount);
-                processedPayloads.add(summaryPayload);
-            }
-
-            SummaryPayload finalSummary = mergeSummaryPayloads(processedPayloads);
-
-            String finalSummaryJson = objectMapper.writeValueAsString(finalSummary);
-
-            kafkaTemplate.send(outputTopic, finalSummaryJson);
-            logger.info("Final combined summary sent to topic: {}", outputTopic);
-
-            // Build response map as requested
-            Map<String, Object> responseMap = buildFinalResponse(finalSummary);
-            return responseMap;
-
-        } catch (Exception e) {
-            logger.error("Error during Kafka message processing", e);
-            return generateErrorResponse("500", "Internal Server Error while processing messages.");
-        } finally {
-            consumer.close();
-        }
+    public void setJobName(String jobName) {
+        this.jobName = jobName;
     }
 
-    private SummaryPayload processSingleMessage(String message) throws IOException {
-        JsonNode root = objectMapper.readTree(message);
-
-        // Extract jobName (optional)
-        String jobName = safeGetText(root, "JobName", false);
-        if (jobName == null) jobName = "";
-
-        // Extract BatchId (mandatory fallback to random UUID)
-        String batchId = safeGetText(root, "BatchId", true);
-        if (batchId == null) batchId = UUID.randomUUID().toString();
-
-        // Process CustomerSummaries from BatchFiles array
-        List<CustomerSummary> customerSummaries = new ArrayList<>();
-        JsonNode batchFilesNode = root.get("BatchFiles");
-        if (batchFilesNode != null && batchFilesNode.isArray()) {
-            for (JsonNode fileNode : batchFilesNode) {
-                String filePath = safeGetText(fileNode, "BlobUrl", true);
-                String objectId = safeGetText(fileNode, "ObjectId", true);
-                String validationStatus = safeGetText(fileNode, "ValidationStatus", false);
-
-                if (filePath == null || objectId == null) {
-                    logger.warn("Skipping file with missing BlobUrl or ObjectId.");
-                    continue;
-                }
-
-                try {
-                    blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
-                } catch (Exception e) {
-                    logger.warn("Blob upload failed for {}: {}", filePath, e.getMessage());
-                }
-
-                String extension = getFileExtension(filePath);
-                CustomerSummary.FileDetail detail = new CustomerSummary.FileDetail();
-                detail.setObjectId(objectId);
-                detail.setFileLocation(filePath);
-                detail.setFileUrl("https://" + azureBlobStorageAccount + "/" + filePath);
-                detail.setEncrypted(isEncrypted(filePath, extension));
-                detail.setStatus(validationStatus != null ? validationStatus : "OK");
-                detail.setType(determineType(filePath));
-
-                // Find existing customer or create new
-                CustomerSummary customer = customerSummaries.stream()
-                        .filter(c -> c.getCustomerId().equals(objectId))
-                        .findFirst()
-                        .orElseGet(() -> {
-                            CustomerSummary c = new CustomerSummary();
-                            c.setCustomerId(objectId);
-                            c.setAccountNumber("");
-                            c.setFiles(new ArrayList<>());
-                            customerSummaries.add(c);
-                            return c;
-                        });
-
-                customer.getFiles().add(detail);
-            }
-        }
-
-        // Build Header info - check if nested "Header" node exists, else fallback to root
-        HeaderInfo headerInfo = null;
-        JsonNode headerNode = root.get("Header");
-        if (headerNode != null && !headerNode.isNull()) {
-            headerInfo = buildHeader(headerNode, jobName);
-        } else {
-            headerInfo = buildHeader(root, jobName);
-        }
-
-        if (headerInfo.getBatchId() == null) {
-            headerInfo.setBatchId(batchId);
-        }
-
-        // Build Payload info - check if nested "Payload" node exists, else fallback to root
-        PayloadInfo payloadInfo = new PayloadInfo();
-        JsonNode payloadNode = root.get("Payload");
-        if (payloadNode != null && !payloadNode.isNull()) {
-            payloadInfo.setUniqueConsumerRef(safeGetText(payloadNode, "uniqueConsumerRef", false));
-            payloadInfo.setUniqueECPBatchRef(safeGetText(payloadNode, "uniqueECPBatchRef", false));
-            payloadInfo.setRunPriority(safeGetText(payloadNode, "runPriority", false));
-            payloadInfo.setEventID(safeGetText(payloadNode, "eventID", false));
-            payloadInfo.setEventType(safeGetText(payloadNode, "eventType", false));
-            payloadInfo.setRestartKey(safeGetText(payloadNode, "restartKey", false));
-            // Assume PrintFiles is a list of strings if present
-            JsonNode printFilesNode = payloadNode.get("printFiles");
-            if (printFilesNode != null && printFilesNode.isArray()) {
-                List<String> printFiles = new ArrayList<>();
-                for (JsonNode pf : printFilesNode) {
-                    printFiles.add(pf.asText());
-                }
-                payloadInfo.setPrintFiles(printFiles);
-            } else {
-                payloadInfo.setPrintFiles(Collections.emptyList());
-            }
-        } else {
-            // fallback to root level keys if any
-            payloadInfo.setUniqueConsumerRef(safeGetText(root, "uniqueConsumerRef", false));
-            payloadInfo.setUniqueECPBatchRef(safeGetText(root, "uniqueECPBatchRef", false));
-            payloadInfo.setRunPriority(safeGetText(root, "runPriority", false));
-            payloadInfo.setEventID(safeGetText(root, "eventID", false));
-            payloadInfo.setEventType(safeGetText(root, "eventType", false));
-            payloadInfo.setRestartKey(safeGetText(root, "restartKey", false));
-            payloadInfo.setPrintFiles(Collections.emptyList());
-        }
-
-        // Metadata
-        MetaDataInfo metaDataInfo = new MetaDataInfo();
-        metaDataInfo.setCustomerSummaries(customerSummaries);
-
-        SummaryPayload summaryPayload = new SummaryPayload();
-        summaryPayload.setHeader(headerInfo);
-        summaryPayload.setPayload(payloadInfo);
-        summaryPayload.setMetaData(metaDataInfo);
-
-        return summaryPayload;
+    public String getBatchId() {
+        return batchId;
     }
 
-    private HeaderInfo buildHeader(JsonNode node, String jobName) {
-        HeaderInfo header = new HeaderInfo();
-        header.setJobName(jobName != null ? jobName : safeGetText(node, "JobName", false));
-        header.setBatchId(safeGetText(node, "BatchId", false));
-        header.setBatchStatus(safeGetText(node, "BatchStatus", false));
-        header.setSourceSystem(safeGetText(node, "SourceSystem", false));
-        header.setQueueName(safeGetText(node, "QueueName", false));
-        return header;
+    public void setBatchId(String batchId) {
+        this.batchId = batchId;
     }
 
-    private boolean isEncrypted(String filePath, String extension) {
-        // Sample logic, update with your encryption check
-        return extension.equalsIgnoreCase("enc");
+    public String getBatchStatus() {
+        return batchStatus;
     }
 
-    private String getFileExtension(String filePath) {
-        if (filePath == null || !filePath.contains(".")) {
-            return "";
-        }
-        return filePath.substring(filePath.lastIndexOf('.') + 1);
+    public void setBatchStatus(String batchStatus) {
+        this.batchStatus = batchStatus;
     }
 
-    private String determineType(String filePath) {
-        if (filePath == null) return "";
-        String ext = getFileExtension(filePath).toLowerCase();
-        switch (ext) {
-            case "pdf": return "PDF";
-            case "doc":
-            case "docx": return "DOC";
-            case "enc": return "Encrypted";
-            default: return "Unknown";
-        }
+    public String getSourceSystem() {
+        return sourceSystem;
     }
 
-    private Map<String, Object> buildFinalResponse(SummaryPayload finalSummary) {
-        Map<String, Object> responseMap = new HashMap<>();
-        responseMap.put("batchId", finalSummary.getHeader().getBatchId());
-        responseMap.put("batchStatus", finalSummary.getHeader().getBatchStatus());
-        responseMap.put("jobName", finalSummary.getHeader().getJobName());
-
-        List<Map<String, Object>> customers = new ArrayList<>();
-        for (CustomerSummary cs : finalSummary.getMetaData().getCustomerSummaries()) {
-            Map<String, Object> custMap = new HashMap<>();
-            custMap.put("customerId", cs.getCustomerId());
-            custMap.put("accountNumber", cs.getAccountNumber());
-
-            List<Map<String, Object>> filesList = new ArrayList<>();
-            for (CustomerSummary.FileDetail fd : cs.getFiles()) {
-                Map<String, Object> fileMap = new HashMap<>();
-                fileMap.put("objectId", fd.getObjectId());
-                fileMap.put("fileLocation", fd.getFileLocation());
-                fileMap.put("fileUrl", fd.getFileUrl());
-                fileMap.put("encrypted", fd.isEncrypted());
-                fileMap.put("status", fd.getStatus());
-                fileMap.put("type", fd.getType());
-                filesList.add(fileMap);
-            }
-            custMap.put("files", filesList);
-            customers.add(custMap);
-        }
-        responseMap.put("customerSummaries", customers);
-        responseMap.put("uniqueConsumerRef", finalSummary.getPayload().getUniqueConsumerRef());
-        responseMap.put("uniqueECPBatchRef", finalSummary.getPayload().getUniqueECPBatchRef());
-        responseMap.put("runPriority", finalSummary.getPayload().getRunPriority());
-        responseMap.put("eventID", finalSummary.getPayload().getEventID());
-        responseMap.put("eventType", finalSummary.getPayload().getEventType());
-        responseMap.put("restartKey", finalSummary.getPayload().getRestartKey());
-        responseMap.put("printFiles", finalSummary.getPayload().getPrintFiles());
-
-        return responseMap;
+    public void setSourceSystem(String sourceSystem) {
+        this.sourceSystem = sourceSystem;
     }
 
-    private SummaryPayload mergeSummaryPayloads(List<SummaryPayload> payloads) {
-        if (payloads == null || payloads.isEmpty()) {
-            return new SummaryPayload();
-        }
-
-        SummaryPayload merged = new SummaryPayload();
-
-        // Merge headers - pick first non-null header or combine if needed
-        HeaderInfo mergedHeader = new HeaderInfo();
-        for (SummaryPayload p : payloads) {
-            if (p.getHeader() != null) {
-                if (mergedHeader.getBatchId() == null)
-                    mergedHeader.setBatchId(p.getHeader().getBatchId());
-                if (mergedHeader.getBatchStatus() == null)
-                    mergedHeader.setBatchStatus(p.getHeader().getBatchStatus());
-                if (mergedHeader.getJobName() == null)
-                    mergedHeader.setJobName(p.getHeader().getJobName());
-                if (mergedHeader.getSourceSystem() == null)
-                    mergedHeader.setSourceSystem(p.getHeader().getSourceSystem());
-                if (mergedHeader.getQueueName() == null)
-                    mergedHeader.setQueueName(p.getHeader().getQueueName());
-            }
-        }
-        merged.setHeader(mergedHeader);
-
-        // Merge payloads - for simplicity pick first non-null uniqueConsumerRef, etc.
-        PayloadInfo mergedPayload = new PayloadInfo();
-        for (SummaryPayload p : payloads) {
-            PayloadInfo pl = p.getPayload();
-            if (pl != null) {
-                if (mergedPayload.getUniqueConsumerRef() == null)
-                    mergedPayload.setUniqueConsumerRef(pl.getUniqueConsumerRef());
-                if (mergedPayload.getUniqueECPBatchRef() == null)
-                    mergedPayload.setUniqueECPBatchRef(pl.getUniqueECPBatchRef());
-                if (mergedPayload.getRunPriority() == null)
-                    mergedPayload.setRunPriority(pl.getRunPriority());
-                if (mergedPayload.getEventID() == null)
-                    mergedPayload.setEventID(pl.getEventID());
-                if (mergedPayload.getEventType() == null)
-                    mergedPayload.setEventType(pl.getEventType());
-                if (mergedPayload.getRestartKey() == null)
-                    mergedPayload.setRestartKey(pl.getRestartKey());
-            }
-        }
-
-        // Merge printFiles lists, flatten all
-        List<String> allPrintFiles = new ArrayList<>();
-        for (SummaryPayload p : payloads) {
-            PayloadInfo pl = p.getPayload();
-            if (pl != null && pl.getPrintFiles() != null) {
-                allPrintFiles.addAll(pl.getPrintFiles());
-            }
-        }
-        mergedPayload.setPrintFiles(allPrintFiles);
-
-        merged.setPayload(mergedPayload);
-
-        // Merge metadata: combine all customer summaries into one list (merge if needed by customerId)
-        Map<String, CustomerSummary> mergedCustomers = new HashMap<>();
-        for (SummaryPayload p : payloads) {
-            if (p.getMetaData() != null && p.getMetaData().getCustomerSummaries() != null) {
-                for (CustomerSummary cs : p.getMetaData().getCustomerSummaries()) {
-                    if (cs == null || cs.getCustomerId() == null) continue;
-
-                    CustomerSummary existing = mergedCustomers.get(cs.getCustomerId());
-                    if (existing == null) {
-                        mergedCustomers.put(cs.getCustomerId(), cs);
-                    } else {
-                        // Merge files list for this customer
-                        if (cs.getFiles() != null) {
-                            if (existing.getFiles() == null) {
-                                existing.setFiles(new ArrayList<>());
-                            }
-                            existing.getFiles().addAll(cs.getFiles());
-                        }
-                    }
-                }
-            }
-        }
-
-        MetaDataInfo mergedMetaData = new MetaDataInfo();
-        mergedMetaData.setCustomerSummaries(new ArrayList<>(mergedCustomers.values()));
-        merged.setMetaData(mergedMetaData);
-
-        return merged;
+    public String getQueueName() {
+        return queueName;
     }
 
-    private Map<String, Object> generateErrorResponse(String code, String message) {
-        Map<String, Object> errResp = new HashMap<>();
-        errResp.put("code", code);
-        errResp.put("message", message);
-        return errResp;
+    public void setQueueName(String queueName) {
+        this.queueName = queueName;
     }
 
-    private String safeGetText(JsonNode node, String fieldName, boolean required) {
-        if (node == null || !node.has(fieldName)) {
-            if (required) {
-                logger.warn("Required field '{}' missing in JSON", fieldName);
-            }
-            return null;
-        }
-        JsonNode valueNode = node.get(fieldName);
-        if (valueNode == null || valueNode.isNull()) {
-            if (required) {
-                logger.warn("Required field '{}' is null in JSON", fieldName);
-            }
-            return null;
-        }
-        return valueNode.asText();
+    public String getTenantCode() {
+        return tenantCode;
+    }
+
+    public void setTenantCode(String tenantCode) {
+        this.tenantCode = tenantCode;
+    }
+
+    public String getChannelID() {
+        return channelID;
+    }
+
+    public void setChannelID(String channelID) {
+        this.channelID = channelID;
+    }
+
+    public String getAudienceID() {
+        return audienceID;
+    }
+
+    public void setAudienceID(String audienceID) {
+        this.audienceID = audienceID;
     }
 }
-package com.nedbank.kafka.filemanage.utils;
+private HeaderInfo buildHeader(JsonNode node, String jobName) {
+    HeaderInfo header = new HeaderInfo();
+    header.setJobName(jobName != null ? jobName : safeGetText(node, "JobName", false));
+    header.setBatchId(safeGetText(node, "BatchId", false));
+    header.setBatchStatus(safeGetText(node, "BatchStatus", false));
+    header.setSourceSystem(safeGetText(node, "SourceSystem", false));
+    header.setQueueName(safeGetText(node, "QueueName", false));
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.nedbank.kafka.filemanage.model.CustomerSummary;
-import com.nedbank.kafka.filemanage.model.SummaryPayload;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+    // ✅ Added fields from message
+    header.setTenantCode(safeGetText(node, "tenantCode", false));
+    header.setChannelID(safeGetText(node, "channelID", false));
+    header.setAudienceID(safeGetText(node, "audienceID", false));
 
-import java.io.File;
-import java.io.IOException;
-import java.util.List;
+    return header;
+}
+private Map<String, Object> buildFinalResponse(SummaryPayload finalSummary) {
+    Map<String, Object> responseMap = new LinkedHashMap<>();
+    responseMap.put("message", "Batch processed successfully");
+    responseMap.put("status", "success");
 
-public class SummaryJsonWriter {
-    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
-    private static final ObjectMapper mapper = new ObjectMapper();
+    Map<String, Object> summaryPayload = new LinkedHashMap<>();
 
-    /**
-     * Appends or merges the given SummaryPayload into existing summary.json file.
-     * Creates new file if doesn't exist.
-     */
-    public static void writeUpdatedSummaryJson(File summaryFile, SummaryPayload payload, String azureBlobStorageAccount) {
-        try {
-            ObjectNode rootNode;
+    summaryPayload.put("batchID", finalSummary.getHeader().getBatchId());
 
-            if (summaryFile.exists()) {
-                rootNode = (ObjectNode) mapper.readTree(summaryFile);
-            } else {
-                rootNode = mapper.createObjectNode();
-                rootNode.put("batchId", payload.getHeader().getBatchId());
-                rootNode.put("batchStatus", payload.getHeader().getBatchStatus());
-                rootNode.put("jobName", payload.getHeader().getJobName());
-                rootNode.put("sourceSystem", payload.getHeader().getSourceSystem());
-                rootNode.put("queueName", payload.getHeader().getQueueName());
-            }
+    Map<String, Object> header = new LinkedHashMap<>();
+    header.put("tenantCode", finalSummary.getHeader().getTenantCode());
+    header.put("channelID", finalSummary.getHeader().getChannelID());
+    header.put("audienceID", finalSummary.getHeader().getAudienceID());
+    header.put("timestamp", new Date().toString());
+    header.put("sourceSystem", finalSummary.getHeader().getSourceSystem() != null ? finalSummary.getHeader().getSourceSystem() : "DEBTMAN");
+    header.put("product", null); // Adjust if needed
+    header.put("jobName", finalSummary.getHeader().getJobName());
 
-            // Ensure metadata node exists and customerSummaries array exists
-            ObjectNode metadataNode = (ObjectNode) rootNode.get("metadata");
-            if (metadataNode == null) {
-                metadataNode = mapper.createObjectNode();
-                rootNode.set("metadata", metadataNode);
-            }
+    summaryPayload.put("header", header);
 
-            ArrayNode customerSummariesNode = (ArrayNode) metadataNode.get("customerSummaries");
-            if (customerSummariesNode == null) {
-                customerSummariesNode = mapper.createArrayNode();
-                metadataNode.set("customerSummaries", customerSummariesNode);
-            }
+    Map<String, Object> metadata = new LinkedHashMap<>();
+    List<CustomerSummary> customers = finalSummary.getMetaData().getCustomerSummaries();
+    metadata.put("totalFilesProcessed", customers.stream().mapToInt(cs -> cs.getFiles().size()).sum());
+    metadata.put("processingStatus", finalSummary.getHeader().getBatchStatus());
+    metadata.put("eventOutcomeCode", null); // Populate if available
+    metadata.put("eventOutcomeDescription", null); // Populate if available
 
-            // Append new customer summaries from payload (convert POJO to JSON)
-            List<CustomerSummary> newCustomers = payload.getMetaData().getCustomerSummaries();
-            if (newCustomers != null) {
-                for (CustomerSummary cs : newCustomers) {
-                    ObjectNode csNode = mapper.valueToTree(cs);
-                    customerSummariesNode.add(csNode);
-                }
-            }
+    summaryPayload.put("metadata", metadata);
 
-            // Optionally update other header info if needed
-            rootNode.put("batchId", payload.getHeader().getBatchId());
-            rootNode.put("batchStatus", payload.getHeader().getBatchStatus());
-            rootNode.put("jobName", payload.getHeader().getJobName());
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("uniqueConsumerRef", finalSummary.getPayload().getUniqueConsumerRef());
+    payload.put("uniqueECPBatchRef", finalSummary.getPayload().getUniqueECPBatchRef());
+    payload.put("filenetObjectID", null);  // You mentioned this is not required to extract
+    payload.put("repositoryID", null);     // You mentioned this is not required to extract
+    payload.put("runPriority", finalSummary.getPayload().getRunPriority());
+    payload.put("eventID", finalSummary.getPayload().getEventID());
+    payload.put("eventType", finalSummary.getPayload().getEventType());
+    payload.put("restartKey", finalSummary.getPayload().getRestartKey());
 
-            // Write back updated JSON file
-            mapper.writerWithDefaultPrettyPrinter().writeValue(summaryFile, rootNode);
-            logger.info("Updated summary.json at {}", summaryFile.getAbsolutePath());
+    summaryPayload.put("payload", payload);
 
-        } catch (IOException e) {
-            logger.error("Failed to update summary.json", e);
+    // Processed files
+    List<Map<String, Object>> processedFiles = new ArrayList<>();
+    for (CustomerSummary cs : customers) {
+        for (CustomerSummary.FileDetail file : cs.getFiles()) {
+            Map<String, Object> fileMap = new LinkedHashMap<>();
+            fileMap.put("objectId", file.getObjectId());
+            fileMap.put("fileLocation", file.getFileLocation());
+            fileMap.put("fileUrl", file.getFileUrl());
+            fileMap.put("encrypted", file.isEncrypted());
+            fileMap.put("status", file.getStatus());
+            fileMap.put("type", file.getType());
+            processedFiles.add(fileMap);
         }
     }
-}
-{
-    "message": "Batch processed successfully",
-    "status": "success",
-    "summaryPayload": {
-        "batchID": null,
-        "header": {
-            "tenantCode": null,
-            "channelID": null,
-            "audienceID": null,
-            "timestamp": "Thu May 22 05:44:21 SAST 2025",
-            "sourceSystem": "DEBTMAN",
-            "product": null,
-            "jobName": ""
-        },
-        "metadata": {
-            "totalFilesProcessed": 0,
-            "processingStatus": null,
-            "eventOutcomeCode": null,
-            "eventOutcomeDescription": null
-        },
-        "payload": {
-            "uniqueConsumerRef": null,
-            "uniqueECPBatchRef": null,
-            "filenetObjectID": null,
-            "repositoryID": null,
-            "runPriority": null,
-            "eventID": null,
-            "eventType": null,
-            "restartKey": null
-        },
-        "processedFiles": null,
-        "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-        "timestamp": null
-    }
+
+    summaryPayload.put("processedFiles", processedFiles);
+    summaryPayload.put("summaryFileURL", summaryFile.getAbsolutePath());
+    summaryPayload.put("timestamp", new Date().toString());
+
+    responseMap.put("summaryPayload", summaryPayload);
+
+    return responseMap;
 }
