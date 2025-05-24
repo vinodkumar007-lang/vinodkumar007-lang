@@ -1,159 +1,93 @@
-package com.nedbank.kafka.filemanage.model;
+package com.nedbank.kafka.filemanage.utils;
 
-public class HeaderInfo {
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.nedbank.kafka.filemanage.model.CustomerSummary;
+import com.nedbank.kafka.filemanage.model.SummaryPayload;
+import com.nedbank.kafka.filemanage.model.PayloadInfo;
+import com.nedbank.kafka.filemanage.model.HeaderInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-    private String jobName;
-    private String batchId;
-    private String batchStatus;
-    private String sourceSystem;
-    private String queueName;
+import java.io.File;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.List;
 
-    // ✅ Newly added fields
-    private String tenantCode;
-    private String channelID;
-    private String audienceID;
+public class SummaryJsonWriter {
+    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
+    private static final ObjectMapper mapper = new ObjectMapper();
 
-    // Getters and setters
-    public String getJobName() {
-        return jobName;
-    }
+    public static void writeUpdatedSummaryJson(File summaryFile, SummaryPayload payload, String azureBlobStorageAccount) {
+        try {
+            ObjectNode rootNode = mapper.createObjectNode();
 
-    public void setJobName(String jobName) {
-        this.jobName = jobName;
-    }
+            // Batch ID
+            rootNode.put("batchID", payload.getHeader().getBatchId());
 
-    public String getBatchId() {
-        return batchId;
-    }
+            // File name (assume naming convention)
+            String fileName = "DEBTMAN_" + new SimpleDateFormat("yyyyMMdd").format(new Date()) + ".csv";
+            rootNode.put("fileName", fileName);
 
-    public void setBatchId(String batchId) {
-        this.batchId = batchId;
-    }
+            // Header block
+            ObjectNode headerNode = mapper.createObjectNode();
+            headerNode.put("tenantCode", payload.getHeader().getTenantCode());
+            headerNode.put("channelID", payload.getHeader().getChannelID());
+            headerNode.put("audienceID", payload.getHeader().getAudienceID());
+            headerNode.put("timestamp", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'").format(new Date()));
+            headerNode.put("sourceSystem", payload.getHeader().getSourceSystem());
+            headerNode.put("product", "DEBTMANAGER");
+            headerNode.put("jobName", payload.getHeader().getJobName());
+            rootNode.set("header", headerNode);
 
-    public String getBatchStatus() {
-        return batchStatus;
-    }
+            // Processed files
+            ArrayNode processedFiles = mapper.createArrayNode();
+            for (CustomerSummary customer : payload.getMetaData().getCustomerSummaries()) {
+                ObjectNode custNode = mapper.createObjectNode();
+                custNode.put("customerID", customer.getCustomerId());
+                custNode.put("accountNumber", customer.getAccountNumber());
 
-    public void setBatchStatus(String batchStatus) {
-        this.batchStatus = batchStatus;
-    }
+                String accountId = customer.getAccountNumber();
+                String batchId = payload.getHeader().getBatchId();
 
-    public String getSourceSystem() {
-        return sourceSystem;
-    }
+                // Add document URLs
+                custNode.put("pdfArchiveFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/archive", accountId, batchId, "pdf"));
+                custNode.put("pdfEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/email", accountId, batchId, "pdf"));
+                custNode.put("htmlEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/html", accountId, batchId, "html"));
+                custNode.put("txtEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/txt", accountId, batchId, "txt"));
+                custNode.put("pdfMobstatFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/mobstat", accountId, batchId, "pdf"));
 
-    public void setSourceSystem(String sourceSystem) {
-        this.sourceSystem = sourceSystem;
-    }
+                custNode.put("statusCode", "OK");
+                custNode.put("statusDescription", "Success");
 
-    public String getQueueName() {
-        return queueName;
-    }
+                processedFiles.add(custNode);
+            }
+            rootNode.set("processedFiles", processedFiles);
 
-    public void setQueueName(String queueName) {
-        this.queueName = queueName;
-    }
+            // Print files
+            ArrayNode printFilesNode = mapper.createArrayNode();
+            List<String> printFiles = payload.getPayload().getPrintFiles();
+            if (printFiles != null) {
+                for (String printFileName : printFiles) {
+                    ObjectNode printNode = mapper.createObjectNode();
+                    printNode.put("printFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/mobstat", printFileName, payload.getHeader().getBatchId(), "ps"));
+                    printFilesNode.add(printNode);
+                }
+            }
+            rootNode.set("printFiles", printFilesNode);
 
-    public String getTenantCode() {
-        return tenantCode;
-    }
+            // Write to file
+            mapper.writerWithDefaultPrettyPrinter().writeValue(summaryFile, rootNode);
+            logger.info("Generated structured summary.json at {}", summaryFile.getAbsolutePath());
 
-    public void setTenantCode(String tenantCode) {
-        this.tenantCode = tenantCode;
-    }
-
-    public String getChannelID() {
-        return channelID;
-    }
-
-    public void setChannelID(String channelID) {
-        this.channelID = channelID;
-    }
-
-    public String getAudienceID() {
-        return audienceID;
-    }
-
-    public void setAudienceID(String audienceID) {
-        this.audienceID = audienceID;
-    }
-}
-private HeaderInfo buildHeader(JsonNode node, String jobName) {
-    HeaderInfo header = new HeaderInfo();
-    header.setJobName(jobName != null ? jobName : safeGetText(node, "JobName", false));
-    header.setBatchId(safeGetText(node, "BatchId", false));
-    header.setBatchStatus(safeGetText(node, "BatchStatus", false));
-    header.setSourceSystem(safeGetText(node, "SourceSystem", false));
-    header.setQueueName(safeGetText(node, "QueueName", false));
-
-    // ✅ Added fields from message
-    header.setTenantCode(safeGetText(node, "tenantCode", false));
-    header.setChannelID(safeGetText(node, "channelID", false));
-    header.setAudienceID(safeGetText(node, "audienceID", false));
-
-    return header;
-}
-private Map<String, Object> buildFinalResponse(SummaryPayload finalSummary) {
-    Map<String, Object> responseMap = new LinkedHashMap<>();
-    responseMap.put("message", "Batch processed successfully");
-    responseMap.put("status", "success");
-
-    Map<String, Object> summaryPayload = new LinkedHashMap<>();
-
-    summaryPayload.put("batchID", finalSummary.getHeader().getBatchId());
-
-    Map<String, Object> header = new LinkedHashMap<>();
-    header.put("tenantCode", finalSummary.getHeader().getTenantCode());
-    header.put("channelID", finalSummary.getHeader().getChannelID());
-    header.put("audienceID", finalSummary.getHeader().getAudienceID());
-    header.put("timestamp", new Date().toString());
-    header.put("sourceSystem", finalSummary.getHeader().getSourceSystem() != null ? finalSummary.getHeader().getSourceSystem() : "DEBTMAN");
-    header.put("product", null); // Adjust if needed
-    header.put("jobName", finalSummary.getHeader().getJobName());
-
-    summaryPayload.put("header", header);
-
-    Map<String, Object> metadata = new LinkedHashMap<>();
-    List<CustomerSummary> customers = finalSummary.getMetaData().getCustomerSummaries();
-    metadata.put("totalFilesProcessed", customers.stream().mapToInt(cs -> cs.getFiles().size()).sum());
-    metadata.put("processingStatus", finalSummary.getHeader().getBatchStatus());
-    metadata.put("eventOutcomeCode", null); // Populate if available
-    metadata.put("eventOutcomeDescription", null); // Populate if available
-
-    summaryPayload.put("metadata", metadata);
-
-    Map<String, Object> payload = new LinkedHashMap<>();
-    payload.put("uniqueConsumerRef", finalSummary.getPayload().getUniqueConsumerRef());
-    payload.put("uniqueECPBatchRef", finalSummary.getPayload().getUniqueECPBatchRef());
-    payload.put("filenetObjectID", null);  // You mentioned this is not required to extract
-    payload.put("repositoryID", null);     // You mentioned this is not required to extract
-    payload.put("runPriority", finalSummary.getPayload().getRunPriority());
-    payload.put("eventID", finalSummary.getPayload().getEventID());
-    payload.put("eventType", finalSummary.getPayload().getEventType());
-    payload.put("restartKey", finalSummary.getPayload().getRestartKey());
-
-    summaryPayload.put("payload", payload);
-
-    // Processed files
-    List<Map<String, Object>> processedFiles = new ArrayList<>();
-    for (CustomerSummary cs : customers) {
-        for (CustomerSummary.FileDetail file : cs.getFiles()) {
-            Map<String, Object> fileMap = new LinkedHashMap<>();
-            fileMap.put("objectId", file.getObjectId());
-            fileMap.put("fileLocation", file.getFileLocation());
-            fileMap.put("fileUrl", file.getFileUrl());
-            fileMap.put("encrypted", file.isEncrypted());
-            fileMap.put("status", file.getStatus());
-            fileMap.put("type", file.getType());
-            processedFiles.add(fileMap);
+        } catch (IOException e) {
+            logger.error("Error writing structured summary.json", e);
         }
     }
 
-    summaryPayload.put("processedFiles", processedFiles);
-    summaryPayload.put("summaryFileURL", summaryFile.getAbsolutePath());
-    summaryPayload.put("timestamp", new Date().toString());
-
-    responseMap.put("summaryPayload", summaryPayload);
-
-    return responseMap;
+    private static String buildBlobUrl(String account, String path, String id, String batchId, String ext) {
+        return String.format("https://%s/%s/%s_%s.%s", account, path, id, batchId, ext);
+    }
 }
