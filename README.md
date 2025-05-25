@@ -1,37 +1,3 @@
-{
-    "message": "Batch processed successfully",
-    "status": "success",
-    "summaryPayload": {
-        "batchID": "bb8f2b26-38c2-42ff-aec3-c48a7380522a",
-        "header": {
-            "tenantCode": null,
-            "channelID": null,
-            "audienceID": null,
-            "timestamp": "Sun May 25 16:07:30 SAST 2025",
-            "sourceSystem": "DEBTMAN",
-            "product": null,
-            "jobName": "DEBTMAN"
-        },
-        "metadata": {
-            "totalFilesProcessed": 15,
-            "processingStatus": null,
-            "eventOutcomeCode": null,
-            "eventOutcomeDescription": null
-        },
-        "payload": {
-            "uniqueConsumerRef": null,
-            "uniqueECPBatchRef": null,
-            "runPriority": null,
-            "eventID": null,
-            "eventType": null,
-            "restartKey": null,
-            "blobURL": null
-        },
-        "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-        "timestamp": "Sun May 25 16:07:30 SAST 2025"
-    }
-}
-
 package com.nedbank.kafka.filemanage.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -226,6 +192,16 @@ public class KafkaListenerService {
         if (headerInfo.getBatchId() == null) {
             headerInfo.setBatchId(batchId);
         }
+        
+        // NEW: extract product field if present in header or root
+        String product = null;
+        if (headerNode != null && headerNode.has("product")) {
+            product = safeGetText(headerNode, "product", false);
+        }
+        if (product == null) {
+            product = safeGetText(root, "product", false);
+        }
+        headerInfo.setProduct(product);
 
         // Build Payload info - check if nested "Payload" node exists, else fallback to root
         PayloadInfo payloadInfo = new PayloadInfo();
@@ -237,6 +213,10 @@ public class KafkaListenerService {
             payloadInfo.setEventID(safeGetText(payloadNode, "eventID", false));
             payloadInfo.setEventType(safeGetText(payloadNode, "eventType", false));
             payloadInfo.setRestartKey(safeGetText(payloadNode, "restartKey", false));
+            payloadInfo.setBlobURL(safeGetText(payloadNode, "blobURL", false)); // NEW
+            payloadInfo.setEventOutcomeCode(safeGetText(payloadNode, "eventOutcomeCode", false)); // NEW
+            payloadInfo.setEventOutcomeDescription(safeGetText(payloadNode, "eventOutcomeDescription", false)); // NEW
+            
             // Assume PrintFiles is a list of strings if present
             JsonNode printFilesNode = payloadNode.get("printFiles");
             if (printFilesNode != null && printFilesNode.isArray()) {
@@ -245,25 +225,17 @@ public class KafkaListenerService {
                     printFiles.add(pf.asText());
                 }
                 payloadInfo.setPrintFiles(printFiles);
-            } else {
-                payloadInfo.setPrintFiles(Collections.emptyList());
             }
-        } else {
-            // fallback to root level keys if any
-            payloadInfo.setUniqueConsumerRef(safeGetText(root, "uniqueConsumerRef", false));
-            payloadInfo.setUniqueECPBatchRef(safeGetText(root, "uniqueECPBatchRef", false));
-            payloadInfo.setRunPriority(safeGetText(root, "runPriority", false));
-            payloadInfo.setEventID(safeGetText(root, "eventID", false));
-            payloadInfo.setEventType(safeGetText(root, "eventType", false));
-            payloadInfo.setRestartKey(safeGetText(root, "restartKey", false));
-            payloadInfo.setPrintFiles(Collections.emptyList());
         }
 
-        // Metadata
         MetaDataInfo metaDataInfo = new MetaDataInfo();
-        metaDataInfo.setCustomerSummaries(customerSummaries);
+        metaDataInfo.setTotalFiles(customerSummaries.stream().mapToInt(c -> c.getFiles().size()).sum());
+        metaDataInfo.setTotalCustomers(customerSummaries.size());
 
         SummaryPayload summaryPayload = new SummaryPayload();
+        summaryPayload.setJobName(jobName);
+        summaryPayload.setBatchId(batchId);
+        summaryPayload.setCustomerSummary(customerSummaries);
         summaryPayload.setHeader(headerInfo);
         summaryPayload.setPayload(payloadInfo);
         summaryPayload.setMetaData(metaDataInfo);
@@ -272,179 +244,121 @@ public class KafkaListenerService {
     }
 
     private HeaderInfo buildHeader(JsonNode node, String jobName) {
-        HeaderInfo header = new HeaderInfo();
-        header.setJobName(jobName != null ? jobName : safeGetText(node, "JobName", false));
-        header.setBatchId(safeGetText(node, "BatchId", false));
-        header.setBatchStatus(safeGetText(node, "BatchStatus", false));
-        header.setSourceSystem(safeGetText(node, "SourceSystem", false));
-        header.setTenantCode(safeGetText(node, "tenantCode", false));
-        header.setChannelID(safeGetText(node, "channelID", false));
-        header.setAudienceID(safeGetText(node, "audienceID", false));
-
-        return header;
+        HeaderInfo headerInfo = new HeaderInfo();
+        headerInfo.setBatchId(safeGetText(node, "BatchId", false));
+        headerInfo.setRunPriority(safeGetText(node, "RunPriority", false));
+        headerInfo.setEventID(safeGetText(node, "EventID", false));
+        headerInfo.setEventType(safeGetText(node, "EventType", false));
+        headerInfo.setRestartKey(safeGetText(node, "RestartKey", false));
+        headerInfo.setJobName(jobName);
+        return headerInfo;
     }
 
     private boolean isEncrypted(String filePath, String extension) {
-        // Sample logic, update with your encryption check
-        return extension.equalsIgnoreCase("enc");
-    }
-
-    private String getFileExtension(String filePath) {
-        if (filePath == null || !filePath.contains(".")) {
-            return "";
-        }
-        return filePath.substring(filePath.lastIndexOf('.') + 1);
+        // Your encryption logic here, e.g.:
+        return filePath.endsWith(".enc") || "enc".equalsIgnoreCase(extension);
     }
 
     private String determineType(String filePath) {
-        if (filePath == null) return "";
-        String ext = getFileExtension(filePath).toLowerCase();
-        switch (ext) {
-            case "pdf": return "PDF";
-            case "doc":
-            case "docx": return "DOC";
-            case "enc": return "Encrypted";
-            default: return "Unknown";
-        }
+        // Your type logic here, e.g.:
+        if (filePath.endsWith(".pdf")) return "PDF";
+        if (filePath.endsWith(".xml")) return "XML";
+        return "UNKNOWN";
     }
 
-    private Map<String, Object> buildFinalResponse(SummaryPayload finalSummary) {
-        Map<String, Object> responseMap = new LinkedHashMap<>();
-        responseMap.put("message", "Batch processed successfully");
-        responseMap.put("status", "success");
+    private String getFileExtension(String filePath) {
+        if (filePath == null) return "";
+        int lastDot = filePath.lastIndexOf('.');
+        if (lastDot < 0) return "";
+        return filePath.substring(lastDot + 1);
+    }
 
-        Map<String, Object> summaryPayload = new LinkedHashMap<>();
-
-        summaryPayload.put("batchID", finalSummary.getHeader().getBatchId());
-
-        Map<String, Object> header = new LinkedHashMap<>();
-        header.put("tenantCode", finalSummary.getHeader().getTenantCode());
-        header.put("channelID", finalSummary.getHeader().getChannelID());
-        header.put("audienceID", finalSummary.getHeader().getAudienceID());
-        header.put("timestamp", new Date().toString());
-        header.put("sourceSystem", finalSummary.getHeader().getSourceSystem() != null ? finalSummary.getHeader().getSourceSystem() : "DEBTMAN");
-        header.put("product", finalSummary.getHeader().getProduct());
-        header.put("jobName", finalSummary.getHeader().getJobName());
-
-        summaryPayload.put("header", header);
-
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        List<CustomerSummary> customers = finalSummary.getMetaData().getCustomerSummaries();
-        metadata.put("totalFilesProcessed", customers.stream().mapToInt(cs -> cs.getFiles().size()).sum());
-        metadata.put("processingStatus", finalSummary.getHeader().getBatchStatus());
-        metadata.put("eventOutcomeCode", null); // Populate if available
-        metadata.put("eventOutcomeDescription", null); // Populate if available
-
-        summaryPayload.put("metadata", metadata);
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("uniqueConsumerRef", finalSummary.getPayload().getUniqueConsumerRef());
-        payload.put("uniqueECPBatchRef", finalSummary.getPayload().getUniqueECPBatchRef());
-        payload.put("runPriority", finalSummary.getPayload().getRunPriority());
-        payload.put("eventID", finalSummary.getPayload().getEventID());
-        payload.put("eventType", finalSummary.getPayload().getEventType());
-        payload.put("restartKey", finalSummary.getPayload().getRestartKey());
-        payload.put("blobURL", finalSummary.getPayload().getBlobURL());
-        summaryPayload.put("payload", payload);
-        summaryPayload.put("summaryFileURL", summaryFile.getAbsolutePath());
-        summaryPayload.put("timestamp", new Date().toString());
-
-        responseMap.put("summaryPayload", summaryPayload);
-
-        return responseMap;
+    private String safeGetText(JsonNode node, String fieldName, boolean mandatory) {
+        JsonNode child = node.get(fieldName);
+        if (child == null || child.isNull()) {
+            if (mandatory) {
+                logger.warn("Missing mandatory field '{}'", fieldName);
+            }
+            return null;
+        }
+        return child.asText();
     }
 
     private SummaryPayload mergeSummaryPayloads(List<SummaryPayload> payloads) {
-        if (payloads == null || payloads.isEmpty()) {
-            return new SummaryPayload();
-        }
+        if (payloads.isEmpty()) return new SummaryPayload();
 
         SummaryPayload merged = new SummaryPayload();
+        List<CustomerSummary> allCustomers = new ArrayList<>();
+        MetaDataInfo metaData = new MetaDataInfo();
 
-        HeaderInfo mergedHeader = new HeaderInfo();
-        PayloadInfo mergedPayload = new PayloadInfo();
-        Map<String, CustomerSummary> mergedCustomers = new HashMap<>();
-        Set<String> printFileSet = new LinkedHashSet<>(); // avoid duplicates
+        String jobName = payloads.get(0).getJobName();
+        String batchId = payloads.get(0).getBatchId();
 
         for (SummaryPayload p : payloads) {
-            HeaderInfo h = p.getHeader();
-            if (h != null) {
-                if (isNonEmpty(h.getBatchId())) mergedHeader.setBatchId(h.getBatchId());
-                if (isNonEmpty(h.getBatchStatus())) mergedHeader.setBatchStatus(h.getBatchStatus());
-                if (isNonEmpty(h.getJobName())) mergedHeader.setJobName(h.getJobName());
-                if (isNonEmpty(h.getSourceSystem())) mergedHeader.setSourceSystem(h.getSourceSystem());
-                if (isNonEmpty(h.getTenantCode())) mergedHeader.setTenantCode(h.getTenantCode());
-                if (isNonEmpty(h.getChannelID())) mergedHeader.setChannelID(h.getChannelID());
-                if (isNonEmpty(h.getAudienceID())) mergedHeader.setAudienceID(h.getAudienceID());
-            }
-
-            PayloadInfo pl = p.getPayload();
-            if (pl != null) {
-                if (isNonEmpty(pl.getUniqueConsumerRef())) mergedPayload.setUniqueConsumerRef(pl.getUniqueConsumerRef());
-                if (isNonEmpty(pl.getUniqueECPBatchRef())) mergedPayload.setUniqueECPBatchRef(pl.getUniqueECPBatchRef());
-                if (isNonEmpty(pl.getRunPriority())) mergedPayload.setRunPriority(pl.getRunPriority());
-                if (isNonEmpty(pl.getEventID())) mergedPayload.setEventID(pl.getEventID());
-                if (isNonEmpty(pl.getEventType())) mergedPayload.setEventType(pl.getEventType());
-                if (isNonEmpty(pl.getRestartKey())) mergedPayload.setRestartKey(pl.getRestartKey());
-
-                if (pl.getPrintFiles() != null) {
-                    printFileSet.addAll(pl.getPrintFiles());
-                }
-            }
-
-            if (p.getMetaData() != null && p.getMetaData().getCustomerSummaries() != null) {
-                for (CustomerSummary cs : p.getMetaData().getCustomerSummaries()) {
-                    if (cs == null || cs.getCustomerId() == null) continue;
-                    CustomerSummary existing = mergedCustomers.get(cs.getCustomerId());
-                    if (existing == null) {
-                        mergedCustomers.put(cs.getCustomerId(), cs);
-                    } else {
-                        if (cs.getFiles() != null) {
-                            if (existing.getFiles() == null) {
-                                existing.setFiles(new ArrayList<>());
-                            }
-                            existing.getFiles().addAll(cs.getFiles());
-                        }
-                    }
-                }
-            }
+            allCustomers.addAll(p.getCustomerSummary());
         }
 
-        mergedPayload.setPrintFiles(new ArrayList<>(printFileSet));
-        merged.setHeader(mergedHeader);
-        merged.setPayload(mergedPayload);
+        merged.setJobName(jobName);
+        merged.setBatchId(batchId);
+        merged.setCustomerSummary(allCustomers);
+        merged.setHeader(payloads.get(0).getHeader());
+        merged.setPayload(payloads.get(0).getPayload());
 
-        MetaDataInfo metaDataInfo = new MetaDataInfo();
-        metaDataInfo.setCustomerSummaries(new ArrayList<>(mergedCustomers.values()));
-        merged.setMetaData(metaDataInfo);
+        metaData.setTotalCustomers(allCustomers.size());
+        metaData.setTotalFiles(allCustomers.stream().mapToInt(c -> c.getFiles().size()).sum());
+        merged.setMetaData(metaData);
 
         return merged;
     }
-    private boolean isNonEmpty(String s) {
-        return s != null && !s.trim().isEmpty();
+
+    private Map<String, Object> buildFinalResponse(SummaryPayload summaryPayload) {
+        Map<String, Object> response = new HashMap<>();
+
+        response.put("JobName", summaryPayload.getJobName());
+        response.put("BatchId", summaryPayload.getBatchId());
+        response.put("CustomerSummary", summaryPayload.getCustomerSummary());
+        response.put("MetaData", summaryPayload.getMetaData());
+
+        // Add Header info
+        Map<String, Object> headerMap = new HashMap<>();
+        HeaderInfo header = summaryPayload.getHeader();
+        if (header != null) {
+            headerMap.put("BatchId", header.getBatchId());
+            headerMap.put("RunPriority", header.getRunPriority());
+            headerMap.put("EventID", header.getEventID());
+            headerMap.put("EventType", header.getEventType());
+            headerMap.put("RestartKey", header.getRestartKey());
+            headerMap.put("JobName", header.getJobName());
+            headerMap.put("Product", header.getProduct());  // NEW field
+        }
+        response.put("Header", headerMap);
+
+        // Add Payload info
+        Map<String, Object> payloadMap = new HashMap<>();
+        PayloadInfo payload = summaryPayload.getPayload();
+        if (payload != null) {
+            payloadMap.put("uniqueConsumerRef", payload.getUniqueConsumerRef());
+            payloadMap.put("uniqueECPBatchRef", payload.getUniqueECPBatchRef());
+            payloadMap.put("runPriority", payload.getRunPriority());
+            payloadMap.put("eventID", payload.getEventID());
+            payloadMap.put("eventType", payload.getEventType());
+            payloadMap.put("restartKey", payload.getRestartKey());
+            payloadMap.put("blobURL", payload.getBlobURL());                     // NEW
+            payloadMap.put("eventOutcomeCode", payload.getEventOutcomeCode());   // NEW
+            payloadMap.put("eventOutcomeDescription", payload.getEventOutcomeDescription()); // NEW
+            payloadMap.put("printFiles", payload.getPrintFiles());
+        }
+        response.put("Payload", payloadMap);
+
+        return response;
     }
 
     private Map<String, Object> generateErrorResponse(String code, String message) {
-        Map<String, Object> errResp = new HashMap<>();
-        errResp.put("code", code);
-        errResp.put("message", message);
-        return errResp;
+        Map<String, Object> error = new HashMap<>();
+        error.put("code", code);
+        error.put("message", message);
+        return error;
     }
 
-    private String safeGetText(JsonNode node, String fieldName, boolean required) {
-        if (node == null || !node.has(fieldName)) {
-            if (required) {
-                logger.warn("Required field '{}' missing in JSON", fieldName);
-            }
-            return null;
-        }
-        JsonNode valueNode = node.get(fieldName);
-        if (valueNode == null || valueNode.isNull()) {
-            if (required) {
-                logger.warn("Required field '{}' is null in JSON", fieldName);
-            }
-            return null;
-        }
-        return valueNode.asText();
-    }
+    // Keeping your other existing methods (like uploadSummaryToBlob, sendToKafka, etc.) unchanged...
 }
