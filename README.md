@@ -1,483 +1,623 @@
- {
-  "BatchId" : "eba7d148-19b1-49dc-8422-111896b2d184",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : null,
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : null,
-  "UniqueConsumerRef" : "12345",
-  "Timestamp" : 1747914160.626639700,
-  "ProcessReference" : null,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "validationStatus" : "valid",
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv"
-  } ]
+package com.nedbank.kafka.filemanage.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.CustomerSummary;
+import com.nedbank.kafka.filemanage.model.HeaderInfo;
+import com.nedbank.kafka.filemanage.model.MetaDataInfo;
+import com.nedbank.kafka.filemanage.model.PayloadInfo;
+import com.nedbank.kafka.filemanage.model.SummaryPayload;
+import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
+import org.apache.kafka.common.TopicPartition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
+
+import java.io.File;
+import java.io.IOException;
+import java.time.Duration;
+import java.util.*;
+
+@Service
+public class KafkaListenerService {
+
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final BlobStorageService blobStorageService;
+    private final ConsumerFactory<String, String> consumerFactory;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Value("${kafka.topic.input}")
+    private String inputTopic;
+
+    @Value("${kafka.topic.output}")
+    private String outputTopic;
+
+    @Value("${azure.blob.storage.account}")
+    private String azureBlobStorageAccount;
+
+    private final File summaryFile = new File(System.getProperty("user.home"), "summary.json");
+
+    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
+                                BlobStorageService blobStorageService,
+                                ConsumerFactory<String, String> consumerFactory) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.blobStorageService = blobStorageService;
+        this.consumerFactory = consumerFactory;
+    }
+
+    public Map<String, Object> listen() {
+        Consumer<String, String> consumer = consumerFactory.createConsumer();
+        try {
+            long threeDaysAgo = System.currentTimeMillis() - Duration.ofDays(3).toMillis();
+
+            List<TopicPartition> partitions = new ArrayList<>();
+            consumer.partitionsFor(inputTopic).forEach(partitionInfo ->
+                    partitions.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()))
+            );
+            consumer.assign(partitions);
+
+            // Seek to offset based on timestamp (3 days ago)
+            Map<TopicPartition, Long> timestampsToSearch = new HashMap<>();
+            for (TopicPartition partition : partitions) {
+                timestampsToSearch.put(partition, threeDaysAgo);
+            }
+
+            Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes = consumer.offsetsForTimes(timestampsToSearch);
+            for (TopicPartition partition : partitions) {
+                OffsetAndTimestamp offsetAndTimestamp = offsetsForTimes.get(partition);
+                if (offsetAndTimestamp != null) {
+                    consumer.seek(partition, offsetAndTimestamp.offset());
+                } else {
+                    consumer.seekToBeginning(Collections.singletonList(partition));
+                }
+            }
+
+            List<SummaryPayload> processedPayloads = new ArrayList<>();
+            int emptyPollCount = 0;
+
+            while (emptyPollCount < 3) {
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+                if (records.isEmpty()) {
+                    emptyPollCount++;
+                } else {
+                    emptyPollCount = 0;
+                    for (ConsumerRecord<String, String> record : records) {
+                        logger.info("Processing message (offset={}): {}", record.offset(), record.value());
+                        try {
+                            SummaryPayload summaryPayload = processSingleMessage(record.value());
+                            SummaryJsonWriter.appendToSummaryJson(summaryFile, summaryPayload, azureBlobStorageAccount);
+                            processedPayloads.add(summaryPayload);
+                        } catch (Exception ex) {
+                            logger.error("Failed to process message: {}", ex.getMessage(), ex);
+                        }
+                    }
+                }
+            }
+
+            if (processedPayloads.isEmpty()) {
+                return generateErrorResponse("204", "No recent messages found in Kafka topic.");
+            }
+
+            SummaryPayload finalSummary = mergeSummaryPayloads(processedPayloads);
+            String finalSummaryJson = objectMapper.writeValueAsString(finalSummary);
+
+            kafkaTemplate.send(outputTopic, finalSummaryJson);
+            logger.info("Final combined summary sent to topic: {}", outputTopic);
+
+            return buildFinalResponse(finalSummary);
+
+        } catch (Exception e) {
+            logger.error("Error during Kafka message processing", e);
+            return generateErrorResponse("500", "Internal Server Error while processing messages.");
+        } finally {
+            consumer.close();
+        }
+    }
+
+    private SummaryPayload processSingleMessage(String message) throws IOException {
+        JsonNode root = objectMapper.readTree(message);
+
+        // Extract jobName (optional)
+        String jobName = safeGetText(root, "JobName", false);
+        if (jobName == null) jobName = "";
+
+        // Extract BatchId (mandatory fallback to random UUID)
+        String batchId = safeGetText(root, "BatchId", true);
+        if (batchId == null) batchId = UUID.randomUUID().toString();
+
+        // Process CustomerSummaries from BatchFiles array
+        List<CustomerSummary> customerSummaries = new ArrayList<>();
+        JsonNode batchFilesNode = root.get("BatchFiles");
+        if (batchFilesNode != null && batchFilesNode.isArray()) {
+            for (JsonNode fileNode : batchFilesNode) {
+                String filePath = safeGetText(fileNode, "BlobUrl", true);
+                String objectId = safeGetText(fileNode, "ObjectId", true);
+                String validationStatus = safeGetText(fileNode, "ValidationStatus", false);
+
+                if (filePath == null || objectId == null) {
+                    logger.warn("Skipping file with missing BlobUrl or ObjectId.");
+                    continue;
+                }
+
+                try {
+                    blobStorageService.uploadFileAndGenerateSasUrl(filePath, batchId, objectId);
+                } catch (Exception e) {
+                    logger.warn("Blob upload failed for {}: {}", filePath, e.getMessage());
+                }
+
+                String extension = getFileExtension(filePath);
+                CustomerSummary.FileDetail detail = new CustomerSummary.FileDetail();
+                detail.setObjectId(objectId);
+                detail.setFileLocation(filePath);
+                detail.setFileUrl("https://" + azureBlobStorageAccount + "/" + filePath);
+                detail.setEncrypted(isEncrypted(filePath, extension));
+                detail.setStatus(validationStatus != null ? validationStatus : "OK");
+                detail.setType(determineType(filePath));
+
+                // Find existing customer or create new
+                CustomerSummary customer = customerSummaries.stream()
+                        .filter(c -> c.getCustomerId().equals(objectId))
+                        .findFirst()
+                        .orElseGet(() -> {
+                            CustomerSummary c = new CustomerSummary();
+                            c.setCustomerId(objectId);
+                            c.setAccountNumber("");
+                            c.setFiles(new ArrayList<>());
+                            customerSummaries.add(c);
+                            return c;
+                        });
+
+                customer.getFiles().add(detail);
+            }
+        }
+
+        // Build Header info - check if nested "Header" node exists, else fallback to root
+        HeaderInfo headerInfo = null;
+        JsonNode headerNode = root.get("Header");
+        if (headerNode != null && !headerNode.isNull()) {
+            headerInfo = buildHeader(headerNode, jobName);
+        } else {
+            headerInfo = buildHeader(root, jobName);
+        }
+
+        if (headerInfo.getBatchId() == null) {
+            headerInfo.setBatchId(batchId);
+        }
+
+        // Build Payload info - check if nested "Payload" node exists, else fallback to root
+        PayloadInfo payloadInfo = new PayloadInfo();
+        JsonNode payloadNode = root.get("Payload");
+        if (payloadNode != null && !payloadNode.isNull()) {
+            payloadInfo.setUniqueConsumerRef(safeGetText(payloadNode, "uniqueConsumerRef", false));
+            payloadInfo.setUniqueECPBatchRef(safeGetText(payloadNode, "uniqueECPBatchRef", false));
+            payloadInfo.setRunPriority(safeGetText(payloadNode, "runPriority", false));
+            payloadInfo.setEventID(safeGetText(payloadNode, "eventID", false));
+            payloadInfo.setEventType(safeGetText(payloadNode, "eventType", false));
+            payloadInfo.setRestartKey(safeGetText(payloadNode, "restartKey", false));
+            // Assume PrintFiles is a list of strings if present
+            JsonNode printFilesNode = payloadNode.get("printFiles");
+            if (printFilesNode != null && printFilesNode.isArray()) {
+                List<String> printFiles = new ArrayList<>();
+                for (JsonNode pf : printFilesNode) {
+                    printFiles.add(pf.asText());
+                }
+                payloadInfo.setPrintFiles(printFiles);
+            } else {
+                payloadInfo.setPrintFiles(Collections.emptyList());
+            }
+        } else {
+            // fallback to root level keys if any
+            payloadInfo.setUniqueConsumerRef(safeGetText(root, "uniqueConsumerRef", false));
+            payloadInfo.setUniqueECPBatchRef(safeGetText(root, "uniqueECPBatchRef", false));
+            payloadInfo.setRunPriority(safeGetText(root, "runPriority", false));
+            payloadInfo.setEventID(safeGetText(root, "eventID", false));
+            payloadInfo.setEventType(safeGetText(root, "eventType", false));
+            payloadInfo.setRestartKey(safeGetText(root, "restartKey", false));
+            payloadInfo.setPrintFiles(Collections.emptyList());
+        }
+
+        // Metadata
+        MetaDataInfo metaDataInfo = new MetaDataInfo();
+        metaDataInfo.setCustomerSummaries(customerSummaries);
+
+        SummaryPayload summaryPayload = new SummaryPayload();
+        summaryPayload.setHeader(headerInfo);
+        summaryPayload.setPayload(payloadInfo);
+        summaryPayload.setMetaData(metaDataInfo);
+
+        return summaryPayload;
+    }
+
+    private HeaderInfo buildHeader(JsonNode node, String jobName) {
+        HeaderInfo header = new HeaderInfo();
+        header.setJobName(jobName != null ? jobName : safeGetText(node, "JobName", false));
+        header.setBatchId(safeGetText(node, "BatchId", false));
+        header.setBatchStatus(safeGetText(node, "BatchStatus", false));
+        header.setSourceSystem(safeGetText(node, "SourceSystem", false));
+        header.setTenantCode(safeGetText(node, "tenantCode", false));
+        header.setChannelID(safeGetText(node, "channelID", false));
+        header.setAudienceID(safeGetText(node, "audienceID", false));
+
+        return header;
+    }
+
+    private boolean isEncrypted(String filePath, String extension) {
+        // Sample logic, update with your encryption check
+        return extension.equalsIgnoreCase("enc");
+    }
+
+    private String getFileExtension(String filePath) {
+        if (filePath == null || !filePath.contains(".")) {
+            return "";
+        }
+        return filePath.substring(filePath.lastIndexOf('.') + 1);
+    }
+
+    private String determineType(String filePath) {
+        if (filePath == null) return "";
+        String ext = getFileExtension(filePath).toLowerCase();
+        switch (ext) {
+            case "pdf": return "PDF";
+            case "doc":
+            case "docx": return "DOC";
+            case "enc": return "Encrypted";
+            default: return "Unknown";
+        }
+    }
+
+    private Map<String, Object> buildFinalResponse(SummaryPayload finalSummary) {
+        Map<String, Object> responseMap = new LinkedHashMap<>();
+        responseMap.put("message", "Batch processed successfully");
+        responseMap.put("status", "success");
+
+        Map<String, Object> summaryPayload = new LinkedHashMap<>();
+
+        summaryPayload.put("batchID", finalSummary.getHeader().getBatchId());
+
+        Map<String, Object> header = new LinkedHashMap<>();
+        header.put("tenantCode", finalSummary.getHeader().getTenantCode());
+        header.put("channelID", finalSummary.getHeader().getChannelID());
+        header.put("audienceID", finalSummary.getHeader().getAudienceID());
+        header.put("timestamp", new Date().toString());
+        header.put("sourceSystem", finalSummary.getHeader().getSourceSystem() != null ? finalSummary.getHeader().getSourceSystem() : "DEBTMAN");
+        header.put("product", null); // Adjust if needed
+        header.put("jobName", finalSummary.getHeader().getJobName());
+
+        summaryPayload.put("header", header);
+
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        List<CustomerSummary> customers = finalSummary.getMetaData().getCustomerSummaries();
+        metadata.put("totalFilesProcessed", customers.stream().mapToInt(cs -> cs.getFiles().size()).sum());
+        metadata.put("processingStatus", finalSummary.getHeader().getBatchStatus());
+        metadata.put("eventOutcomeCode", null); // Populate if available
+        metadata.put("eventOutcomeDescription", null); // Populate if available
+
+        summaryPayload.put("metadata", metadata);
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("uniqueConsumerRef", finalSummary.getPayload().getUniqueConsumerRef());
+        payload.put("uniqueECPBatchRef", finalSummary.getPayload().getUniqueECPBatchRef());
+        payload.put("runPriority", finalSummary.getPayload().getRunPriority());
+        payload.put("eventID", finalSummary.getPayload().getEventID());
+        payload.put("eventType", finalSummary.getPayload().getEventType());
+        payload.put("restartKey", finalSummary.getPayload().getRestartKey());
+        summaryPayload.put("payload", payload);
+        summaryPayload.put("summaryFileURL", summaryFile.getAbsolutePath());
+        summaryPayload.put("timestamp", new Date().toString());
+
+        responseMap.put("summaryPayload", summaryPayload);
+
+        return responseMap;
+    }
+
+    private SummaryPayload mergeSummaryPayloads(List<SummaryPayload> payloads) {
+        if (payloads == null || payloads.isEmpty()) {
+            return new SummaryPayload();
+        }
+
+        SummaryPayload merged = new SummaryPayload();
+
+        HeaderInfo mergedHeader = new HeaderInfo();
+        PayloadInfo mergedPayload = new PayloadInfo();
+        Map<String, CustomerSummary> mergedCustomers = new HashMap<>();
+        Set<String> printFileSet = new LinkedHashSet<>(); // avoid duplicates
+
+        for (SummaryPayload p : payloads) {
+            HeaderInfo h = p.getHeader();
+            if (h != null) {
+                if (isNonEmpty(h.getBatchId())) mergedHeader.setBatchId(h.getBatchId());
+                if (isNonEmpty(h.getBatchStatus())) mergedHeader.setBatchStatus(h.getBatchStatus());
+                if (isNonEmpty(h.getJobName())) mergedHeader.setJobName(h.getJobName());
+                if (isNonEmpty(h.getSourceSystem())) mergedHeader.setSourceSystem(h.getSourceSystem());
+                if (isNonEmpty(h.getTenantCode())) mergedHeader.setTenantCode(h.getTenantCode());
+                if (isNonEmpty(h.getChannelID())) mergedHeader.setChannelID(h.getChannelID());
+                if (isNonEmpty(h.getAudienceID())) mergedHeader.setAudienceID(h.getAudienceID());
+            }
+
+            PayloadInfo pl = p.getPayload();
+            if (pl != null) {
+                if (isNonEmpty(pl.getUniqueConsumerRef())) mergedPayload.setUniqueConsumerRef(pl.getUniqueConsumerRef());
+                if (isNonEmpty(pl.getUniqueECPBatchRef())) mergedPayload.setUniqueECPBatchRef(pl.getUniqueECPBatchRef());
+                if (isNonEmpty(pl.getRunPriority())) mergedPayload.setRunPriority(pl.getRunPriority());
+                if (isNonEmpty(pl.getEventID())) mergedPayload.setEventID(pl.getEventID());
+                if (isNonEmpty(pl.getEventType())) mergedPayload.setEventType(pl.getEventType());
+                if (isNonEmpty(pl.getRestartKey())) mergedPayload.setRestartKey(pl.getRestartKey());
+
+                if (pl.getPrintFiles() != null) {
+                    printFileSet.addAll(pl.getPrintFiles());
+                }
+            }
+
+            if (p.getMetaData() != null && p.getMetaData().getCustomerSummaries() != null) {
+                for (CustomerSummary cs : p.getMetaData().getCustomerSummaries()) {
+                    if (cs == null || cs.getCustomerId() == null) continue;
+                    CustomerSummary existing = mergedCustomers.get(cs.getCustomerId());
+                    if (existing == null) {
+                        mergedCustomers.put(cs.getCustomerId(), cs);
+                    } else {
+                        if (cs.getFiles() != null) {
+                            if (existing.getFiles() == null) {
+                                existing.setFiles(new ArrayList<>());
+                            }
+                            existing.getFiles().addAll(cs.getFiles());
+                        }
+                    }
+                }
+            }
+        }
+
+        mergedPayload.setPrintFiles(new ArrayList<>(printFileSet));
+        merged.setHeader(mergedHeader);
+        merged.setPayload(mergedPayload);
+
+        MetaDataInfo metaDataInfo = new MetaDataInfo();
+        metaDataInfo.setCustomerSummaries(new ArrayList<>(mergedCustomers.values()));
+        merged.setMetaData(metaDataInfo);
+
+        return merged;
+    }
+    private boolean isNonEmpty(String s) {
+        return s != null && !s.trim().isEmpty();
+    }
+
+    private Map<String, Object> generateErrorResponse(String code, String message) {
+        Map<String, Object> errResp = new HashMap<>();
+        errResp.put("code", code);
+        errResp.put("message", message);
+        return errResp;
+    }
+
+    private String safeGetText(JsonNode node, String fieldName, boolean required) {
+        if (node == null || !node.has(fieldName)) {
+            if (required) {
+                logger.warn("Required field '{}' missing in JSON", fieldName);
+            }
+            return null;
+        }
+        JsonNode valueNode = node.get(fieldName);
+        if (valueNode == null || valueNode.isNull()) {
+            if (required) {
+                logger.warn("Required field '{}' is null in JSON", fieldName);
+            }
+            return null;
+        }
+        return valueNode.asText();
+    }
 }
-2025-05-25T13:13:34.391+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_eba7d148-19b1-49dc-8422-111896b2d184.csv'
-2025-05-25T13:13:34.458+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:34.458+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18501): {
-  "BatchId" : "bea3e8b1-cbf6-4f55-99ee-fb30dd01aa4b",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : null,
-  "UniqueConsumerRef" : "12345",
-  "Timestamp" : 1747914628.624592500,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "validationStatus" : "valid",
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv"
-  } ]
-}
-2025-05-25T13:13:34.562+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_bea3e8b1-cbf6-4f55-99ee-fb30dd01aa4b.csv'
-2025-05-25T13:13:34.595+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:34.596+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18502): {
-  "BatchId" : "e996ae1e-6161-4990-901c-c435def61361",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : null,
-  "UniqueConsumerRef" : "29e2c73e-2031-4bd2-96fb-aa98f6f313fa",
-  "Timestamp" : 1747914836.033711500,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "validationStatus" : "valid",
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv"
-  } ]
-}
-2025-05-25T13:13:34.681+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_e996ae1e-6161-4990-901c-c435def61361.csv'
-2025-05-25T13:13:34.719+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:34.719+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18503): {
-  "BatchId" : "6eaca62d-7ede-4109-b7cf-fddd19f53a23",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : null,
-  "UniqueConsumerRef" : "c4a96e29-d7db-44f8-91bb-4c4727116595",
-  "Timestamp" : 1747915286.540878600,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "validationStatus" : "valid",
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv"
-  } ]
-}
-2025-05-25T13:13:34.836+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_6eaca62d-7ede-4109-b7cf-fddd19f53a23.csv'
-2025-05-25T13:13:34.869+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:34.871+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18504): {
-  "BatchId" : "e4c2c1d3-0406-42cb-aae4-6eedc9fab3d6",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : null,
-  "UniqueConsumerRef" : "6d0991ee-06c2-475f-94d2-79969a6167c4",
-  "Timestamp" : 1747915425.886841600,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "validationStatus" : "valid",
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv"
-  } ]
-}
-2025-05-25T13:13:34.967+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_e4c2c1d3-0406-42cb-aae4-6eedc9fab3d6.csv'
-2025-05-25T13:13:35.001+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:35.001+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18505): {
-  "BatchId" : "98e10e99-30fc-426c-b3fb-f7b516cb6773",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : null,
-  "UniqueConsumerRef" : "d4d494b8-661a-43ae-9f44-7b929e93bc8e",
-  "Timestamp" : 1747915452.362749600,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "validationStatus" : "valid",
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv"
-  } ]
-}
-2025-05-25T13:13:35.140+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_98e10e99-30fc-426c-b3fb-f7b516cb6773.csv'
-2025-05-25T13:13:35.173+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:35.174+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18506): {
-  "BatchId" : "db31e2a1-6eb7-4514-8dbe-72da4c3b13bc",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : null,
-  "UniqueConsumerRef" : "6c77a81f-e195-49b6-82ed-5e873c74924a",
-  "Timestamp" : 1747915833.083381500,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:35.269+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_db31e2a1-6eb7-4514-8dbe-72da4c3b13bc.csv'
-2025-05-25T13:13:35.300+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:35.301+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18507): {
-  "BatchId" : "7a47a018-7dc1-4559-a5f1-113427aadf1b",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "55baeb64-db5e-4fc6-a9d7-5ef412a7b1c5",
-  "Timestamp" : 1747924913.054573700,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:35.391+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_7a47a018-7dc1-4559-a5f1-113427aadf1b.csv'
-2025-05-25T13:13:35.436+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:35.436+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18508): {
-  "BatchId" : "8f0bd673-84cc-4e86-a8b5-7a5dc5ec8d82",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "d6e9cce8-4362-4b11-8d3d-e06723b4f6d6",
-  "Timestamp" : 1747925072.439113600,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:35.523+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_8f0bd673-84cc-4e86-a8b5-7a5dc5ec8d82.csv'
-2025-05-25T13:13:35.570+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:35.570+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18509): {
-  "BatchId" : "d0764e08-67f4-497e-b8fa-0ce1959c7f3e",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "5e198436-94ec-40eb-a5b3-b912a1612a88",
-  "Timestamp" : 1747925368.994319000,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:35.738+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_d0764e08-67f4-497e-b8fa-0ce1959c7f3e.csv'
-2025-05-25T13:13:35.769+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:35.769+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18510): {
-  "BatchId" : "881d4d06-bf89-4f81-adeb-11f9ee8890c4",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "a4c4db3c-9b48-49d9-9ca6-fb3eb9d45503",
-  "Timestamp" : 1747926156.709627600,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:35.862+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_881d4d06-bf89-4f81-adeb-11f9ee8890c4.csv'
-2025-05-25T13:13:35.890+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:35.891+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18511): {
-  "BatchId" : "afcc1c8b-7372-424e-afe9-859a20a51919",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "0eb8249e-1412-4419-a2bd-aa7c6627283a",
-  "Timestamp" : 1747926233.214843500,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:36.010+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_afcc1c8b-7372-424e-afe9-859a20a51919.csv'
-2025-05-25T13:13:36.045+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:36.046+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18512): {
-  "BatchId" : "2682e131-d492-4040-b72c-727598173422",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "cdccc4c6-cfed-4d28-b8c8-10c9cd23a996",
-  "Timestamp" : 1747926364.900340100,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:36.143+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_2682e131-d492-4040-b72c-727598173422.csv'
-2025-05-25T13:13:36.170+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:36.171+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18513): {
-  "BatchId" : "47c83158-5cb1-4dbe-93c8-123750e2a3f9",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "ced1825a-999c-4bea-bbad-8bacf946b70b",
-  "Timestamp" : 1747926471.170222100,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:36.263+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_47c83158-5cb1-4dbe-93c8-123750e2a3f9.csv'
-2025-05-25T13:13:36.294+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:36.294+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18514): {
-  "BatchId" : "65335e59-02b8-4e89-a6c0-2d7b113739c5",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "07824084-2304-4b86-b7cd-34f2d0c09de5",
-  "Timestamp" : 1747926478.120067500,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:36.374+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_65335e59-02b8-4e89-a6c0-2d7b113739c5.csv'
-2025-05-25T13:13:36.401+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:36.402+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18515): {
-  "BatchId" : "3b9d3738-d3a6-4608-8ea7-94d29433553c",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "58542630-fbd7-472b-b73d-1cc987039e3c",
-  "Timestamp" : 1747926484.063181500,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:36.496+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_3b9d3738-d3a6-4608-8ea7-94d29433553c.csv'
-2025-05-25T13:13:36.525+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:36.526+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18516): {
-  "BatchId" : "137b68b2-f9c6-4053-b54f-7672d4c9f2f0",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "28c4e00d-3f93-4e36-8930-526a2f49d100",
-  "Timestamp" : 1747926491.213293200,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:36.605+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_137b68b2-f9c6-4053-b54f-7672d4c9f2f0.csv'
-2025-05-25T13:13:36.633+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:36.633+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18517): {
-  "BatchId" : "761545f6-8a05-417f-94d6-5c26c478d8f5",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "e5859976-8897-4661-9a56-61e7f004a50d",
-  "Timestamp" : 1748002332.036584500,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:36.742+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_761545f6-8a05-417f-94d6-5c26c478d8f5.csv'
-2025-05-25T13:13:36.775+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:36.775+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18518): {
-  "BatchId" : "fe153ee2-969e-4cfc-8316-5d265df79f50",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "9ea46b97-1a38-4fad-bc37-7520044c96c4",
-  "Timestamp" : 1748007295.798375500,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:36.854+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_fe153ee2-969e-4cfc-8316-5d265df79f50.csv'
-2025-05-25T13:13:36.881+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:36.881+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18519): {
-  "BatchId" : "c66725c2-4fe6-4dfc-b64b-8ae0d57b93c7",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "36d4861e-ffbd-469b-94a3-f4f11231d83b",
-  "Timestamp" : 1748008469.862671800,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:36.959+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_c66725c2-4fe6-4dfc-b64b-8ae0d57b93c7.csv'
-2025-05-25T13:13:36.989+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:36.989+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18520): {
-  "BatchId" : "d50b3411-2dc0-43ca-92b8-9b6bb4cd70e7",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "b6700895-efbb-4389-8deb-934c71b83a6e",
-  "Timestamp" : 1748008944.402954900,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
-}
-2025-05-25T13:13:37.082+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_d50b3411-2dc0-43ca-92b8-9b6bb4cd70e7.csv'
-2025-05-25T13:13:37.109+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-25T13:13:37.109+02:00  INFO 19324 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message (offset=18521): {
-  "BatchId" : "bb8f2b26-38c2-42ff-aec3-c48a7380522a",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "19ef9d68-b114-4803-b09b-95a6c5fa4643",
-  "Timestamp" : 1748009250.916635300,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
-    "Filename" : "DEBTMAN.csv",
-    "ValidationStatus" : "valid"
-  } ]
+package com.nedbank.kafka.filemanage.utils;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.nedbank.kafka.filemanage.model.CustomerSummary;
+import com.nedbank.kafka.filemanage.model.SummaryPayload;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.IOException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+public class SummaryJsonWriter {
+    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
+    private static final ObjectMapper mapper = new ObjectMapper();
+
+    public static void appendToSummaryJson(File summaryFile, SummaryPayload newPayload, String azureBlobStorageAccount) {
+        try {
+            ObjectNode root;
+            if (summaryFile.exists()) {
+                root = (ObjectNode) mapper.readTree(summaryFile);
+            } else {
+                root = mapper.createObjectNode();
+                root.put("batchID", newPayload.getHeader().getBatchId());
+                root.put("fileName", "DEBTMAN_" + new SimpleDateFormat("yyyyMMdd").format(new Date()) + ".csv");
+
+                // Properly populate header block
+                ObjectNode headerNode = mapper.createObjectNode();
+                headerNode.put("tenantCode", newPayload.getHeader().getTenantCode());
+                headerNode.put("channelID", newPayload.getHeader().getChannelID());
+                headerNode.put("audienceID", newPayload.getHeader().getAudienceID());
+                headerNode.put("timestamp", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'").format(new Date()));
+                headerNode.put("sourceSystem", newPayload.getHeader().getSourceSystem());
+                headerNode.put("product", "DEBTMANAGER");
+                headerNode.put("jobName", newPayload.getHeader().getJobName());
+                root.set("header", headerNode);
+
+                root.set("processedFiles", mapper.createArrayNode());
+                root.set("printFiles", mapper.createArrayNode());
+            }
+
+            // Append processedFiles
+            ArrayNode processedFiles = (ArrayNode) root.withArray("processedFiles");
+            for (CustomerSummary customer : newPayload.getMetaData().getCustomerSummaries()) {
+                ObjectNode custNode = mapper.createObjectNode();
+                custNode.put("customerID", customer.getCustomerId());
+                custNode.put("accountNumber", customer.getAccountNumber());
+                String acc = customer.getAccountNumber();
+                String batchId = newPayload.getHeader().getBatchId();
+                custNode.put("pdfArchiveFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/archive", acc, batchId, "pdf"));
+                custNode.put("pdfEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/email", acc, batchId, "pdf"));
+                custNode.put("htmlEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/html", acc, batchId, "html"));
+                custNode.put("txtEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/txt", acc, batchId, "txt"));
+                custNode.put("pdfMobstatFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/mobstat", acc, batchId, "pdf"));
+                custNode.put("statusCode", "OK");
+                custNode.put("statusDescription", "Success");
+                processedFiles.add(custNode);
+            }
+
+            // Append print files
+            ArrayNode printFiles = (ArrayNode) root.withArray("printFiles");
+            for (String pf : newPayload.getPayload().getPrintFiles()) {
+                ObjectNode pfNode = mapper.createObjectNode();
+                pfNode.put("printFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/mobstat", pf, newPayload.getHeader().getBatchId(), "ps"));
+                printFiles.add(pfNode);
+            }
+
+            mapper.writerWithDefaultPrettyPrinter().writeValue(summaryFile, root);
+            logger.info("Appended to summary.json: {}", summaryFile.getAbsolutePath());
+
+        } catch (IOException e) {
+            logger.error("Error appending to summary.json", e);
+        }
+    }
+
+    // --- Existing private method unchanged ---
+    private static ObjectNode buildPayloadNode(SummaryPayload payload, String azureBlobStorageAccount) {
+        ObjectNode rootNode = mapper.createObjectNode();
+
+        // Batch ID
+        rootNode.put("batchID", payload.getHeader().getBatchId());
+
+        // File name (assume naming convention)
+        String fileName = "DEBTMAN_" + new SimpleDateFormat("yyyyMMdd").format(new Date()) + ".csv";
+        rootNode.put("fileName", fileName);
+
+        // Header block
+        ObjectNode headerNode = mapper.createObjectNode();
+        headerNode.put("tenantCode", payload.getHeader().getTenantCode());
+        headerNode.put("channelID", payload.getHeader().getChannelID());
+        headerNode.put("audienceID", payload.getHeader().getAudienceID());
+        headerNode.put("timestamp", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'").format(new Date()));
+        headerNode.put("sourceSystem", payload.getHeader().getSourceSystem());
+        headerNode.put("product", "DEBTMANAGER");
+        headerNode.put("jobName", payload.getHeader().getJobName());
+        rootNode.set("header", headerNode);
+
+        // Processed files
+        ArrayNode processedFiles = mapper.createArrayNode();
+        for (CustomerSummary customer : payload.getMetaData().getCustomerSummaries()) {
+            ObjectNode custNode = mapper.createObjectNode();
+            custNode.put("customerID", customer.getCustomerId());
+            custNode.put("accountNumber", customer.getAccountNumber());
+
+            String accountId = customer.getAccountNumber();
+            String batchId = payload.getHeader().getBatchId();
+
+            // Add document URLs
+            custNode.put("pdfArchiveFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/archive", accountId, batchId, "pdf"));
+            custNode.put("pdfEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/email", accountId, batchId, "pdf"));
+            custNode.put("htmlEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/html", accountId, batchId, "html"));
+            custNode.put("txtEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/txt", accountId, batchId, "txt"));
+            custNode.put("pdfMobstatFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/mobstat", accountId, batchId, "pdf"));
+
+            custNode.put("statusCode", "OK");
+            custNode.put("statusDescription", "Success");
+
+            processedFiles.add(custNode);
+        }
+        rootNode.set("processedFiles", processedFiles);
+
+        // Print files
+        ArrayNode printFilesNode = mapper.createArrayNode();
+        List<String> printFiles = payload.getPayload().getPrintFiles();
+        if (printFiles != null) {
+            for (String printFileName : printFiles) {
+                ObjectNode printNode = mapper.createObjectNode();
+                printNode.put("printFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/mobstat", printFileName, payload.getHeader().getBatchId(), "ps"));
+                printFilesNode.add(printNode);
+            }
+        }
+        rootNode.set("printFiles", printFilesNode);
+
+        return rootNode;
+    }
+
+    // --- New method added to merge existing JSON with incoming ---
+    private static ObjectNode mergeSummaryJson(ObjectNode existing, ObjectNode incoming) {
+        // Merge processedFiles arrays without duplicates by customerID
+        ArrayNode existingFiles = (ArrayNode) existing.get("processedFiles");
+        if (existingFiles == null) {
+            existingFiles = mapper.createArrayNode();
+            existing.set("processedFiles", existingFiles);
+        }
+
+        ArrayNode incomingFiles = (ArrayNode) incoming.get("processedFiles");
+        Set<String> existingCustomerIds = new HashSet<>();
+        for (JsonNode node : existingFiles) {
+            existingCustomerIds.add(node.get("customerID").asText());
+        }
+
+        if (incomingFiles != null) {
+            for (JsonNode node : incomingFiles) {
+                String custId = node.get("customerID").asText();
+                if (!existingCustomerIds.contains(custId)) {
+                    existingFiles.add(node);
+                    existingCustomerIds.add(custId);
+                }
+            }
+        }
+
+        // Merge printFiles arrays without duplicates by URL
+        ArrayNode existingPrintFiles = (ArrayNode) existing.get("printFiles");
+        if (existingPrintFiles == null) {
+            existingPrintFiles = mapper.createArrayNode();
+            existing.set("printFiles", existingPrintFiles);
+        }
+
+        ArrayNode incomingPrintFiles = (ArrayNode) incoming.get("printFiles");
+        Set<String> existingPrintFileUrls = new HashSet<>();
+        for (JsonNode node : existingPrintFiles) {
+            existingPrintFileUrls.add(node.get("printFileURL").asText());
+        }
+
+        if (incomingPrintFiles != null) {
+            for (JsonNode node : incomingPrintFiles) {
+                String url = node.get("printFileURL").asText();
+                if (!existingPrintFileUrls.contains(url)) {
+                    existingPrintFiles.add(node);
+                    existingPrintFileUrls.add(url);
+                }
+            }
+        }
+
+        // Update header timestamp with latest (incoming)
+        ObjectNode existingHeader = (ObjectNode) existing.get("header");
+        ObjectNode incomingHeader = (ObjectNode) incoming.get("header");
+        if (existingHeader != null && incomingHeader != null) {
+            existingHeader.put("timestamp", incomingHeader.get("timestamp").asText());
+        }
+
+        // Optionally you can merge other header fields here
+
+        return existing;
+    }
+
+    // --- Existing helper method unchanged ---
+    private static String buildBlobUrl(String account, String path, String id, String batchId, String ext) {
+        return String.format("https://%s/%s/%s_%s.%s", account, path, id, batchId, ext);
+    }
 }
