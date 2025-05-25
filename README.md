@@ -1,3 +1,37 @@
+{
+    "message": "Batch processed successfully",
+    "status": "success",
+    "summaryPayload": {
+        "batchID": "bb8f2b26-38c2-42ff-aec3-c48a7380522a",
+        "header": {
+            "tenantCode": null,
+            "channelID": null,
+            "audienceID": null,
+            "timestamp": "Sun May 25 16:07:30 SAST 2025",
+            "sourceSystem": "DEBTMAN",
+            "product": null,
+            "jobName": "DEBTMAN"
+        },
+        "metadata": {
+            "totalFilesProcessed": 15,
+            "processingStatus": null,
+            "eventOutcomeCode": null,
+            "eventOutcomeDescription": null
+        },
+        "payload": {
+            "uniqueConsumerRef": null,
+            "uniqueECPBatchRef": null,
+            "runPriority": null,
+            "eventID": null,
+            "eventType": null,
+            "restartKey": null,
+            "blobURL": null
+        },
+        "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
+        "timestamp": "Sun May 25 16:07:30 SAST 2025"
+    }
+}
+
 package com.nedbank.kafka.filemanage.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -276,44 +310,46 @@ public class KafkaListenerService {
 
     private Map<String, Object> buildFinalResponse(SummaryPayload finalSummary) {
         Map<String, Object> responseMap = new LinkedHashMap<>();
+        responseMap.put("message", "Batch processed successfully");
+        responseMap.put("status", "success");
 
-        // Put fields at top level as requested (you can adjust field names casing if needed)
-        responseMap.put("BatchID", finalSummary.getHeader().getBatchId());
-        responseMap.put("TenantCode", finalSummary.getHeader().getTenantCode());
-        responseMap.put("ChannelID", finalSummary.getHeader().getChannelID());
-        responseMap.put("AudienceID", finalSummary.getHeader().getAudienceID());
-        responseMap.put("Timestamp", new Date().toString());
-        responseMap.put("SourceSystem",
-                finalSummary.getHeader().getSourceSystem() != null ? finalSummary.getHeader().getSourceSystem() : "DEBTMAN");
-        responseMap.put("Product", finalSummary.getHeader().getProduct());  // Adjust as needed, no Product field in current model
-        responseMap.put("JobName", finalSummary.getHeader().getJobName());
+        Map<String, Object> summaryPayload = new LinkedHashMap<>();
 
-        responseMap.put("UniqueConsumerRef", finalSummary.getPayload().getUniqueConsumerRef());
-        responseMap.put("BlobURL", finalSummary.getPayload().getBlobURL());  // No direct BlobURL field available; add if you have
-        responseMap.put("FilenameOnBlobStorage", summaryFile.getName()); // Using summary file name as example
-        responseMap.put("RunPriority", finalSummary.getPayload().getRunPriority());
-        responseMap.put("EventType", finalSummary.getPayload().getEventType());
-        responseMap.put("RestartKey", finalSummary.getPayload().getRestartKey());
+        summaryPayload.put("batchID", finalSummary.getHeader().getBatchId());
 
-        // Calculated fields
-        int totalFilesProcessed = 0;
-        List<CustomerSummary> customers = finalSummary.getMetaData() != null
-                ? finalSummary.getMetaData().getCustomerSummaries() : Collections.emptyList();
-        for (CustomerSummary c : customers) {
-            if (c.getFiles() != null) {
-                totalFilesProcessed += c.getFiles().size();
-            }
-        }
-        responseMap.put("TotalFilesProcessed", totalFilesProcessed);
+        Map<String, Object> header = new LinkedHashMap<>();
+        header.put("tenantCode", finalSummary.getHeader().getTenantCode());
+        header.put("channelID", finalSummary.getHeader().getChannelID());
+        header.put("audienceID", finalSummary.getHeader().getAudienceID());
+        header.put("timestamp", new Date().toString());
+        header.put("sourceSystem", finalSummary.getHeader().getSourceSystem() != null ? finalSummary.getHeader().getSourceSystem() : "DEBTMAN");
+        header.put("product", finalSummary.getHeader().getProduct());
+        header.put("jobName", finalSummary.getHeader().getJobName());
 
-        responseMap.put("ProcessingStatus", finalSummary.getHeader().getBatchStatus());
+        summaryPayload.put("header", header);
 
-        // No source for these in current code, so left null placeholders
-        responseMap.put("EventOutcomeCode", finalSummary.getHeader().getEventOutcomeCode());
-        responseMap.put("EventOutcomeDescription", finalSummary.getHeader().getEventOutcomeDescription());
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        List<CustomerSummary> customers = finalSummary.getMetaData().getCustomerSummaries();
+        metadata.put("totalFilesProcessed", customers.stream().mapToInt(cs -> cs.getFiles().size()).sum());
+        metadata.put("processingStatus", finalSummary.getHeader().getBatchStatus());
+        metadata.put("eventOutcomeCode", null); // Populate if available
+        metadata.put("eventOutcomeDescription", null); // Populate if available
 
-        // Summary report file location as absolute path of summary file
-        responseMap.put("SummaryReportFileLocation", summaryFile.getAbsolutePath());
+        summaryPayload.put("metadata", metadata);
+
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("uniqueConsumerRef", finalSummary.getPayload().getUniqueConsumerRef());
+        payload.put("uniqueECPBatchRef", finalSummary.getPayload().getUniqueECPBatchRef());
+        payload.put("runPriority", finalSummary.getPayload().getRunPriority());
+        payload.put("eventID", finalSummary.getPayload().getEventID());
+        payload.put("eventType", finalSummary.getPayload().getEventType());
+        payload.put("restartKey", finalSummary.getPayload().getRestartKey());
+        payload.put("blobURL", finalSummary.getPayload().getBlobURL());
+        summaryPayload.put("payload", payload);
+        summaryPayload.put("summaryFileURL", summaryFile.getAbsolutePath());
+        summaryPayload.put("timestamp", new Date().toString());
+
+        responseMap.put("summaryPayload", summaryPayload);
 
         return responseMap;
     }
