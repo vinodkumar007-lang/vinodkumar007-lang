@@ -1,18 +1,38 @@
-List<CustomerSummary> customerSummaries = newPayload.getMetaData().getCustomerSummaries();
-if (customerSummaries != null) {
-    for (CustomerSummary customer : customerSummaries) {
-        ObjectNode custNode = mapper.createObjectNode();
-        custNode.put("customerID", customer.getCustomerId());
-        custNode.put("accountNumber", customer.getAccountNumber());
-        String acc = customer.getAccountNumber();
-        String batchId = newPayload.getHeader().getBatchId();
-        custNode.put("pdfArchiveFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/archive", acc, batchId, "pdf"));
-        custNode.put("pdfEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/email", acc, batchId, "pdf"));
-        custNode.put("htmlEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/html", acc, batchId, "html"));
-        custNode.put("txtEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/txt", acc, batchId, "txt"));
-        custNode.put("pdfMobstatFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/mobstat", acc, batchId, "pdf"));
-        custNode.put("statusCode", "OK");
-        custNode.put("statusDescription", "Success");
-        processedFiles.add(custNode);
+{
+    "message": "Batch processed successfully",
+    "status": "success",
+    "summaryPayload": {
+        "batchID": null,
+        "header": {
+            "tenantCode": null,
+            "channelID": null,
+            "audienceID": null,
+            "timestamp": "Thu May 22 05:44:21 SAST 2025",
+            "sourceSystem": "DEBTMAN",
+            "product": null,
+            "jobName": ""
+        },
+        "metadata": {
+            "totalFilesProcessed": 0,
+            "processingStatus": null,
+            "eventOutcomeCode": null,
+            "eventOutcomeDescription": null
+        },
+        "payload": {
+            "uniqueConsumerRef": null,
+            "uniqueECPBatchRef": null,
+            "filenetObjectID": null,
+            "repositoryID": null,
+            "runPriority": null,
+            "eventID": null,
+            "eventType": null,
+            "restartKey": null,
+            "blobURL":null,
+            "eventOutcomeCode":null,
+            "eventOutcomeDescription":null
+        },
+        "processedFiles": null,
+        "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
+        "timestamp": null
     }
 }
