@@ -1,90 +1,76 @@
 public Map<String, Object> listen() {
-        Consumer<String, String> consumer = consumerFactory.createConsumer();
-        try {
-            long threeDaysAgo = System.currentTimeMillis() - Duration.ofDays(10).toMillis();
-            List<TopicPartition> partitions = new ArrayList<>();
+    Consumer<String, String> consumer = consumerFactory.createConsumer();
+    try {
+        long tenDaysAgo = System.currentTimeMillis() - Duration.ofDays(10).toMillis();
+        List<TopicPartition> partitions = new ArrayList<>();
 
-            // Step 1: Get topic partitions
-            consumer.partitionsFor(inputTopic).forEach(partitionInfo -> {
-                TopicPartition tp = new TopicPartition(partitionInfo.topic(), partitionInfo.partition());
-                partitions.add(tp);
-            });
-            consumer.assign(partitions);
+        // Step 1: Discover topic partitions
+        consumer.partitionsFor(inputTopic).forEach(partitionInfo -> {
+            TopicPartition tp = new TopicPartition(partitionInfo.topic(), partitionInfo.partition());
+            partitions.add(tp);
+        });
+        consumer.assign(partitions);
 
-            // Step 2: Fetch beginning and end offsets for debugging
-            Map<TopicPartition, Long> beginningOffsets = consumer.beginningOffsets(partitions);
-            Map<TopicPartition, Long> endOffsets = consumer.endOffsets(partitions);
-
-            logger.info("Current lastProcessedOffsets: {}", lastProcessedOffsets);
-
-            for (TopicPartition partition : partitions) {
-                logger.info("Partition {}: beginning offset = {}, end offset = {}",
-                        partition.partition(),
-                        beginningOffsets.get(partition),
-                        endOffsets.get(partition)
-                );
-
-                if (lastProcessedOffsets.containsKey(partition)) {
-                    long nextOffset = lastProcessedOffsets.get(partition) + 1;
-                    logger.info("Seeking to next offset after last processed: {} for partition {}", nextOffset, partition.partition());
-                    consumer.seek(partition, nextOffset);
+        // Step 2: Seek each partition individually
+        for (TopicPartition partition : partitions) {
+            if (lastProcessedOffsets.containsKey(partition)) {
+                long nextOffset = lastProcessedOffsets.get(partition) + 1;
+                consumer.seek(partition, nextOffset);
+                logger.info("Seeking partition {} to offset {}", partition.partition(), nextOffset);
+            } else {
+                Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes =
+                        consumer.offsetsForTimes(Collections.singletonMap(partition, tenDaysAgo));
+                OffsetAndTimestamp offsetAndTimestamp = offsetsForTimes.get(partition);
+                if (offsetAndTimestamp != null) {
+                    consumer.seek(partition, offsetAndTimestamp.offset());
+                    logger.info("Seeking partition {} to offset from 10 days ago: {}", partition.partition(), offsetAndTimestamp.offset());
                 } else {
-                    Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes =
-                            consumer.offsetsForTimes(Collections.singletonMap(partition, threeDaysAgo));
-                    OffsetAndTimestamp offsetAndTimestamp = offsetsForTimes.get(partition);
-
-                    if (offsetAndTimestamp != null) {
-                        logger.info("Offset for 10 days ago in partition {} = {}", partition.partition(), offsetAndTimestamp.offset());
-                        consumer.seek(partition, offsetAndTimestamp.offset());
-                    } else {
-                        logger.warn("No offset found for 10 days ago in partition {}; seeking to beginning.", partition.partition());
-                        consumer.seekToBeginning(Collections.singletonList(partition));
-                    }
+                    consumer.seekToBeginning(Collections.singletonList(partition));
+                    logger.warn("No timestamp offset found for partition {}; seeking to beginning", partition.partition());
                 }
+            }
+        }
 
-                long currentPos = consumer.position(partition);
-                logger.info("Current position after seek on partition {}: {}", partition.partition(), currentPos);
+        // Step 3: Poll and process only the first available unprocessed message
+        ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
+        logger.info("Polled {} record(s) from Kafka", records.count());
+
+        for (ConsumerRecord<String, String> record : records) {
+            TopicPartition currentPartition = new TopicPartition(record.topic(), record.partition());
+
+            // Skip if this offset was already processed
+            if (lastProcessedOffsets.containsKey(currentPartition) &&
+                record.offset() <= lastProcessedOffsets.get(currentPartition)) {
+                logger.debug("Skipping already processed offset {} for partition {}", record.offset(), record.partition());
+                continue;
             }
 
-            // Step 3: Poll for records
-            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
-            logger.info("Polled {} record(s) from Kafka", records.count());
+            logger.info("Processing record from topic-partition-offset {}-{}-{}: key='{}'",
+                    record.topic(), record.partition(), record.offset(), record.key());
 
-            if (records.isEmpty()) {
-                return generateErrorResponse("204", "No new messages available in Kafka topic.");
-            }
+            SummaryPayload summaryPayload = processSingleMessage(record.value());
 
-            // Log each polled record for visibility
-            records.forEach(record -> {
-                logger.info("Polled message from topic-partition-offset {}-{}-{}: key='{}', value='{}'",
-                        record.topic(), record.partition(), record.offset(), record.key(), record.value());
-            });
-
-            // Step 4: Process first message only
-            ConsumerRecord<String, String> firstRecord = records.iterator().next();
-            SummaryPayload summaryPayload = processSingleMessage(firstRecord.value());
-
-            // Step 5: Handle missing mandatory fields explicitly
             if (summaryPayload == null || summaryPayload.getBatchId() == null) {
-                logger.warn("Missing mandatory field 'BatchId' or invalid message format in record offset {}. Skipping this message.", firstRecord.offset());
+                logger.warn("Missing mandatory field 'BatchId' or invalid message format at offset {}; skipping", record.offset());
                 return generateErrorResponse("400", "Invalid message: missing mandatory field 'BatchId'.");
             }
 
-            // Step 6: Append to summary.json
             SummaryJsonWriter.appendToSummaryJson(summaryFile, summaryPayload, azureBlobStorageAccount);
 
-            // Step 7: Track offset
-            lastProcessedOffsets.put(
-                    new TopicPartition(firstRecord.topic(), firstRecord.partition()),
-                    firstRecord.offset()
-            );
+            // Track processed offset
+            lastProcessedOffsets.put(currentPartition, record.offset());
+            logger.info("Updated lastProcessedOffsets: {}", lastProcessedOffsets);
 
-            return buildFinalResponse(summaryPayload);
-
-        } catch (Exception e) {
-            logger.error("Error while consuming Kafka message", e);
-            return generateErrorResponse("500", "Internal Server Error while processing Kafka message.");
-        } finally {
-            consumer.close();
+            return buildFinalResponse(summaryPayload); // Process only one message per request
         }
+
+        // If we reach here, no new unprocessed records were found
+        return generateErrorResponse("204", "No new messages available in Kafka topic.");
+
+    } catch (Exception e) {
+        logger.error("Error while consuming Kafka message", e);
+        return generateErrorResponse("500", "Internal Server Error while processing Kafka message.");
+    } finally {
+        consumer.close();
     }
+}
