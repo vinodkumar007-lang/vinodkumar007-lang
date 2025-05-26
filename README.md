@@ -1,153 +1,83 @@
-private SummaryPayload processSingleMessage(String message) throws IOException {
-        JsonNode root = objectMapper.readTree(message);
-        logger.debug("Kafka message received  : " + message);
-        // ✅ Extract sourceSystem dynamically from root or Payload (fallback to DEBTMAN)
-        String sourceSystem = safeGetText(root, "sourceSystem", false);
-        if (sourceSystem == null) {
-            JsonNode payloadNode = root.get("Payload");
-            if (payloadNode != null) {
-                sourceSystem = safeGetText(payloadNode, "sourceSystem", false);
+public static void appendToSummaryJson(File summaryFile, SummaryPayload newPayload, String azureBlobStorageAccount) {
+        try {
+            ObjectNode root;
+            if (summaryFile.exists()) {
+                root = (ObjectNode) mapper.readTree(summaryFile);
+            } else {
+                root = mapper.createObjectNode();
+                root.put("batchID", newPayload.getHeader().getBatchId());
+                root.put("fileName", "DEBTMAN_" + new SimpleDateFormat("yyyyMMdd").format(new Date()) + ".csv");
+
+                // Populate header block
+                ObjectNode headerNode = mapper.createObjectNode();
+                headerNode.put("tenantCode", newPayload.getHeader().getTenantCode());
+                headerNode.put("channelID", newPayload.getHeader().getChannelID());
+                headerNode.put("audienceID", newPayload.getHeader().getAudienceID());
+                headerNode.put("timestamp", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'").format(new Date()));
+                headerNode.put("sourceSystem", newPayload.getHeader().getSourceSystem());
+                headerNode.put("product", "DEBTMANAGER");
+                headerNode.put("jobName", newPayload.getHeader().getJobName());
+                root.set("header", headerNode);
+
+                root.set("processedFiles", mapper.createArrayNode());
+                root.set("printFiles", mapper.createArrayNode());
             }
-        }
-        if (sourceSystem == null || sourceSystem.isBlank()) {
-            sourceSystem = "DEBTMAN";
-        }
 
-        // Extract jobName (optional)
-        String jobName = safeGetText(root, "JobName", false);
-        if (jobName == null) jobName = "";
-
-        // Extract BatchId (mandatory fallback to random UUID)
-        String batchId = safeGetText(root, "BatchId", true);
-        if (batchId == null) batchId = UUID.randomUUID().toString();
-
-        // Extract timestamp (use current timestamp if not in message)
-        String timestamp = Instant.now().toString();
-
-        // Extract consumerReference
-        String consumerReference = safeGetText(root, "consumerReference", false);
-        JsonNode payloadNode = root.get("Payload");
-        if (consumerReference == null && payloadNode != null) {
-            consumerReference = safeGetText(payloadNode, "consumerReference", false);
-        }
-        if (consumerReference == null) consumerReference = "unknownConsumer";
-
-        // Extract processReference (we'll use eventID as fallback)
-        String processReference = safeGetText(root, "eventID", false);
-        if (processReference == null && payloadNode != null) {
-            processReference = safeGetText(payloadNode, "eventID", false);
-        }
-        if (processReference == null) processReference = "unknownProcess";
-
-        // Process CustomerSummaries from BatchFiles array
-        List<CustomerSummary> customerSummaries = new ArrayList<>();
-        JsonNode batchFilesNode = root.get("BatchFiles");
-        if (batchFilesNode != null && batchFilesNode.isArray()) {
-            for (JsonNode fileNode : batchFilesNode) {
-                String filePath = safeGetText(fileNode, "BlobUrl", true);
-                String objectId = safeGetText(fileNode, "ObjectId", true);
-                String validationStatus = safeGetText(fileNode, "ValidationStatus", false);
-
-                if (filePath == null || objectId == null) {
-                    logger.warn("Skipping file with missing BlobUrl or ObjectId.");
-                    continue;
-                }
-
-                try {
-                    fileLocation = blobStorageService.uploadFileAndReturnLocation(
-                            sourceSystem,
-                            filePath,
-                            batchId,
-                            objectId,
-                            consumerReference,
-                            processReference,
-                            timestamp
-                    );
-                } catch (Exception e) {
-                    logger.warn("Blob upload failed for {}: {}", filePath, e.getMessage());
-                }
-
-                String extension = getFileExtension(filePath);
-                CustomerSummary.FileDetail detail = new CustomerSummary.FileDetail();
-                detail.setObjectId(objectId);
-                detail.setFileLocation(filePath);
-                detail.setFileUrl("https://" + azureBlobStorageAccount + "/" + filePath);
-                detail.setEncrypted(isEncrypted(filePath, extension));
-                detail.setStatus(validationStatus != null ? validationStatus : "OK");
-                detail.setType(determineType(filePath));
-
-                CustomerSummary customer = customerSummaries.stream()
-                        .filter(c -> c.getCustomerId().equals(objectId))
-                        .findFirst()
-                        .orElseGet(() -> {
-                            CustomerSummary c = new CustomerSummary();
-                            c.setCustomerId(objectId);
-                            c.setAccountNumber("");
-                            c.setFiles(new ArrayList<>());
-                            customerSummaries.add(c);
-                            return c;
-                        });
-
-                customer.getFiles().add(detail);
+            ArrayNode processedFiles = (ArrayNode) root.withArray("processedFiles");
+            Set<String> existingCustomerIds = new HashSet<>();
+            for (JsonNode node : processedFiles) {
+                existingCustomerIds.add(node.get("customerID").asText());
             }
-        }
 
-        // Build Header info
-        HeaderInfo headerInfo;
-        JsonNode headerNode = root.get("Header");
-        if (headerNode != null && !headerNode.isNull()) {
-            headerInfo = buildHeader(headerNode, jobName);
-        } else {
-            headerInfo = buildHeader(root, jobName);
-        }
-        if (headerInfo.getBatchId() == null) {
-            headerInfo.setBatchId(batchId);
-        }
-
-        // Extract product field if present
-        String product = null;
-        if (headerNode != null && headerNode.has("product")) {
-            product = safeGetText(headerNode, "product", false);
-        }
-        if (product == null) {
-            product = safeGetText(root, "product", false);
-        }
-        headerInfo.setProduct(product);
-
-        // Build Payload info
-        PayloadInfo payloadInfo = new PayloadInfo();
-        if (payloadNode != null && !payloadNode.isNull()) {
-            payloadInfo.setUniqueConsumerRef(safeGetText(payloadNode, "uniqueConsumerRef", false));
-            payloadInfo.setUniqueECPBatchRef(safeGetText(payloadNode, "uniqueECPBatchRef", false));
-            payloadInfo.setRunPriority(safeGetText(payloadNode, "runPriority", false));
-            payloadInfo.setEventID(safeGetText(payloadNode, "eventID", false));
-            payloadInfo.setEventType(safeGetText(payloadNode, "eventType", false));
-            payloadInfo.setRestartKey(safeGetText(payloadNode, "restartKey", false));
-            payloadInfo.setBlobURL(safeGetText(payloadNode, "blobURL", false));
-            payloadInfo.setEventOutcomeCode(safeGetText(payloadNode, "eventOutcomeCode", false));
-            payloadInfo.setEventOutcomeDescription(safeGetText(payloadNode, "eventOutcomeDescription", false));
-
-            JsonNode printFilesNode = payloadNode.get("printFiles");
-            if (printFilesNode != null && printFilesNode.isArray()) {
-                List<String> printFiles = new ArrayList<>();
-                for (JsonNode pf : printFilesNode) {
-                    printFiles.add(pf.asText());
+            if (newPayload.getMetaData().getCustomerSummaries() != null) {
+                for (CustomerSummary customer : newPayload.getMetaData().getCustomerSummaries()) {
+                    if (!existingCustomerIds.contains(customer.getCustomerId())) {
+                        ObjectNode custNode = mapper.createObjectNode();
+                        custNode.put("customerID", customer.getCustomerId());
+                        custNode.put("accountNumber", customer.getAccountNumber());
+                        String acc = customer.getAccountNumber();
+                        String batchId = newPayload.getHeader().getBatchId();
+                        custNode.put("pdfArchiveFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/archive", acc, batchId, "pdf"));
+                        custNode.put("pdfEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/email", acc, batchId, "pdf"));
+                        custNode.put("htmlEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/html", acc, batchId, "html"));
+                        custNode.put("txtEmailFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/txt", acc, batchId, "txt"));
+                        custNode.put("pdfMobstatFileURL", buildBlobUrl(azureBlobStorageAccount, "pdfs/mobstat", acc, batchId, "pdf"));
+                        custNode.put("statusCode", "OK");
+                        custNode.put("statusDescription", "Success");
+                        processedFiles.add(custNode);
+                        existingCustomerIds.add(customer.getCustomerId());
+                    }
                 }
-                payloadInfo.setPrintFiles(printFiles);
             }
+
+            ArrayNode printFiles = (ArrayNode) root.withArray("printFiles");
+            Set<String> existingPrintUrls = new HashSet<>();
+            for (JsonNode node : printFiles) {
+                existingPrintUrls.add(node.get("printFileURL").asText());
+            }
+
+            if (newPayload.getPayload().getPrintFiles() != null) {
+                for (String pf : newPayload.getPayload().getPrintFiles()) {
+                    String url = buildBlobUrl(azureBlobStorageAccount, "pdfs/mobstat", pf, newPayload.getHeader().getBatchId(), "ps");
+                    if (!existingPrintUrls.contains(url)) {
+                        ObjectNode pfNode = mapper.createObjectNode();
+                        pfNode.put("printFileURL", url);
+                        printFiles.add(pfNode);
+                        existingPrintUrls.add(url);
+                    }
+                }
+            }
+
+            // Update header timestamp to latest (optional)
+            ObjectNode headerNode = (ObjectNode) root.get("header");
+            if (headerNode != null) {
+                headerNode.put("timestamp", new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'").format(new Date()));
+            }
+
+            mapper.writerWithDefaultPrettyPrinter().writeValue(summaryFile, root);
+            logger.info("Appended to summary.json: {}", summaryFile.getAbsolutePath());
+
+        } catch (IOException e) {
+            logger.error("Error appending to summary.json", e);
         }
-
-        MetaDataInfo metaDataInfo = new MetaDataInfo();
-        metaDataInfo.setTotalFiles(customerSummaries.stream().mapToInt(c -> c.getFiles().size()).sum());
-        metaDataInfo.setTotalCustomers(customerSummaries.size());
-
-        SummaryPayload summaryPayload = new SummaryPayload();
-        summaryPayload.setJobName(jobName);
-        summaryPayload.setBatchId(batchId);
-        summaryPayload.setCustomerSummary(customerSummaries);
-        summaryPayload.setHeader(headerInfo);
-        summaryPayload.setPayload(payloadInfo);
-        summaryPayload.setMetaData(metaDataInfo);
-
-        return summaryPayload;
     }
