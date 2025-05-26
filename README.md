@@ -1,20 +1,76 @@
-2025-05-26T10:20:59.229+02:00  INFO 4788 --- [nio-8080-exec-3] o.a.kafka.common.utils.AppInfoParser     : Kafka version: 3.3.1
-2025-05-26T10:20:59.229+02:00  INFO 4788 --- [nio-8080-exec-3] o.a.kafka.common.utils.AppInfoParser     : Kafka commitId: e23c59d00e687ff5
-2025-05-26T10:20:59.229+02:00  INFO 4788 --- [nio-8080-exec-3] o.a.kafka.common.utils.AppInfoParser     : Kafka startTimeMs: 1748247659229
-2025-05-26T10:20:59.285+02:00  INFO 4788 --- [nio-8080-exec-3] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-2, groupId=str-ecp-batch] Cluster ID: y0ml4PnGSeO_hhGMyIz-pA
-2025-05-26T10:20:59.289+02:00  INFO 4788 --- [nio-8080-exec-3] o.a.k.clients.consumer.KafkaConsumer     : [Consumer clientId=consumer-str-ecp-batch-2, groupId=str-ecp-batch] Assigned to partition(s): str-ecp-batch-composition-0
-2025-05-26T10:20:59.289+02:00  INFO 4788 --- [nio-8080-exec-3] o.a.k.clients.consumer.KafkaConsumer     : [Consumer clientId=consumer-str-ecp-batch-2, groupId=str-ecp-batch] Seeking to offset 18499 for partition str-ecp-batch-composition-0
-2025-05-26T10:20:59.289+02:00  INFO 4788 --- [nio-8080-exec-3] c.n.k.f.service.KafkaListenerService     : Seeking partition 0 to offset 18499
-2025-05-26T10:20:59.351+02:00  INFO 4788 --- [nio-8080-exec-3] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-2, groupId=str-ecp-batch] Resetting the last seen epoch of partition str-ecp-batch-composition-0 to 16 since the associated topicId changed from null to MwBBZLPpRK6MmJMBo7pw8g
-2025-05-26T10:20:59.436+02:00  INFO 4788 --- [nio-8080-exec-3] c.n.k.f.service.KafkaListenerService     : Polled 25 record(s) from Kafka
-2025-05-26T10:20:59.436+02:00  INFO 4788 --- [nio-8080-exec-3] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18499: key='null'
-2025-05-26T10:20:59.436+02:00  WARN 4788 --- [nio-8080-exec-3] c.n.k.f.service.KafkaListenerService     : Missing mandatory field 'BatchId'
-2025-05-26T10:20:59.440+02:00  INFO 4788 --- [nio-8080-exec-3] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T10:20:59.440+02:00  INFO 4788 --- [nio-8080-exec-3] c.n.k.f.service.KafkaListenerService     : Updated lastProcessedOffsets: {str-ecp-batch-composition-0=18499}
-2025-05-26T10:20:59.440+02:00  INFO 4788 --- [nio-8080-exec-3] c.n.k.f.service.KafkaListenerService     : Final Response sent to topic: str-ecp-batch-composition-complete
-2025-05-26T10:20:59.441+02:00  INFO 4788 --- [nio-8080-exec-3] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-2, groupId=str-ecp-batch] Resetting generation and member id due to: consumer pro-actively leaving the group
-2025-05-26T10:20:59.441+02:00  INFO 4788 --- [nio-8080-exec-3] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-2, groupId=str-ecp-batch] Request joining group due to: consumer pro-actively leaving the group
-2025-05-26T10:20:59.441+02:00  INFO 4788 --- [nio-8080-exec-3] o.apache.kafka.common.metrics.Metrics    : Metrics scheduler closed
-2025-05-26T10:20:59.441+02:00  INFO 4788 --- [nio-8080-exec-3] o.apache.kafka.common.metrics.Metrics    : Closing reporter org.apache.kafka.common.metrics.JmxReporter
-2025-05-26T10:20:59.442+02:00  INFO 4788 --- [nio-8080-exec-3] o.apache.kafka.common.metrics.Metrics    : Metrics reporters closed
-2025-05-26T10:20:59.445+02:00  INFO 4788 --- [nio-8080-exec-3] o.a.kafka.common.utils.AppInfoParser     : App info kafka.consumer for consumer-str-ecp-batch-2 unregistered
+public Map<String, Object> listen() {
+    Consumer<String, String> consumer = consumerFactory.createConsumer();
+    try {
+        long tenDaysAgo = System.currentTimeMillis() - Duration.ofDays(10).toMillis();
+        List<TopicPartition> partitions = new ArrayList<>();
+
+        // Step 1: Discover topic partitions
+        consumer.partitionsFor(inputTopic).forEach(partitionInfo -> {
+            TopicPartition tp = new TopicPartition(partitionInfo.topic(), partitionInfo.partition());
+            partitions.add(tp);
+        });
+        consumer.assign(partitions);
+
+        // Step 2: Seek each partition individually
+        for (TopicPartition partition : partitions) {
+            if (lastProcessedOffsets.containsKey(partition)) {
+                long nextOffset = lastProcessedOffsets.get(partition) + 1;
+                consumer.seek(partition, nextOffset);
+                logger.info("Seeking partition {} to offset {}", partition.partition(), nextOffset);
+            } else {
+                Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes =
+                        consumer.offsetsForTimes(Collections.singletonMap(partition, tenDaysAgo));
+                OffsetAndTimestamp offsetAndTimestamp = offsetsForTimes.get(partition);
+                if (offsetAndTimestamp != null) {
+                    consumer.seek(partition, offsetAndTimestamp.offset());
+                    logger.info("Seeking partition {} to offset from 10 days ago: {}", partition.partition(), offsetAndTimestamp.offset());
+                } else {
+                    consumer.seekToBeginning(Collections.singletonList(partition));
+                    logger.warn("No timestamp offset found for partition {}; seeking to beginning", partition.partition());
+                }
+            }
+        }
+
+        // Step 3: Poll and process the first valid unprocessed message
+        ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
+        logger.info("Polled {} record(s) from Kafka", records.count());
+
+        for (ConsumerRecord<String, String> record : records) {
+            TopicPartition currentPartition = new TopicPartition(record.topic(), record.partition());
+
+            // Skip if already processed
+            if (lastProcessedOffsets.containsKey(currentPartition) &&
+                record.offset() <= lastProcessedOffsets.get(currentPartition)) {
+                logger.debug("Skipping already processed offset {} for partition {}", record.offset(), record.partition());
+                continue;
+            }
+
+            logger.info("Processing record from topic-partition-offset {}-{}-{}: key='{}'",
+                    record.topic(), record.partition(), record.offset(), record.key());
+
+            SummaryPayload summaryPayload = processSingleMessage(record.value());
+
+            // Skip if invalid
+            if (summaryPayload == null || summaryPayload.getBatchId() == null || summaryPayload.getBatchId().trim().isEmpty()) {
+                logger.warn("Missing or empty mandatory field 'BatchId' at offset {}; skipping", record.offset());
+                continue;
+            }
+
+            // Valid message → process and return
+            SummaryJsonWriter.appendToSummaryJson(summaryFile, summaryPayload, azureBlobStorageAccount);
+            lastProcessedOffsets.put(currentPartition, record.offset());
+            logger.info("Updated lastProcessedOffsets: {}", lastProcessedOffsets);
+
+            return buildFinalResponse(summaryPayload); // Only one message per request
+        }
+
+        // If no valid unprocessed message found
+        return generateErrorResponse("204", "No new valid messages available in Kafka topic.");
+
+    } catch (Exception e) {
+        logger.error("Error while consuming Kafka message", e);
+        return generateErrorResponse("500", "Internal Server Error while processing Kafka message.");
+    } finally {
+        consumer.close();
+    }
+}
