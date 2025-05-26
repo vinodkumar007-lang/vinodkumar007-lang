@@ -1,76 +1,33 @@
-public Map<String, Object> listen() {
-    Consumer<String, String> consumer = consumerFactory.createConsumer();
-    List<SummaryPayload> processedPayloads = new ArrayList<>();
+package com.nedbank.kafka.filemanage.controller;
 
-    try {
-        List<TopicPartition> partitions = new ArrayList<>();
+import com.nedbank.kafka.filemanage.service.KafkaListenerService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.web.bind.annotation.*;
 
-        // Step 1: Discover and assign partitions
-        consumer.partitionsFor(inputTopic).forEach(partitionInfo -> {
-            TopicPartition tp = new TopicPartition(partitionInfo.topic(), partitionInfo.partition());
-            partitions.add(tp);
-        });
-        consumer.assign(partitions);
+import java.util.Map;
 
-        // Step 2: Seek to next unprocessed offset or beginning
-        for (TopicPartition partition : partitions) {
-            if (lastProcessedOffsets.containsKey(partition)) {
-                long nextOffset = lastProcessedOffsets.get(partition) + 1;
-                consumer.seek(partition, nextOffset);
-                logger.info("Seeking partition {} to offset {}", partition.partition(), nextOffset);
-            } else {
-                consumer.seekToBeginning(Collections.singletonList(partition));
-                logger.warn("No previous offset for partition {}; seeking to beginning", partition.partition());
-            }
-        }
+@RestController
+@RequestMapping("/api/file")
+public class FileProcessingController {
 
-        // Step 3: Poll and process all valid unprocessed messages
-        ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
-        logger.info("Polled {} record(s) from Kafka", records.count());
+    private static final Logger logger = LoggerFactory.getLogger(FileProcessingController.class);
+    private final KafkaListenerService kafkaListenerService;
 
-        for (ConsumerRecord<String, String> record : records) {
-            TopicPartition currentPartition = new TopicPartition(record.topic(), record.partition());
+    public FileProcessingController(KafkaListenerService kafkaListenerService) {
+        this.kafkaListenerService = kafkaListenerService;
+    }
 
-            // Skip already processed messages
-            if (lastProcessedOffsets.containsKey(currentPartition) &&
-                    record.offset() <= lastProcessedOffsets.get(currentPartition)) {
-                logger.debug("Skipping already processed offset {} for partition {}", record.offset(), record.partition());
-                continue;
-            }
+    // Health check
+    @GetMapping("/health")
+    public String healthCheck() {
+        logger.info("Health check endpoint hit.");
+        return "File Processing Service is up and running.";
+    }
 
-            logger.info("Processing record from topic-partition-offset {}-{}-{}: key='{}'",
-                    record.topic(), record.partition(), record.offset(), record.key());
-
-            SummaryPayload summaryPayload = processSingleMessage(record.value());
-
-            if (summaryPayload == null || summaryPayload.getBatchId() == null || summaryPayload.getBatchId().trim().isEmpty()) {
-                logger.warn("Missing or empty mandatory field 'BatchId' at offset {}; skipping", record.offset());
-                continue;
-            }
-
-            // Append to summary.json
-            SummaryJsonWriter.appendToSummaryJson(summaryFile, summaryPayload, azureBlobStorageAccount);
-
-            // **Send to Kafka BEFORE updating offsets and adding to processed list**
-            sendToKafka(summaryPayload);
-
-            // Update offset after successful processing
-            lastProcessedOffsets.put(currentPartition, record.offset());
-            logger.info("Appended to summary.json, sent to Kafka and updated offset: {}", record.offset());
-
-            processedPayloads.add(summaryPayload);
-        }
-
-        if (processedPayloads.isEmpty()) {
-            return generateErrorResponse("204", "No new valid messages available in Kafka topic.");
-        } else {
-            return buildBatchFinalResponse(processedPayloads);
-        }
-
-    } catch (Exception e) {
-        logger.error("Error while consuming Kafka message", e);
-        return generateErrorResponse("500", "Internal Server Error while processing Kafka message.");
-    } finally {
-        consumer.close();
+    @PostMapping("/process")
+    public Map<String, Object> triggerFileProcessing() {
+        logger.info("POST /process called to trigger Kafka message processing.");
+        return kafkaListenerService.listen();
     }
 }
