@@ -1,4 +1,19 @@
- public String uploadFileIfDifferent(String sourceBlobName, String batchId, String objectId) {
+import com.azure.storage.blob.BlobClient;
+import com.azure.storage.blob.BlobContainerClient;
+import com.azure.storage.blob.BlobServiceClient;
+import com.azure.storage.blob.BlobServiceClientBuilder;
+import com.azure.storage.blob.models.BlobStorageException;
+import com.azure.storage.common.StorageSharedKeyCredential;
+
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Arrays;
+
+public class AzureBlobUploadDemo {
+
+    // Your existing method
+    public String uploadFileIfDifferent(String sourceBlobName, String batchId, String objectId) {
         try {
             if (sourceBlobName == null || batchId == null || objectId == null) {
                 throw new IllegalArgumentException("Required parameters missing");
@@ -56,3 +71,32 @@
             throw new RuntimeException("Unexpected error: " + e.getMessage());
         }
     }
+
+    // Helper method: convert InputStream to byte[]
+    private byte[] toByteArray(InputStream input) throws IOException {
+        return input.readAllBytes();
+    }
+
+    // Helper method: get file extension from blob name
+    private String getFileExtension(String fileName) {
+        int dotIndex = fileName.lastIndexOf('.');
+        return (dotIndex == -1) ? "" : fileName.substring(dotIndex);
+    }
+
+    // Main method for testing
+    public static void main(String[] args) {
+        AzureBlobUploadDemo demo = new AzureBlobUploadDemo();
+
+        String sourceBlobName = "DEBTMAN.csv";  // Change as needed
+        String batchId = "batch123";
+        String objectId = "object456";
+
+        try {
+            String uploadedUrl = demo.uploadFileIfDifferent(sourceBlobName, batchId, objectId);
+            System.out.println("Upload completed. Target Blob URL: " + uploadedUrl);
+        } catch (Exception e) {
+            System.err.println("Upload failed: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+}
