@@ -1,105 +1,153 @@
-2025-05-26T15:31:03.516+02:00  INFO 9132 --- [nio-8080-exec-2] o.a.kafka.common.utils.AppInfoParser     : Kafka version: 3.3.1
-2025-05-26T15:31:03.519+02:00  INFO 9132 --- [nio-8080-exec-2] o.a.kafka.common.utils.AppInfoParser     : Kafka commitId: e23c59d00e687ff5
-2025-05-26T15:31:03.519+02:00  INFO 9132 --- [nio-8080-exec-2] o.a.kafka.common.utils.AppInfoParser     : Kafka startTimeMs: 1748266263514
-2025-05-26T15:31:04.572+02:00  INFO 9132 --- [nio-8080-exec-2] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Cluster ID: y0ml4PnGSeO_hhGMyIz-pA
-2025-05-26T15:31:04.577+02:00  INFO 9132 --- [nio-8080-exec-2] o.a.k.clients.consumer.KafkaConsumer     : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Assigned to partition(s): str-ecp-batch-composition-0
-2025-05-26T15:31:04.583+02:00  INFO 9132 --- [nio-8080-exec-2] o.a.k.c.c.internals.SubscriptionState    : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Seeking to earliest offset of partition str-ecp-batch-composition-0
-2025-05-26T15:31:04.583+02:00  WARN 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : No previous offset for partition 0; seeking to beginning
-2025-05-26T15:31:04.690+02:00  INFO 9132 --- [nio-8080-exec-2] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Resetting the last seen epoch of partition str-ecp-batch-composition-0 to 16 since the associated topicId changed from null to MwBBZLPpRK6MmJMBo7pw8g
-2025-05-26T15:31:04.706+02:00  INFO 9132 --- [nio-8080-exec-2] o.a.k.c.c.internals.SubscriptionState    : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Resetting offset for partition str-ecp-batch-composition-0 to position FetchPosition{offset=18498, offsetEpoch=Optional.empty, currentLeader=LeaderAndEpoch{leader=Optional[nsnxeteelpka03.nednet.co.za:9093 (id: 2 rack: null)], epoch=16}}.
-2025-05-26T15:31:04.790+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Polled 33 record(s) from Kafka
-2025-05-26T15:31:04.792+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18498: key='null'
-2025-05-26T15:31:04.819+02:00  WARN 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Missing mandatory field 'BatchId'
-2025-05-26T15:31:04.855+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:04.855+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18498
-2025-05-26T15:31:04.856+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18499: key='null'
-2025-05-26T15:31:04.856+02:00  WARN 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Missing mandatory field 'BatchId'
-2025-05-26T15:31:04.883+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:04.883+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18499
-2025-05-26T15:31:04.883+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18500: key='null'
-2025-05-26T15:31:06.155+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A04.884134Z%2Feba7d148-19b1-49dc-8422-111896b2d184%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:06.161+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:06.162+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18500
-2025-05-26T15:31:06.162+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18501: key='null'
-2025-05-26T15:31:06.265+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A06.163790200Z%2Fbea3e8b1-cbf6-4f55-99ee-fb30dd01aa4b%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:06.280+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:06.281+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18501
-2025-05-26T15:31:06.281+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18502: key='null'
-2025-05-26T15:31:06.383+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A06.281609100Z%2Fe996ae1e-6161-4990-901c-c435def61361%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:06.386+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:06.387+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18502
-2025-05-26T15:31:06.387+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18503: key='null'
-2025-05-26T15:31:06.486+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A06.387132800Z%2F6eaca62d-7ede-4109-b7cf-fddd19f53a23%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:06.489+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:06.489+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18503
-2025-05-26T15:31:06.490+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18504: key='null'
-2025-05-26T15:31:06.601+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A06.490188500Z%2Fe4c2c1d3-0406-42cb-aae4-6eedc9fab3d6%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:06.608+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:06.610+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18504
-2025-05-26T15:31:06.611+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18505: key='null'
-2025-05-26T15:31:06.721+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A06.612580300Z%2F98e10e99-30fc-426c-b3fb-f7b516cb6773%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:06.725+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:06.726+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18505
-2025-05-26T15:31:06.726+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18506: key='null'
-2025-05-26T15:31:06.837+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A06.727579Z%2Fdb31e2a1-6eb7-4514-8dbe-72da4c3b13bc%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:06.847+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:06.847+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18506
-2025-05-26T15:31:06.854+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18507: key='null'
-2025-05-26T15:31:06.975+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A06.855572500Z%2F7a47a018-7dc1-4559-a5f1-113427aadf1b%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:06.978+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:06.979+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18507
-2025-05-26T15:31:06.979+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18508: key='null'
-2025-05-26T15:31:07.106+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A06.979572300Z%2F8f0bd673-84cc-4e86-a8b5-7a5dc5ec8d82%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:07.117+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:07.117+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18508
-2025-05-26T15:31:07.117+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18509: key='null'
-2025-05-26T15:31:07.249+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A07.118582Z%2Fd0764e08-67f4-497e-b8fa-0ce1959c7f3e%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:07.266+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:07.266+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18509
-2025-05-26T15:31:07.266+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18510: key='null'
-2025-05-26T15:31:07.373+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A07.267586400Z%2F881d4d06-bf89-4f81-adeb-11f9ee8890c4%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:07.378+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:07.378+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18510
-2025-05-26T15:31:07.379+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18511: key='null'
-2025-05-26T15:31:07.471+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A07.379572500Z%2Fafcc1c8b-7372-424e-afe9-859a20a51919%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:07.474+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:07.474+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18511
-2025-05-26T15:31:07.475+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18512: key='null'
-2025-05-26T15:31:07.554+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A07.476210Z%2F2682e131-d492-4040-b72c-727598173422%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:07.558+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:07.559+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18512
-2025-05-26T15:31:07.559+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18513: key='null'
-2025-05-26T15:31:07.692+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A07.559212600Z%2F47c83158-5cb1-4dbe-93c8-123750e2a3f9%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:07.696+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:07.696+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18513
-2025-05-26T15:31:07.696+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18514: key='null'
-2025-05-26T15:31:07.789+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A07.696022100Z%2F65335e59-02b8-4e89-a6c0-2d7b113739c5%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:07.793+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:07.793+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18514
-2025-05-26T15:31:07.793+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18515: key='null'
-2025-05-26T15:31:07.918+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A07.794013Z%2F3b9d3738-d3a6-4608-8ea7-94d29433553c%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:07.922+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:07.922+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18515
-2025-05-26T15:31:07.922+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18516: key='null'
-2025-05-26T15:31:08.004+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A07.923109900Z%2F137b68b2-f9c6-4053-b54f-7672d4c9f2f0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:08.008+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:08.008+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18516
-2025-05-26T15:31:08.008+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18517: key='null'
-2025-05-26T15:31:08.119+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A08.009494300Z%2F761545f6-8a05-417f-94d6-5c26c478d8f5%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:08.138+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:08.138+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18517
-2025-05-26T15:31:08.139+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18518: key='null'
-2025-05-26T15:31:08.234+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A08.141734700Z%2Ffe153ee2-969e-4cfc-8316-5d265df79f50%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:08.239+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:08.239+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18518
-2025-05-26T15:31:08.239+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18519: key='null'
-2025-05-26T15:31:08.314+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A08.239273700Z%2Fc66725c2-4fe6-4dfc-b64b-8ae0d57b93c7%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:08.318+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:08.318+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18519
-2025-05-26T15:31:08.318+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18520: key='null'
-2025-05-26T15:31:08.417+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A08.318283200Z%2Fd50b3411-2dc0-43ca-92b8-9b6bb4cd70e7%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:08.421+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T15:31:08.421+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18520
-2025-05-26T15:31:08.422+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18521: key='null'
-2025-05-26T15:31:08.526+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T13%3A31%3A08.422144500Z%2Fbb8f2b26-38c2-42ff-aec3-c48a7380522a%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T15:31:08.530+02:00  INFO 9132 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\sum
+private SummaryPayload processSingleMessage(String message) throws IOException {
+        JsonNode root = objectMapper.readTree(message);
+        logger.debug("Kafka message received  : " + message);
+        // ✅ Extract sourceSystem dynamically from root or Payload (fallback to DEBTMAN)
+        String sourceSystem = safeGetText(root, "sourceSystem", false);
+        if (sourceSystem == null) {
+            JsonNode payloadNode = root.get("Payload");
+            if (payloadNode != null) {
+                sourceSystem = safeGetText(payloadNode, "sourceSystem", false);
+            }
+        }
+        if (sourceSystem == null || sourceSystem.isBlank()) {
+            sourceSystem = "DEBTMAN";
+        }
+
+        // Extract jobName (optional)
+        String jobName = safeGetText(root, "JobName", false);
+        if (jobName == null) jobName = "";
+
+        // Extract BatchId (mandatory fallback to random UUID)
+        String batchId = safeGetText(root, "BatchId", true);
+        if (batchId == null) batchId = UUID.randomUUID().toString();
+
+        // Extract timestamp (use current timestamp if not in message)
+        String timestamp = Instant.now().toString();
+
+        // Extract consumerReference
+        String consumerReference = safeGetText(root, "consumerReference", false);
+        JsonNode payloadNode = root.get("Payload");
+        if (consumerReference == null && payloadNode != null) {
+            consumerReference = safeGetText(payloadNode, "consumerReference", false);
+        }
+        if (consumerReference == null) consumerReference = "unknownConsumer";
+
+        // Extract processReference (we'll use eventID as fallback)
+        String processReference = safeGetText(root, "eventID", false);
+        if (processReference == null && payloadNode != null) {
+            processReference = safeGetText(payloadNode, "eventID", false);
+        }
+        if (processReference == null) processReference = "unknownProcess";
+
+        // Process CustomerSummaries from BatchFiles array
+        List<CustomerSummary> customerSummaries = new ArrayList<>();
+        JsonNode batchFilesNode = root.get("BatchFiles");
+        if (batchFilesNode != null && batchFilesNode.isArray()) {
+            for (JsonNode fileNode : batchFilesNode) {
+                String filePath = safeGetText(fileNode, "BlobUrl", true);
+                String objectId = safeGetText(fileNode, "ObjectId", true);
+                String validationStatus = safeGetText(fileNode, "ValidationStatus", false);
+
+                if (filePath == null || objectId == null) {
+                    logger.warn("Skipping file with missing BlobUrl or ObjectId.");
+                    continue;
+                }
+
+                try {
+                    fileLocation = blobStorageService.uploadFileAndReturnLocation(
+                            sourceSystem,
+                            filePath,
+                            batchId,
+                            objectId,
+                            consumerReference,
+                            processReference,
+                            timestamp
+                    );
+                } catch (Exception e) {
+                    logger.warn("Blob upload failed for {}: {}", filePath, e.getMessage());
+                }
+
+                String extension = getFileExtension(filePath);
+                CustomerSummary.FileDetail detail = new CustomerSummary.FileDetail();
+                detail.setObjectId(objectId);
+                detail.setFileLocation(filePath);
+                detail.setFileUrl("https://" + azureBlobStorageAccount + "/" + filePath);
+                detail.setEncrypted(isEncrypted(filePath, extension));
+                detail.setStatus(validationStatus != null ? validationStatus : "OK");
+                detail.setType(determineType(filePath));
+
+                CustomerSummary customer = customerSummaries.stream()
+                        .filter(c -> c.getCustomerId().equals(objectId))
+                        .findFirst()
+                        .orElseGet(() -> {
+                            CustomerSummary c = new CustomerSummary();
+                            c.setCustomerId(objectId);
+                            c.setAccountNumber("");
+                            c.setFiles(new ArrayList<>());
+                            customerSummaries.add(c);
+                            return c;
+                        });
+
+                customer.getFiles().add(detail);
+            }
+        }
+
+        // Build Header info
+        HeaderInfo headerInfo;
+        JsonNode headerNode = root.get("Header");
+        if (headerNode != null && !headerNode.isNull()) {
+            headerInfo = buildHeader(headerNode, jobName);
+        } else {
+            headerInfo = buildHeader(root, jobName);
+        }
+        if (headerInfo.getBatchId() == null) {
+            headerInfo.setBatchId(batchId);
+        }
+
+        // Extract product field if present
+        String product = null;
+        if (headerNode != null && headerNode.has("product")) {
+            product = safeGetText(headerNode, "product", false);
+        }
+        if (product == null) {
+            product = safeGetText(root, "product", false);
+        }
+        headerInfo.setProduct(product);
+
+        // Build Payload info
+        PayloadInfo payloadInfo = new PayloadInfo();
+        if (payloadNode != null && !payloadNode.isNull()) {
+            payloadInfo.setUniqueConsumerRef(safeGetText(payloadNode, "uniqueConsumerRef", false));
+            payloadInfo.setUniqueECPBatchRef(safeGetText(payloadNode, "uniqueECPBatchRef", false));
+            payloadInfo.setRunPriority(safeGetText(payloadNode, "runPriority", false));
+            payloadInfo.setEventID(safeGetText(payloadNode, "eventID", false));
+            payloadInfo.setEventType(safeGetText(payloadNode, "eventType", false));
+            payloadInfo.setRestartKey(safeGetText(payloadNode, "restartKey", false));
+            payloadInfo.setBlobURL(safeGetText(payloadNode, "blobURL", false));
+            payloadInfo.setEventOutcomeCode(safeGetText(payloadNode, "eventOutcomeCode", false));
+            payloadInfo.setEventOutcomeDescription(safeGetText(payloadNode, "eventOutcomeDescription", false));
+
+            JsonNode printFilesNode = payloadNode.get("printFiles");
+            if (printFilesNode != null && printFilesNode.isArray()) {
+                List<String> printFiles = new ArrayList<>();
+                for (JsonNode pf : printFilesNode) {
+                    printFiles.add(pf.asText());
+                }
+                payloadInfo.setPrintFiles(printFiles);
+            }
+        }
+
+        MetaDataInfo metaDataInfo = new MetaDataInfo();
+        metaDataInfo.setTotalFiles(customerSummaries.stream().mapToInt(c -> c.getFiles().size()).sum());
+        metaDataInfo.setTotalCustomers(customerSummaries.size());
+
+        SummaryPayload summaryPayload = new SummaryPayload();
+        summaryPayload.setJobName(jobName);
+        summaryPayload.setBatchId(batchId);
+        summaryPayload.setCustomerSummary(customerSummaries);
+        summaryPayload.setHeader(headerInfo);
+        summaryPayload.setPayload(payloadInfo);
+        summaryPayload.setMetaData(metaDataInfo);
+
+        return summaryPayload;
+    }
