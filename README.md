@@ -1,15 +1,59 @@
-2025-05-26T10:30:48.257+02:00  INFO 10524 --- [nio-8080-exec-1] o.a.kafka.common.utils.AppInfoParser     : Kafka version: 3.3.1
-2025-05-26T10:30:48.263+02:00  INFO 10524 --- [nio-8080-exec-1] o.a.kafka.common.utils.AppInfoParser     : Kafka commitId: e23c59d00e687ff5
-2025-05-26T10:30:48.263+02:00  INFO 10524 --- [nio-8080-exec-1] o.a.kafka.common.utils.AppInfoParser     : Kafka startTimeMs: 1748248248254
-2025-05-26T10:30:49.127+02:00  INFO 10524 --- [nio-8080-exec-1] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Cluster ID: y0ml4PnGSeO_hhGMyIz-pA
-2025-05-26T10:30:49.133+02:00  INFO 10524 --- [nio-8080-exec-1] o.a.k.clients.consumer.KafkaConsumer     : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Assigned to partition(s): str-ecp-batch-composition-0
-2025-05-26T10:30:49.224+02:00  INFO 10524 --- [nio-8080-exec-1] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Resetting the last seen epoch of partition str-ecp-batch-composition-0 to 16 since the associated topicId changed from null to MwBBZLPpRK6MmJMBo7pw8g
-2025-05-26T10:30:49.308+02:00  INFO 10524 --- [nio-8080-exec-1] o.a.k.clients.consumer.KafkaConsumer     : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Seeking to offset 18498 for partition str-ecp-batch-composition-0
-2025-05-26T10:30:49.310+02:00  INFO 10524 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Seeking partition 0 to offset from 10 days ago: 18498
-2025-05-26T10:30:49.409+02:00  INFO 10524 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Polled 26 record(s) from Kafka
-2025-05-26T10:30:49.410+02:00  INFO 10524 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18498: key='null'
-2025-05-26T10:30:49.430+02:00  WARN 10524 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Missing mandatory field 'BatchId'
-2025-05-26T10:30:49.475+02:00  INFO 10524 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T10:30:49.475+02:00  INFO 10524 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Updated lastProcessedOffsets: {str-ecp-batch-composition-0=18498}
-2025-05-26T10:30:49.486+02:00  INFO 10524 --- [nio-8080-exec-1] o.a.k.clients.producer.ProducerConfig    : ProducerConfig values: 
-	acks = -1
+public String uploadFileAndGenerateSasUrl(String fileLocation, String batchId, String objectId) {
+        try {
+            if (fileLocation == null || batchId == null || objectId == null) {
+                throw new CustomAppException("Required parameters missing", 400, HttpStatus.BAD_REQUEST);
+            }
+
+            // TODO: Replace with Vault secrets
+            String accountKey =  ""; //getSecretFromVault("account_key", getVaultToken());
+            String accountName = "nsndvextr01"; //getSecretFromVault("account_name", getVaultToken());  //"nsndvextr01";
+            String containerName = "nsnakscontregecm001"; //getSecretFromVault("container_name", getVaultToken()); //"nsnakscontregecm001";
+
+            String extension = getFileExtension(fileLocation);
+            String blobName = objectId.replaceAll("[{}]", "") + "_" + batchId + extension;
+
+            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+                    .buildClient();
+
+            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
+            BlobClient targetBlobClient = containerClient.getBlobClient(blobName);
+
+            String sourceBlobName = fileLocation.substring(fileLocation.lastIndexOf("/") + 1);
+            BlobClient sourceBlobClient = containerClient.getBlobClient(sourceBlobName);
+
+            try (InputStream inputStream = sourceBlobClient.openInputStream()) {
+                long size = sourceBlobClient.getProperties().getBlobSize();
+                targetBlobClient.upload(inputStream, size, true);
+                logger.info("✅ Uploaded '{}' to '{}'", sourceBlobName, targetBlobClient.getBlobUrl());
+            } catch (BlobStorageException bse) {
+                logger.error("❌ Azure Blob Storage error: {}", bse.getMessage());
+                throw new CustomAppException("Blob storage operation failed", 453, HttpStatus.BAD_GATEWAY, bse);
+            } catch (SocketException se) {
+                logger.error("❌ Network error: {}", se.getMessage());
+                throw new CustomAppException("Network issue during blob transfer", 420, HttpStatus.GATEWAY_TIMEOUT, se);
+            } catch (Exception e) {
+                logger.error("❌ Unexpected error during blob transfer: {}", e.getMessage());
+                throw new CustomAppException("Unexpected blob error", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            }
+
+            try {
+                BlobServiceSasSignatureValues sasValues = new BlobServiceSasSignatureValues(
+                        OffsetDateTime.now().plusHours(24),
+                        new BlobSasPermission().setReadPermission(true)
+                );
+                String sasToken = targetBlobClient.generateSas(sasValues);
+                return targetBlobClient.getBlobUrl() + "?" + sasToken;
+            } catch (Exception e) {
+                logger.error("❌ SAS token generation failed: {}", e.getMessage());
+                throw new CustomAppException("Failed to generate SAS URL", 453, HttpStatus.BAD_GATEWAY, e);
+            }
+
+        } catch (CustomAppException cae) {
+            throw cae; // rethrow
+        } catch (Exception e) {
+            logger.error("❌ Generic error in uploadFileAndGenerateSasUrl: {}", e.getMessage());
+            throw new CustomAppException("Internal blob error", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
