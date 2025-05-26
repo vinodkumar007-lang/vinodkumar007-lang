@@ -1,10 +1,1 @@
-2025-05-26T13:18:14.694+02:00  INFO 8644 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T11%3A18%3A14.588098700Z%2F7a47a018-7dc1-4559-a5f1-113427aadf1b%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T13:18:14.697+02:00  INFO 8644 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T13:18:14.697+02:00  INFO 8644 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18507
-2025-05-26T13:18:14.697+02:00  INFO 8644 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18508: key='null'
-2025-05-26T13:18:14.784+02:00  INFO 8644 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T11%3A18%3A14.698360700Z%2F8f0bd673-84cc-4e86-a8b5-7a5dc5ec8d82%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T13:18:14.788+02:00  INFO 8644 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
-2025-05-26T13:18:14.789+02:00  INFO 8644 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Appended to summary.json and updated offset: 18508
-2025-05-26T13:18:14.789+02:00  INFO 8644 --- [nio-8080-exec-2] c.n.k.f.service.KafkaListenerService     : Processing record from topic-partition-offset str-ecp-batch-composition-0-18509: key='null'
-2025-05-26T13:18:14.948+02:00  INFO 8644 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T11%3A18%3A14.789529300Z%2Fd0764e08-67f4-497e-b8fa-0ce1959c7f3e%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv'
-2025-05-26T13:1
+I have created a folder named batch_123 in the storage container, but I’m unable to access it directly through the browser. Kindly check from your end and confirm if the folder is accessible or if there are any permission or path issues.
