@@ -1,48 +1,76 @@
-public void processMessages(boolean singleMessageMode) {
-    try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(consumerProps)) {
-        consumer.subscribe(Collections.singletonList(kafkaTopic));
+public Map<String, Object> listen() {
+        Consumer<String, String> consumer = consumerFactory.createConsumer();
+        try {
+            long tenDaysAgo = System.currentTimeMillis() - Duration.ofDays(10).toMillis();
+            List<TopicPartition> partitions = new ArrayList<>();
 
-        Map<TopicPartition, Long> partitionOffsets = getOffsetsFromDaysAgo(consumer, Duration.ofDays(10));
-        for (Map.Entry<TopicPartition, Long> entry : partitionOffsets.entrySet()) {
-            consumer.seek(entry.getKey(), entry.getValue());
-            log.info("Seeking partition {} to offset from 10 days ago: {}", entry.getKey().partition(), entry.getValue());
-        }
+            // Step 1: Discover topic partitions
+            consumer.partitionsFor(inputTopic).forEach(partitionInfo -> {
+                TopicPartition tp = new TopicPartition(partitionInfo.topic(), partitionInfo.partition());
+                partitions.add(tp);
+            });
+            consumer.assign(partitions);
 
-        ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(10));
-        log.info("Polled {} record(s) from Kafka", records.count());
-
-        if (records.isEmpty()) {
-            log.info("No records to process.");
-            return;
-        }
-
-        // Filter out already processed records
-        List<ConsumerRecord<String, String>> unprocessedRecords = new ArrayList<>();
-        for (ConsumerRecord<String, String> record : records) {
-            if (isAlreadyProcessed(record)) {
-                continue;
+            // Step 2: Seek each partition individually
+            for (TopicPartition partition : partitions) {
+                if (lastProcessedOffsets.containsKey(partition)) {
+                    long nextOffset = lastProcessedOffsets.get(partition) + 1;
+                    consumer.seek(partition, nextOffset);
+                    logger.info("Seeking partition {} to offset {}", partition.partition(), nextOffset);
+                } else {
+                    Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes =
+                            consumer.offsetsForTimes(Collections.singletonMap(partition, tenDaysAgo));
+                    OffsetAndTimestamp offsetAndTimestamp = offsetsForTimes.get(partition);
+                    if (offsetAndTimestamp != null) {
+                        consumer.seek(partition, offsetAndTimestamp.offset());
+                        logger.info("Seeking partition {} to offset from 10 days ago: {}", partition.partition(), offsetAndTimestamp.offset());
+                    } else {
+                        consumer.seekToBeginning(Collections.singletonList(partition));
+                        logger.warn("No timestamp offset found for partition {}; seeking to beginning", partition.partition());
+                    }
+                }
             }
-            unprocessedRecords.add(record);
-            if (singleMessageMode) break; // process only the first new record
-        }
 
-        for (ConsumerRecord<String, String> record : unprocessedRecords) {
-            processKafkaRecord(record);
-            updateOffset(record); // remember last processed
-            if (singleMessageMode) break; // explicitly break again for safety
-        }
+            // Step 3: Poll and process only the first available unprocessed message
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
+            logger.info("Polled {} record(s) from Kafka", records.count());
 
-    } catch (Exception e) {
-        log.error("Error while consuming messages: {}", e.getMessage(), e);
+            for (ConsumerRecord<String, String> record : records) {
+                TopicPartition currentPartition = new TopicPartition(record.topic(), record.partition());
+
+                // Skip if this offset was already processed
+                if (lastProcessedOffsets.containsKey(currentPartition) &&
+                        record.offset() <= lastProcessedOffsets.get(currentPartition)) {
+                    logger.debug("Skipping already processed offset {} for partition {}", record.offset(), record.partition());
+                    continue;
+                }
+
+                logger.info("Processing record from topic-partition-offset {}-{}-{}: key='{}'",
+                        record.topic(), record.partition(), record.offset(), record.key());
+
+                SummaryPayload summaryPayload = processSingleMessage(record.value());
+
+                if (summaryPayload == null || summaryPayload.getBatchId() == null) {
+                    logger.warn("Missing mandatory field 'BatchId' or invalid message format at offset {}; skipping", record.offset());
+                    return generateErrorResponse("400", "Invalid message: missing mandatory field 'BatchId'.");
+                }
+
+                SummaryJsonWriter.appendToSummaryJson(summaryFile, summaryPayload, azureBlobStorageAccount);
+
+                // Track processed offset
+                lastProcessedOffsets.put(currentPartition, record.offset());
+                logger.info("Updated lastProcessedOffsets: {}", lastProcessedOffsets);
+
+                return buildFinalResponse(summaryPayload); // Process only one message per request
+            }
+
+            // If we reach here, no new unprocessed records were found
+            return generateErrorResponse("204", "No new messages available in Kafka topic.");
+
+        } catch (Exception e) {
+            logger.error("Error while consuming Kafka message", e);
+            return generateErrorResponse("500", "Internal Server Error while processing Kafka message.");
+        } finally {
+            consumer.close();
+        }
     }
-}
-private boolean isAlreadyProcessed(ConsumerRecord<String, String> record) {
-    TopicPartition tp = new TopicPartition(record.topic(), record.partition());
-    return lastProcessedOffsets.getOrDefault(tp, -1L) >= record.offset();
-}
-
-private void updateOffset(ConsumerRecord<String, String> record) {
-    TopicPartition tp = new TopicPartition(record.topic(), record.partition());
-    lastProcessedOffsets.put(tp, record.offset());
-    log.info("Updated lastProcessedOffsets: {}", lastProcessedOffsets);
-}
