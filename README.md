@@ -1,52 +1,91 @@
-public Map<String, Object> listen() {
-        Consumer<String, String> consumer = consumerFactory.createConsumer();
-        try {
-            long threeDaysAgo = System.currentTimeMillis() - Duration.ofDays(3).toMillis();
-
-            List<TopicPartition> partitions = new ArrayList<>();
-            consumer.partitionsFor(inputTopic).forEach(partitionInfo ->
-                    partitions.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()))
-            );
-            consumer.assign(partitions);
-
-            for (TopicPartition partition : partitions) {
-                if (lastProcessedOffsets.containsKey(partition)) {
-                    consumer.seek(partition, lastProcessedOffsets.get(partition) + 1);
-                } else {
-                    Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes =
-                            consumer.offsetsForTimes(Collections.singletonMap(partition, threeDaysAgo));
-                    OffsetAndTimestamp offsetAndTimestamp = offsetsForTimes.get(partition);
-                    if (offsetAndTimestamp != null) {
-                        consumer.seek(partition, offsetAndTimestamp.offset());
-                    } else {
-                        consumer.seekToBeginning(Collections.singletonList(partition));
-                    }
-                }
-            }
-
-            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(3));
-            if (records.isEmpty()) {
-                return generateErrorResponse("204", "No new messages available in Kafka topic.");
-            }
-
-            ConsumerRecord<String, String> firstRecord = records.iterator().next();
-            SummaryPayload summaryPayload = processSingleMessage(firstRecord.value());
-
-            // ⬇️ Write (append) the payload using your existing utility
-            SummaryJsonWriter.appendToSummaryJson(summaryFile, summaryPayload, azureBlobStorageAccount);
-
-            // ⬇️ Track processed offset
-            lastProcessedOffsets.put(
-                    new TopicPartition(firstRecord.topic(), firstRecord.partition()),
-                    firstRecord.offset()
-            );
-
-            return buildFinalResponse(summaryPayload);
-
-        } catch (Exception e) {
-            logger.error("Error while consuming Kafka message", e);
-            return generateErrorResponse("500", "Internal Server Error while processing Kafka message.");
-        } finally {
-            consumer.close();
-        }
-    }
+{
+  "sourceSystem" : "DEBTMAN",
+  "timestamp" : 1.747738551718507E9,
+  "batchFiles" : [ {
+    "fileLocation" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
+    "validationStatus" : "valid",
+    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
+    "RepositoryId" : "BATCH"
+  } ],
+  "consumerReference" : "12345",
+  "processReference" : "Test12345",
+  "batchControlFileData" : null
+}
+New message [Key=null, Offset=18499]:
+{
+  "sourceSystem" : "DEBTMAN",
+  "timestamp" : 1.74773858562743E9,
+  "batchFiles" : [ {
+    "fileLocation" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
+    "validationStatus" : "valid",
+    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
+    "RepositoryId" : "BATCH"
+  } ],
+  "consumerReference" : "12345",
+  "processReference" : "Test12345",
+  "batchControlFileData" : null
+}
+New message [Key=null, Offset=18500]:
+{
+  "BatchId" : "eba7d148-19b1-49dc-8422-111896b2d184",
+  "SourceSystem" : "DEBTMAN",
+  "TenantCode" : null,
+  "ChannelID" : null,
+  "AudienceID" : null,
+  "Product" : "DEBTMAN",
+  "JobName" : null,
+  "UniqueConsumerRef" : "12345",
+  "Timestamp" : 1.7479141606266396E9,
+  "ProcessReference" : null,
+  "RunPriority" : null,
+  "EventType" : null,
+  "BatchFiles" : [ {
+    "validationStatus" : "valid",
+    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
+    "RepositoryId" : "BATCH",
+    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
+    "Filename" : "DEBTMAN.csv"
+  } ]
+}
+New message [Key=null, Offset=18501]:
+{
+  "BatchId" : "bea3e8b1-cbf6-4f55-99ee-fb30dd01aa4b",
+  "SourceSystem" : "DEBTMAN",
+  "TenantCode" : "ZANBL",
+  "ChannelID" : null,
+  "AudienceID" : null,
+  "Product" : "DEBTMAN",
+  "JobName" : null,
+  "UniqueConsumerRef" : "12345",
+  "Timestamp" : 1.7479146286245925E9,
+  "RunPriority" : null,
+  "EventType" : null,
+  "BatchFiles" : [ {
+    "validationStatus" : "valid",
+    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
+    "RepositoryId" : "BATCH",
+    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
+    "Filename" : "DEBTMAN.csv"
+  } ]
+}
+New message [Key=null, Offset=18502]:
+{
+  "BatchId" : "e996ae1e-6161-4990-901c-c435def61361",
+  "SourceSystem" : "DEBTMAN",
+  "TenantCode" : "ZANBL",
+  "ChannelID" : null,
+  "AudienceID" : null,
+  "Product" : "DEBTMAN",
+  "JobName" : null,
+  "UniqueConsumerRef" : "29e2c73e-2031-4bd2-96fb-aa98f6f313fa",
+  "Timestamp" : 1.7479148360337114E9,
+  "RunPriority" : null,
+  "EventType" : null,
+  "BatchFiles" : [ {
+    "validationStatus" : "valid",
+    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
+    "RepositoryId" : "BATCH",
+    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
+    "Filename" : "DEBTMAN.csv"
+  } ]
+}
