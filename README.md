@@ -1,58 +1,20 @@
-public Map<String, Object> listen() {
-    Consumer<String, String> consumer = consumerFactory.createConsumer();
-    try {
-        long threeDaysAgo = System.currentTimeMillis() - Duration.ofDays(3).toMillis();
-
-        List<TopicPartition> partitions = new ArrayList<>();
-        consumer.partitionsFor(inputTopic).forEach(partitionInfo ->
-                partitions.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()))
-        );
-        consumer.assign(partitions);
-
-        for (TopicPartition partition : partitions) {
-            if (lastProcessedOffsets.containsKey(partition)) {
-                consumer.seek(partition, lastProcessedOffsets.get(partition) + 1);
-            } else {
-                Map<TopicPartition, OffsetAndTimestamp> offsetsForTimes =
-                        consumer.offsetsForTimes(Collections.singletonMap(partition, threeDaysAgo));
-                OffsetAndTimestamp offsetAndTimestamp = offsetsForTimes.get(partition);
-                if (offsetAndTimestamp != null) {
-                    consumer.seek(partition, offsetAndTimestamp.offset());
-                } else {
-                    consumer.seekToBeginning(Collections.singletonList(partition));
-                }
-            }
-        }
-
-        ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(3));
-        if (records.isEmpty()) {
-            return generateErrorResponse("204", "No new messages available in Kafka topic.");
-        }
-
-        // Process ALL records, not just first
-        for (ConsumerRecord<String, String> record : records) {
-            SummaryPayload summaryPayload = processSingleMessage(record.value());
-
-            // Append each message's payload
-            SummaryJsonWriter.appendToSummaryJson(summaryFile, summaryPayload, azureBlobStorageAccount);
-
-            // Update last processed offset for this partition
-            lastProcessedOffsets.put(
-                new TopicPartition(record.topic(), record.partition()),
-                record.offset()
-            );
-        }
-
-        // Ideally commit offsets after processing
-        consumer.commitSync();
-
-        // Return some response, e.g., from last record or summary
-        return buildFinalResponse(/* you can decide what to return here */);
-
-    } catch (Exception e) {
-        logger.error("Error while consuming Kafka message", e);
-        return generateErrorResponse("500", "Internal Server Error while processing Kafka message.");
-    } finally {
-        consumer.close();
-    }
-}
+2025-05-26T09:04:17.859+02:00  INFO 20376 --- [nio-8080-exec-2] o.a.kafka.common.utils.AppInfoParser     : Kafka version: 3.3.1
+2025-05-26T09:04:17.861+02:00  INFO 20376 --- [nio-8080-exec-2] o.a.kafka.common.utils.AppInfoParser     : Kafka commitId: e23c59d00e687ff5
+2025-05-26T09:04:17.862+02:00  INFO 20376 --- [nio-8080-exec-2] o.a.kafka.common.utils.AppInfoParser     : Kafka startTimeMs: 1748243057855
+2025-05-26T09:04:18.629+02:00  INFO 20376 --- [nio-8080-exec-2] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Cluster ID: y0ml4PnGSeO_hhGMyIz-pA
+2025-05-26T09:04:18.635+02:00  INFO 20376 --- [nio-8080-exec-2] o.a.k.clients.consumer.KafkaConsumer     : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Assigned to partition(s): str-ecp-batch-composition-0
+2025-05-26T09:04:18.738+02:00  INFO 20376 --- [nio-8080-exec-2] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Resetting the last seen epoch of partition str-ecp-batch-composition-0 to 16 since the associated topicId changed from null to MwBBZLPpRK6MmJMBo7pw8g
+2025-05-26T09:04:18.839+02:00  INFO 20376 --- [nio-8080-exec-2] o.a.k.clients.consumer.KafkaConsumer     : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Seeking to offset 18517 for partition str-ecp-batch-composition-0
+2025-05-26T09:04:20.105+02:00  INFO 20376 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_761545f6-8a05-417f-94d6-5c26c478d8f5.csv'
+2025-05-26T09:04:20.156+02:00  INFO 20376 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
+2025-05-26T09:04:20.253+02:00  INFO 20376 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_fe153ee2-969e-4cfc-8316-5d265df79f50.csv'
+2025-05-26T09:04:20.257+02:00  INFO 20376 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
+2025-05-26T09:04:20.349+02:00  INFO 20376 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_c66725c2-4fe6-4dfc-b64b-8ae0d57b93c7.csv'
+2025-05-26T09:04:20.354+02:00  INFO 20376 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
+2025-05-26T09:04:20.466+02:00  INFO 20376 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_d50b3411-2dc0-43ca-92b8-9b6bb4cd70e7.csv'
+2025-05-26T09:04:20.472+02:00  INFO 20376 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
+2025-05-26T09:04:20.604+02:00  INFO 20376 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_bb8f2b26-38c2-42ff-aec3-c48a7380522a.csv'
+2025-05-26T09:04:20.609+02:00  INFO 20376 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
+2025-05-26T09:04:20.719+02:00  INFO 20376 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_23882373-ef6c-4b28-8a02-487a8e7abdc9.csv'
+2025-05-26T09:04:20.722+02:00  INFO 20376 --- [nio-8080-exec-2] c.n.k.f.utils.SummaryJsonWriter          : Appended to summary.json: C:\Users\CC437236\summary.json
+2025-05-26T09:04:20.819+02:00  INFO 20376 --- [nio-8080-exec-2] c.n.k.f.service.BlobStorageService       : ✅ Uploaded 'DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/1037A096-0000-CE1A-A484-3290CA7938C2_222fc43b-f057-44fd-8495-b7c5d4a8441d.csv'
