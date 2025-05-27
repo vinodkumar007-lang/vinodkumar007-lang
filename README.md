@@ -1,291 +1,467 @@
 package com.nedbank.kafka.filemanage.service;
 
-import com.azure.storage.blob.*;
-import com.azure.storage.blob.models.BlobStorageException;
-import com.azure.storage.common.StorageSharedKeyCredential;
-import com.nedbank.kafka.filemanage.config.ProxySetup;
-import com.nedbank.kafka.filemanage.exception.CustomAppException;
-import org.json.JSONObject;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.CustomerSummary;
+import com.nedbank.kafka.filemanage.model.HeaderInfo;
+import com.nedbank.kafka.filemanage.model.MetaDataInfo;
+import com.nedbank.kafka.filemanage.model.PayloadInfo;
+import com.nedbank.kafka.filemanage.model.SummaryPayload;
+import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
+import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
-import java.io.InputStream;
-import java.net.SocketException;
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+import java.io.File;
+import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.*;
 
 @Service
-public class BlobStorageService {
+public class KafkaListenerService {
 
-    private static final Logger logger = LoggerFactory.getLogger(BlobStorageService.class);
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
-    private final RestTemplate restTemplate;
-    private final ProxySetup proxySetup;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final BlobStorageService blobStorageService;
+    private final ConsumerFactory<String, String> consumerFactory;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${vault.hashicorp.url}")
-    private String VAULT_URL;
+    @Value("${kafka.topic.input}")
+    private String inputTopic;
 
-    @Value("${vault.hashicorp.namespace}")
-    private String VAULT_NAMESPACE;
+    @Value("${kafka.topic.output}")
+    private String outputTopic;
 
-    @Value("${vault.hashicorp.passwordDev}")
-    private String passwordDev;
+    @Value("${azure.blob.storage.account}")
+    private String azureBlobStorageAccount;
 
-    @Value("${vault.hashicorp.passwordNbhDev}")
-    private String passwordNbhDev;
+    private final File summaryFile = new File(System.getProperty("user.home"), "summary.json");
+    // New: Map to store last processed offsets
+    private final Map<TopicPartition, Long> lastProcessedOffsets = new HashMap<>();
+    private String fileLocation;
+    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
+                                BlobStorageService blobStorageService,
+                                ConsumerFactory<String, String> consumerFactory) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.blobStorageService = blobStorageService;
+        this.consumerFactory = consumerFactory;
 
-    @Value("${use.proxy:false}")
-    private boolean useProxy;
-
-    public BlobStorageService(RestTemplate restTemplate, ProxySetup proxySetup) {
-        this.restTemplate = restTemplate;
-        this.proxySetup = proxySetup;
     }
 
-    /**
-     * Copies a file from an external URL (e.g., blobUrl from Kafka message)
-     * into Azure Blob Storage with the folder structure:
-     * {sourceSystem}/input/{timestamp}/{batchId}/{consumerReference}_{processReference}/{fileName}
-     *
-     * @return The URL of the copied file in Azure Blob Storage
-     */
-    public String copyFileFromUrlToBlob(
-            String sourceUrl,
-            String sourceSystem,
-            String batchId,
-            String consumerReference,
-            String processReference,
-            String timestamp,
-            String fileName) {
+    public Map<String, Object> listen() {
+        Consumer<String, String> consumer = consumerFactory.createConsumer();
+        List<SummaryPayload> processedPayloads = new ArrayList<>();
+        Map<TopicPartition, Long> newOffsets = new HashMap<>();
 
         try {
-            if (sourceUrl == null || sourceSystem == null || batchId == null
-                    || consumerReference == null || processReference == null
-                    || timestamp == null || fileName == null) {
-                throw new CustomAppException("Required parameters missing", 400, HttpStatus.BAD_REQUEST);
+            List<TopicPartition> partitions = new ArrayList<>();
+
+            // Discover and assign partitions
+            consumer.partitionsFor(inputTopic).forEach(partitionInfo -> {
+                partitions.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
+            });
+            consumer.assign(partitions);
+
+            // Seek to next unprocessed offset or beginning
+            for (TopicPartition partition : partitions) {
+                if (lastProcessedOffsets.containsKey(partition)) {
+                    long nextOffset = lastProcessedOffsets.get(partition) + 1;
+                    consumer.seek(partition, nextOffset);
+                    logger.info("Seeking partition {} to offset {}", partition.partition(), nextOffset);
+                } else {
+                    consumer.seekToBeginning(Collections.singletonList(partition));
+                    logger.warn("No previous offset for partition {}; seeking to beginning", partition.partition());
+                }
             }
 
-            // TODO: Replace these with secrets fetched from Vault
-            String accountKey = ""; // getSecretFromVault("account_key", getVaultToken());
-            String accountName = "nsndvextr01"; // getSecretFromVault("account_name", getVaultToken());
-            String containerName = "nsnakscontregecm001"; // getSecretFromVault("container_name", getVaultToken());
+            // Poll messages
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
+            logger.info("Polled {} record(s) from Kafka", records.count());
 
-            // Build target blob path with folder structure
-            String blobName = String.format("%s/input/%s/%s/%s_%s/%s",
-                    sourceSystem,
-                    timestamp,
-                    batchId,
-                    consumerReference.replaceAll("[{}]", ""),
-                    processReference.replaceAll("[{}]", ""),
-                    fileName);
+            SummaryPayload summaryPayload = null;
+            for (ConsumerRecord<String, String> record : records) {
+                TopicPartition currentPartition = new TopicPartition(record.topic(), record.partition());
 
-            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
-            BlobClient targetBlobClient = containerClient.getBlobClient(blobName);
-
-            // Download the file from the sourceUrl via RestTemplate
-            try (InputStream inputStream = restTemplate.getForObject(sourceUrl, InputStream.class)) {
-                if (inputStream == null) {
-                    throw new CustomAppException("Unable to read source file from URL: " + sourceUrl, 404, HttpStatus.NOT_FOUND);
+                // Skip already processed messages
+                if (lastProcessedOffsets.containsKey(currentPartition) &&
+                        record.offset() <= lastProcessedOffsets.get(currentPartition)) {
+                    logger.debug("Skipping already processed offset {} for partition {}", record.offset(), record.partition());
+                    continue;
                 }
 
-                // Read all bytes to get size - caution: for large files, consider streaming alternative
-                byte[] data = inputStream.readAllBytes();
+                logger.info("Processing record from topic-partition-offset {}-{}-{}: key='{}'",
+                        record.topic(), record.partition(), record.offset(), record.key());
 
-                // Upload to target blob (overwrite if exists)
-                targetBlobClient.upload(new java.io.ByteArrayInputStream(data), data.length, true);
+                summaryPayload = processSingleMessage(record.value());
+                if (summaryPayload.getBatchId() == null || summaryPayload.getBatchId().trim().isEmpty()) {
+                    logger.warn("Missing or empty mandatory field 'BatchId' at offset {}; skipping", record.offset());
+                    continue;
+                }
 
-                logger.info("✅ Copied '{}' to '{}'", sourceUrl, targetBlobClient.getBlobUrl());
+                // Add extra tracking info for offset management (optional, if you can extend SummaryPayload)
+                summaryPayload.setTopic(record.topic());
+                summaryPayload.setPartition(record.partition());
+                summaryPayload.setOffset(record.offset());
+
+                processedPayloads.add(summaryPayload);
+
+                // Keep track of highest offset per partition for committing later
+                newOffsets.put(currentPartition, record.offset());
             }
 
-            return targetBlobClient.getBlobUrl();
-
-        } catch (CustomAppException cae) {
-            throw cae;
-        } catch (Exception e) {
-            logger.error("❌ Error copying file from URL: {}", e.getMessage(), e);
-            throw new CustomAppException("Error copying file from URL", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
-    }
-
-    /**
-     * Uploads the summary.json content to Azure Blob Storage with folder structure:
-     * {sourceSystem}/summary/{timestamp}/{batchId}/summary.json
-     *
-     * @return The URL of the uploaded summary.json file
-     */
-    public String uploadSummaryJson(
-            String sourceSystem,
-            String batchId,
-            String timestamp,
-            String summaryJsonContent) {
-
-        try {
-            if (summaryJsonContent == null || sourceSystem == null || batchId == null || timestamp == null) {
-                throw new CustomAppException("Required parameters missing for summary upload", 400, HttpStatus.BAD_REQUEST);
+            if (processedPayloads.isEmpty()) {
+                return generateErrorResponse("204", "No new valid messages available in Kafka topic.");
             }
 
-            // TODO: Replace these with secrets fetched from Vault
-            String accountKey = "";
-            String accountName = "nsndvextr01";
-            String containerName = "nsnakscontregecm001";
+            // Append all processed payloads at once to summary.json
+            //SummaryJsonWriter.appendToSummaryJson(summaryFile, processedPayloads, azureBlobStorageAccount);
+            SummaryJsonWriter.appendToSummaryJson(summaryFile, summaryPayload);
+            // Update last processed offsets only after successful append and sending
+            lastProcessedOffsets.putAll(newOffsets);
 
-            String blobName = String.format("%s/summary/%s/%s/summary.json",
-                    sourceSystem,
-                    timestamp,
-                    batchId);
+            return buildBatchFinalResponse(processedPayloads);
 
-            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
-            BlobClient summaryBlobClient = containerClient.getBlobClient(blobName);
-
-            byte[] jsonBytes = summaryJsonContent.getBytes(StandardCharsets.UTF_8);
-
-            summaryBlobClient.upload(new java.io.ByteArrayInputStream(jsonBytes), jsonBytes.length, true);
-
-            logger.info("✅ Uploaded summary.json to '{}'", summaryBlobClient.getBlobUrl());
-
-            return summaryBlobClient.getBlobUrl();
-
-        } catch (CustomAppException cae) {
-            throw cae;
         } catch (Exception e) {
-            logger.error("❌ Error uploading summary.json: {}", e.getMessage(), e);
-            throw new CustomAppException("Error uploading summary.json", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            logger.error("Error while consuming Kafka message", e);
+            return generateErrorResponse("500", "Internal Server Error while processing Kafka message.");
+        } finally {
+            consumer.close();
         }
     }
 
-    // Your existing method to upload file inside same container from a fileLocation path
-    // (you can keep this if needed; it's not used in above copy logic)
-    public String uploadFileAndReturnLocation(
-            String sourceSystem,
-            String fileLocation,
-            String batchId,
-            String objectId,
-            String consumerReference,
-            String processReference,
-            String timestamp) {
 
-        try {
-            if (sourceSystem == null || fileLocation == null || batchId == null || objectId == null
-                    || consumerReference == null || processReference == null || timestamp == null) {
-                throw new CustomAppException("Required parameters missing", 400, HttpStatus.BAD_REQUEST);
+    private Map<String, Object> buildBatchFinalResponse(List<SummaryPayload> payloads) {
+        List<Map<String, Object>> processedList = new ArrayList<>();
+
+        for (SummaryPayload payload : payloads) {
+            processedList.add(buildFinalResponse(payload));
+        }
+
+        Map<String, Object> batchResponse = new HashMap<>();
+        batchResponse.put("messagesProcessed", processedList.size());
+        batchResponse.put("payloads", processedList);
+
+        return batchResponse;
+    }
+
+    private SummaryPayload processSingleMessage(String message) throws IOException {
+        JsonNode root = objectMapper.readTree(message);
+        logger.debug("Kafka message received  : " + message);
+        // ✅ Extract sourceSystem dynamically from root or Payload (fallback to DEBTMAN)
+        String sourceSystem = safeGetText(root, "sourceSystem", false);
+        if (sourceSystem == null) {
+            JsonNode payloadNode = root.get("Payload");
+            if (payloadNode != null) {
+                sourceSystem = safeGetText(payloadNode, "sourceSystem", false);
             }
+        }
+        if (sourceSystem == null || sourceSystem.isBlank()) {
+            sourceSystem = "DEBTMAN";
+        }
 
-            // TODO: Replace with Vault secrets
-            String accountKey = ""; // getSecretFromVault("account_key", getVaultToken());
-            String accountName = "nsndvextr01"; // getSecretFromVault("account_name", getVaultToken());
-            String containerName = "nsnakscontregecm001"; // getSecretFromVault("container_name", getVaultToken());
+        // Extract jobName (optional)
+        String jobName = safeGetText(root, "JobName", false);
+        if (jobName == null) jobName = "";
 
-            String sourceFileName = fileLocation.substring(fileLocation.lastIndexOf("/") + 1);
+        // Extract BatchId (mandatory fallback to random UUID)
+        String batchId = safeGetText(root, "BatchId", true);
+        if (batchId == null) batchId = UUID.randomUUID().toString();
 
-            String blobName = String.format("%s/input/%s/%s/%s_%s/%s",
-                    sourceSystem,
-                    timestamp,
-                    batchId,
-                    consumerReference.replaceAll("[{}]", ""),
-                    processReference.replaceAll("[{}]", ""),
-                    sourceFileName);
+        // Extract timestamp (use current timestamp if not in message)
+        String timestamp = Instant.now().toString();
 
-            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
+        // Extract consumerReference
+        String consumerReference = safeGetText(root, "consumerReference", false);
+        JsonNode payloadNode = root.get("Payload");
+        if (consumerReference == null && payloadNode != null) {
+            consumerReference = safeGetText(payloadNode, "consumerReference", false);
+        }
+        if (consumerReference == null) consumerReference = "unknownConsumer";
 
-            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
-            BlobClient sourceBlobClient = containerClient.getBlobClient(sourceFileName);
-            BlobClient targetBlobClient = containerClient.getBlobClient(blobName);
+        // Extract processReference (we'll use eventID as fallback)
+        String processReference = safeGetText(root, "eventID", false);
+        if (processReference == null && payloadNode != null) {
+            processReference = safeGetText(payloadNode, "eventID", false);
+        }
+        if (processReference == null) processReference = "unknownProcess";
 
-            try (InputStream inputStream = sourceBlobClient.openInputStream()) {
-                long size = sourceBlobClient.getProperties().getBlobSize();
-                targetBlobClient.upload(inputStream, size, true);
-                logger.info("✅ Uploaded '{}' to '{}'", sourceFileName, targetBlobClient.getBlobUrl());
-            } catch (BlobStorageException bse) {
-                logger.error("❌ Azure Blob Storage error: {}", bse.getMessage());
-                throw new CustomAppException("Blob storage operation failed", 453, HttpStatus.BAD_GATEWAY, bse);
-            } catch (SocketException se) {
-                logger.error("❌ Network error: {}", se.getMessage());
-                throw new CustomAppException("Network issue during blob transfer", 420, HttpStatus.GATEWAY_TIMEOUT, se);
-            } catch (Exception e) {
-                logger.error("❌ Unexpected error during blob transfer: {}", e.getMessage());
-                throw new CustomAppException("Unexpected blob error", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        // Process CustomerSummaries from BatchFiles array
+        List<CustomerSummary> customerSummaries = new ArrayList<>();
+        JsonNode batchFilesNode = root.get("BatchFiles");
+        if (batchFilesNode != null && batchFilesNode.isArray()) {
+            for (JsonNode fileNode : batchFilesNode) {
+                String filePath = safeGetText(fileNode, "BlobUrl", true);
+                String objectId = safeGetText(fileNode, "ObjectId", true);
+                String validationStatus = safeGetText(fileNode, "ValidationStatus", false);
+
+                if (filePath == null || objectId == null) {
+                    logger.warn("Skipping file with missing BlobUrl or ObjectId.");
+                    continue;
+                }
+
+                try {
+                    fileLocation = blobStorageService.uploadFileAndReturnLocation(
+                            sourceSystem,
+                            filePath,
+                            batchId,
+                            objectId,
+                            consumerReference,
+                            processReference,
+                            timestamp
+                    );
+                } catch (Exception e) {
+                    logger.warn("Blob upload failed for {}: {}", filePath, e.getMessage());
+                }
+
+                String extension = getFileExtension(filePath);
+                CustomerSummary.FileDetail detail = new CustomerSummary.FileDetail();
+                detail.setObjectId(objectId);
+                detail.setFileLocation(filePath);
+                detail.setFileUrl("https://" + azureBlobStorageAccount + "/" + filePath);
+                detail.setEncrypted(isEncrypted(filePath, extension));
+                detail.setStatus(validationStatus != null ? validationStatus : "OK");
+                detail.setType(determineType(filePath));
+
+                CustomerSummary customer = customerSummaries.stream()
+                        .filter(c -> c.getCustomerId().equals(objectId))
+                        .findFirst()
+                        .orElseGet(() -> {
+                            CustomerSummary c = new CustomerSummary();
+                            c.setCustomerId(objectId);
+                            c.setAccountNumber("");
+                            c.setFiles(new ArrayList<>());
+                            customerSummaries.add(c);
+                            return c;
+                        });
+
+                customer.getFiles().add(detail);
             }
-
-            return targetBlobClient.getBlobUrl();
-
-        } catch (CustomAppException cae) {
-            throw cae;
-        } catch (Exception e) {
-            logger.error("❌ Generic error in uploadFileAndReturnLocation: {}", e.getMessage());
-            throw new CustomAppException("Internal blob error", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
-    }
 
-    // Vault authentication method (unchanged)
-    private String getVaultToken() {
-        try {
-            String url = VAULT_URL + "/v1/auth/userpass/login/espire_dev";
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("x-vault-namespace", VAULT_NAMESPACE);
-
-            Map<String, String> body = new HashMap<>();
-            body.put("password", passwordDev);
-
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
-
-            JSONObject json = new JSONObject(Objects.requireNonNull(response.getBody()));
-            return json.getJSONObject("auth").getString("client_token");
-        } catch (Exception e) {
-            logger.error("❌ Vault token fetch failed: {}", e.getMessage());
-            throw new CustomAppException("Vault authentication error", 401, HttpStatus.UNAUTHORIZED, e);
+        // Build Header info
+        HeaderInfo headerInfo;
+        JsonNode headerNode = root.get("Header");
+        if (headerNode != null && !headerNode.isNull()) {
+            headerInfo = buildHeader(headerNode, jobName);
+        } else {
+            headerInfo = buildHeader(root, jobName);
         }
-    }
-
-    // Vault secret fetch method (unchanged)
-    private String getSecretFromVault(String key, String token) {
-        try {
-            String url = VAULT_URL + "/v1/Store_Dev/10099";
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("x-vault-namespace", VAULT_NAMESPACE);
-            headers.set("x-vault-token", token);
-
-            Map<String, String> body = new HashMap<>();
-            body.put("password", passwordNbhDev);
-
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, request, String.class);
-
-            JSONObject json = new JSONObject(Objects.requireNonNull(response.getBody()));
-            return json.getJSONObject("data").getString(key);
-        } catch (Exception e) {
-            logger.error("❌ Failed to retrieve secret from Vault: {}", e.getMessage());
-            throw new CustomAppException("Vault secret fetch error", 403, HttpStatus.FORBIDDEN, e);
+        if (headerInfo.getBatchId() == null) {
+            headerInfo.setBatchId(batchId);
         }
+
+        // Extract product field if present
+        String product = null;
+        if (headerNode != null && headerNode.has("product")) {
+            product = safeGetText(headerNode, "product", false);
+        }
+        if (product == null) {
+            product = safeGetText(root, "product", false);
+        }
+        headerInfo.setProduct(product);
+
+        // Build Payload info
+        PayloadInfo payloadInfo = new PayloadInfo();
+        if (payloadNode != null && !payloadNode.isNull()) {
+            payloadInfo.setUniqueConsumerRef(safeGetText(payloadNode, "uniqueConsumerRef", false));
+            payloadInfo.setUniqueECPBatchRef(safeGetText(payloadNode, "uniqueECPBatchRef", false));
+            payloadInfo.setRunPriority(safeGetText(payloadNode, "runPriority", false));
+            payloadInfo.setEventID(safeGetText(payloadNode, "eventID", false));
+            payloadInfo.setEventType(safeGetText(payloadNode, "eventType", false));
+            payloadInfo.setRestartKey(safeGetText(payloadNode, "restartKey", false));
+            payloadInfo.setBlobURL(safeGetText(payloadNode, "blobURL", false));
+            payloadInfo.setEventOutcomeCode(safeGetText(payloadNode, "eventOutcomeCode", false));
+            payloadInfo.setEventOutcomeDescription(safeGetText(payloadNode, "eventOutcomeDescription", false));
+
+            JsonNode printFilesNode = payloadNode.get("printFiles");
+            if (printFilesNode != null && printFilesNode.isArray()) {
+                List<String> printFiles = new ArrayList<>();
+                for (JsonNode pf : printFilesNode) {
+                    printFiles.add(pf.asText());
+                }
+                payloadInfo.setPrintFiles(printFiles);
+            }
+        }
+
+        MetaDataInfo metaDataInfo = new MetaDataInfo();
+        metaDataInfo.setTotalFiles(customerSummaries.stream().mapToInt(c -> c.getFiles().size()).sum());
+        metaDataInfo.setTotalCustomers(customerSummaries.size());
+
+        SummaryPayload summaryPayload = new SummaryPayload();
+        summaryPayload.setJobName(jobName);
+        summaryPayload.setBatchId(batchId);
+        summaryPayload.setCustomerSummary(customerSummaries);
+        summaryPayload.setHeader(headerInfo);
+        summaryPayload.setPayload(payloadInfo);
+        summaryPayload.setMetaData(metaDataInfo);
+
+        return summaryPayload;
     }
 
-    private String getFileNameFromUrl(String url) {
-        if (url == null || url.isEmpty()) return "unknownFile";
-        int lastSlashIndex = url.lastIndexOf('/');
-        if (lastSlashIndex < 0) return url;
-        return url.substring(lastSlashIndex + 1);
+    private HeaderInfo buildHeader(JsonNode node, String jobName) {
+        HeaderInfo headerInfo = new HeaderInfo();
+        headerInfo.setBatchId(safeGetText(node, "BatchId", false));
+        headerInfo.setRunPriority(safeGetText(node, "RunPriority", false));
+        headerInfo.setEventID(safeGetText(node, "EventID", false));
+        headerInfo.setEventType(safeGetText(node, "EventType", false));
+        headerInfo.setRestartKey(safeGetText(node, "RestartKey", false));
+        headerInfo.setJobName(jobName);
+        return headerInfo;
     }
+
+    private boolean isEncrypted(String filePath, String extension) {
+        // Your encryption logic here, e.g.:
+        return filePath.endsWith(".enc") || "enc".equalsIgnoreCase(extension);
+    }
+
+    private String determineType(String filePath) {
+        // Your type logic here, e.g.:
+        if (filePath.endsWith(".pdf")) return "PDF";
+        if (filePath.endsWith(".xml")) return "XML";
+        return "UNKNOWN";
+    }
+
+    private String getFileExtension(String filePath) {
+        if (filePath == null) return "";
+        int lastDot = filePath.lastIndexOf('.');
+        if (lastDot < 0) return "";
+        return filePath.substring(lastDot + 1);
+    }
+
+    private String safeGetText(JsonNode node, String fieldName, boolean mandatory) {
+        JsonNode child = node.get(fieldName);
+        if (child == null || child.isNull()) {
+            if (mandatory) {
+                logger.warn("Missing mandatory field '{}'", fieldName);
+            }
+            return null;
+        }
+        return child.asText();
+    }
+
+    private SummaryPayload mergeSummaryPayloads(List<SummaryPayload> payloads) {
+        if (payloads.isEmpty()) return new SummaryPayload();
+
+        SummaryPayload merged = new SummaryPayload();
+        List<CustomerSummary> allCustomers = new ArrayList<>();
+        MetaDataInfo metaData = new MetaDataInfo();
+
+        String jobName = payloads.get(0).getJobName();
+        String batchId = payloads.get(0).getBatchId();
+
+        for (SummaryPayload p : payloads) {
+            allCustomers.addAll(p.getCustomerSummary());
+        }
+
+        merged.setJobName(jobName);
+        merged.setBatchId(batchId);
+        merged.setCustomerSummary(allCustomers);
+        merged.setHeader(payloads.get(0).getHeader());
+        merged.setPayload(payloads.get(0).getPayload());
+
+        metaData.setTotalCustomers(allCustomers.size());
+        metaData.setTotalFiles(allCustomers.stream().mapToInt(c -> c.getFiles().size()).sum());
+        merged.setMetaData(metaData);
+
+        return merged;
+    }
+
+    private Map<String, Object> buildFinalResponse(SummaryPayload summaryPayload) {
+        Map<String, Object> response = new LinkedHashMap<>();
+
+        response.put("jobName", summaryPayload.getJobName());
+        response.put("batchId", summaryPayload.getBatchId());
+
+        // Header
+        Map<String, Object> headerMap = new LinkedHashMap<>();
+        HeaderInfo header = summaryPayload.getHeader();
+        if (header != null) {
+            headerMap.put("batchId", header.getBatchId());
+            headerMap.put("runPriority", header.getRunPriority());
+            headerMap.put("eventID", header.getEventID());
+            headerMap.put("eventType", header.getEventType());
+            headerMap.put("restartKey", header.getRestartKey());
+            headerMap.put("jobName", header.getJobName());
+            headerMap.put("product", header.getProduct());
+        }
+        response.put("header", headerMap);
+
+        // Metadata
+        Map<String, Object> metadataMap = new LinkedHashMap<>();
+        MetaDataInfo meta = summaryPayload.getMetaData();
+        if (meta != null) {
+            metadataMap.put("totalCustomers", meta.getTotalCustomers());
+            metadataMap.put("totalFiles", meta.getTotalFiles());
+        }
+        response.put("metaData", metadataMap);
+
+        // Payload
+        Map<String, Object> payloadMap = new LinkedHashMap<>();
+        PayloadInfo payload = summaryPayload.getPayload();
+        if (payload != null) {
+            payloadMap.put("uniqueConsumerRef", payload.getUniqueConsumerRef());
+            payloadMap.put("uniqueECPBatchRef", payload.getUniqueECPBatchRef());
+            payloadMap.put("runPriority", payload.getRunPriority());
+            payloadMap.put("eventID", payload.getEventID());
+            payloadMap.put("eventType", payload.getEventType());
+            payloadMap.put("restartKey", payload.getRestartKey());
+            payloadMap.put("blobURL", payload.getBlobURL());
+            payloadMap.put("eventOutcomeCode", payload.getEventOutcomeCode());
+            payloadMap.put("eventOutcomeDescription", payload.getEventOutcomeDescription());
+            payloadMap.put("printFiles", payload.getPrintFiles());
+        }
+        response.put("payload", payloadMap);
+
+        // CustomerSummary
+        List<Map<String, Object>> customerSummaries = new ArrayList<>();
+        if (summaryPayload.getCustomerSummary() != null) {
+            for (CustomerSummary customer : summaryPayload.getCustomerSummary()) {
+                Map<String, Object> customerMap = new LinkedHashMap<>();
+                customerMap.put("customerId", customer.getCustomerId());
+                customerMap.put("accountNumber", customer.getAccountNumber());
+
+                List<Map<String, Object>> filesList = new ArrayList<>();
+                for (CustomerSummary.FileDetail fileDetail : customer.getFiles()) {
+                    Map<String, Object> fileMap = new LinkedHashMap<>();
+                    fileMap.put("objectId", fileDetail.getObjectId());
+                    fileMap.put("fileLocation", fileDetail.getFileLocation());
+                    fileMap.put("fileUrl", fileDetail.getFileUrl());
+                    fileMap.put("encrypted", fileDetail.isEncrypted());
+                    fileMap.put("status", fileDetail.getStatus());
+                    fileMap.put("type", fileDetail.getType());
+                    filesList.add(fileMap);
+                }
+
+                customerMap.put("files", filesList);
+                customerSummaries.add(customerMap);
+            }
+        }
+        response.put("customerSummary", customerSummaries);
+
+        // Optional fields (if available from setTopic, setPartition, setOffset)
+        response.put("kafkaTopic", summaryPayload.getTopic());
+        response.put("partition", summaryPayload.getPartition());
+        response.put("offset", summaryPayload.getOffset());
+
+        return response;
+    }
+
+    private Map<String, Object> generateErrorResponse(String code, String message) {
+        Map<String, Object> error = new HashMap<>();
+        error.put("code", code);
+        error.put("message", message);
+        return error;
+    }
+
+    // Keeping your other existing methods (like uploadSummaryToBlob, sendToKafka, etc.) unchanged...
 }
