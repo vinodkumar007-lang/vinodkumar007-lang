@@ -2,8 +2,6 @@ package com.nedbank.kafka.filemanage.service;
 
 import com.azure.storage.blob.*;
 import com.azure.storage.blob.models.BlobStorageException;
-import com.azure.storage.blob.sas.BlobSasPermission;
-import com.azure.storage.blob.sas.BlobServiceSasSignatureValues;
 import com.azure.storage.common.StorageSharedKeyCredential;
 import com.nedbank.kafka.filemanage.config.ProxySetup;
 import com.nedbank.kafka.filemanage.exception.CustomAppException;
@@ -17,7 +15,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.io.InputStream;
 import java.net.SocketException;
-import java.time.OffsetDateTime;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -50,6 +48,129 @@ public class BlobStorageService {
         this.proxySetup = proxySetup;
     }
 
+    /**
+     * Copies a file from an external URL (e.g., blobUrl from Kafka message)
+     * into Azure Blob Storage with the folder structure:
+     * {sourceSystem}/input/{timestamp}/{batchId}/{consumerReference}_{processReference}/{fileName}
+     *
+     * @return The URL of the copied file in Azure Blob Storage
+     */
+    public String copyFileFromUrlToBlob(
+            String sourceUrl,
+            String sourceSystem,
+            String batchId,
+            String consumerReference,
+            String processReference,
+            String timestamp,
+            String fileName) {
+
+        try {
+            if (sourceUrl == null || sourceSystem == null || batchId == null
+                    || consumerReference == null || processReference == null
+                    || timestamp == null || fileName == null) {
+                throw new CustomAppException("Required parameters missing", 400, HttpStatus.BAD_REQUEST);
+            }
+
+            // TODO: Replace these with secrets fetched from Vault
+            String accountKey = ""; // getSecretFromVault("account_key", getVaultToken());
+            String accountName = "nsndvextr01"; // getSecretFromVault("account_name", getVaultToken());
+            String containerName = "nsnakscontregecm001"; // getSecretFromVault("container_name", getVaultToken());
+
+            // Build target blob path with folder structure
+            String blobName = String.format("%s/input/%s/%s/%s_%s/%s",
+                    sourceSystem,
+                    timestamp,
+                    batchId,
+                    consumerReference.replaceAll("[{}]", ""),
+                    processReference.replaceAll("[{}]", ""),
+                    fileName);
+
+            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+                    .buildClient();
+
+            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
+            BlobClient targetBlobClient = containerClient.getBlobClient(blobName);
+
+            // Download the file from the sourceUrl via RestTemplate
+            try (InputStream inputStream = restTemplate.getForObject(sourceUrl, InputStream.class)) {
+                if (inputStream == null) {
+                    throw new CustomAppException("Unable to read source file from URL: " + sourceUrl, 404, HttpStatus.NOT_FOUND);
+                }
+
+                // Read all bytes to get size - caution: for large files, consider streaming alternative
+                byte[] data = inputStream.readAllBytes();
+
+                // Upload to target blob (overwrite if exists)
+                targetBlobClient.upload(new java.io.ByteArrayInputStream(data), data.length, true);
+
+                logger.info("✅ Copied '{}' to '{}'", sourceUrl, targetBlobClient.getBlobUrl());
+            }
+
+            return targetBlobClient.getBlobUrl();
+
+        } catch (CustomAppException cae) {
+            throw cae;
+        } catch (Exception e) {
+            logger.error("❌ Error copying file from URL: {}", e.getMessage(), e);
+            throw new CustomAppException("Error copying file from URL", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
+
+    /**
+     * Uploads the summary.json content to Azure Blob Storage with folder structure:
+     * {sourceSystem}/summary/{timestamp}/{batchId}/summary.json
+     *
+     * @return The URL of the uploaded summary.json file
+     */
+    public String uploadSummaryJson(
+            String sourceSystem,
+            String batchId,
+            String timestamp,
+            String summaryJsonContent) {
+
+        try {
+            if (summaryJsonContent == null || sourceSystem == null || batchId == null || timestamp == null) {
+                throw new CustomAppException("Required parameters missing for summary upload", 400, HttpStatus.BAD_REQUEST);
+            }
+
+            // TODO: Replace these with secrets fetched from Vault
+            String accountKey = "";
+            String accountName = "nsndvextr01";
+            String containerName = "nsnakscontregecm001";
+
+            String blobName = String.format("%s/summary/%s/%s/summary.json",
+                    sourceSystem,
+                    timestamp,
+                    batchId);
+
+            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+                    .buildClient();
+
+            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
+            BlobClient summaryBlobClient = containerClient.getBlobClient(blobName);
+
+            byte[] jsonBytes = summaryJsonContent.getBytes(StandardCharsets.UTF_8);
+
+            summaryBlobClient.upload(new java.io.ByteArrayInputStream(jsonBytes), jsonBytes.length, true);
+
+            logger.info("✅ Uploaded summary.json to '{}'", summaryBlobClient.getBlobUrl());
+
+            return summaryBlobClient.getBlobUrl();
+
+        } catch (CustomAppException cae) {
+            throw cae;
+        } catch (Exception e) {
+            logger.error("❌ Error uploading summary.json: {}", e.getMessage(), e);
+            throw new CustomAppException("Error uploading summary.json", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
+
+    // Your existing method to upload file inside same container from a fileLocation path
+    // (you can keep this if needed; it's not used in above copy logic)
     public String uploadFileAndReturnLocation(
             String sourceSystem,
             String fileLocation,
@@ -70,11 +191,8 @@ public class BlobStorageService {
             String accountName = "nsndvextr01"; // getSecretFromVault("account_name", getVaultToken());
             String containerName = "nsnakscontregecm001"; // getSecretFromVault("container_name", getVaultToken());
 
-            // Extract filename from fileLocation (after last slash)
             String sourceFileName = fileLocation.substring(fileLocation.lastIndexOf("/") + 1);
 
-            // Build target blob path:
-            // {sourceSystem}/input/{timestamp}/{batchId}/{consumerReference}_{processReference}/{fileName}
             String blobName = String.format("%s/input/%s/%s/%s_%s/%s",
                     sourceSystem,
                     timestamp,
@@ -107,17 +225,17 @@ public class BlobStorageService {
                 throw new CustomAppException("Unexpected blob error", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
             }
 
-            // Return blob URL without SAS
             return targetBlobClient.getBlobUrl();
 
         } catch (CustomAppException cae) {
-            throw cae; // rethrow
+            throw cae;
         } catch (Exception e) {
             logger.error("❌ Generic error in uploadFileAndReturnLocation: {}", e.getMessage());
             throw new CustomAppException("Internal blob error", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
     }
 
+    // Vault authentication method (unchanged)
     private String getVaultToken() {
         try {
             String url = VAULT_URL + "/v1/auth/userpass/login/espire_dev";
@@ -140,6 +258,7 @@ public class BlobStorageService {
         }
     }
 
+    // Vault secret fetch method (unchanged)
     private String getSecretFromVault(String key, String token) {
         try {
             String url = VAULT_URL + "/v1/Store_Dev/10099";
@@ -163,10 +282,10 @@ public class BlobStorageService {
         }
     }
 
-    private String getFileExtension(String fileLocation) {
-        if (fileLocation == null || !fileLocation.contains(".")) {
-            return "";
-        }
-        return fileLocation.substring(fileLocation.lastIndexOf("."));
+    private String getFileNameFromUrl(String url) {
+        if (url == null || url.isEmpty()) return "unknownFile";
+        int lastSlashIndex = url.lastIndexOf('/');
+        if (lastSlashIndex < 0) return url;
+        return url.substring(lastSlashIndex + 1);
     }
 }
