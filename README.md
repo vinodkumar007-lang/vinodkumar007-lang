@@ -1,23 +1,3 @@
-import com.example.azure.BlobStorageService;
-import com.example.model.*;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.apache.kafka.clients.consumer.Consumer;
-import org.apache.kafka.clients.consumer.ConsumerFactory;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.common.TopicPartition;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
-
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.time.Instant;
-import java.util.*;
-
 @Service
 public class KafkaListenerService {
 
@@ -37,7 +17,6 @@ public class KafkaListenerService {
     @Value("${azure.blob.storage.account}")
     private String azureBlobStorageAccount;
 
-    private final File summaryFile = new File(System.getProperty("user.home"), "summary.json");
     private final Map<TopicPartition, Long> lastProcessedOffsets = new HashMap<>();
 
     public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
@@ -48,89 +27,184 @@ public class KafkaListenerService {
         this.consumerFactory = consumerFactory;
     }
 
-    public ApiResponse processMessages() {
-        Consumer<String, String> consumer = consumerFactory.createConsumer();
-        consumer.subscribe(Collections.singleton(inputTopic));
+    public ApiResponse processBatchMessages() {
+        logger.info("Starting batch processing of Kafka messages...");
+        List<KafkaMessage> unprocessedMessages = readUnprocessedKafkaMessages();
 
-        ConsumerRecords<String, String> records = consumer.poll(java.time.Duration.ofSeconds(5));
+        if (unprocessedMessages.isEmpty()) {
+            logger.info("No new messages found.");
+            return buildEmptyResponse();
+        }
+
         List<SummaryProcessedFile> processedFiles = new ArrayList<>();
         List<PrintFile> printFiles = new ArrayList<>();
 
-        SummaryPayload payload = new SummaryPayload();
+        KafkaMessage firstMessage = unprocessedMessages.get(0);
+
+        // For summary header & payload, using the first message's data
+        SummaryPayload summaryPayload = new SummaryPayload();
         Header header = new Header();
         Metadata metadata = new Metadata();
-        Payload details = new Payload();
+        Payload payload = new Payload();
 
-        for (ConsumerRecord<String, String> record : records) {
-            try {
-                KafkaMessage kafkaMessage = objectMapper.readValue(record.value(), KafkaMessage.class);
-                logger.info("Received Kafka message: {}", kafkaMessage);
+        header.setTenantCode(firstMessage.getTenantCode());
+        header.setChannelID(firstMessage.getChannelID());
+        header.setAudienceID(firstMessage.getAudienceID());
+        header.setTimestamp(instantToIsoString(firstMessage.getTimestamp()));
+        header.setSourceSystem(firstMessage.getSourceSystem());
+        header.setProduct(firstMessage.getProduct());
+        header.setJobName(firstMessage.getJobName());
 
-                String timestampStr = Instant.now().toString();
+        payload.setUniqueConsumerRef(firstMessage.getUniqueConsumerRef());
+        payload.setRunPriority(firstMessage.getRunPriority());
+        payload.setEventType(firstMessage.getEventType());
 
-                for (BatchFile file : kafkaMessage.getBatchFiles()) {
-                    String destinationPath = String.format("%s/input/%s/%s_%s/%s",
-                        kafkaMessage.getSourceSystem(),
-                        kafkaMessage.getTimestamp(),
-                        kafkaMessage.getUniqueConsumerRef(),
-                        kafkaMessage.getBatchId(),
-                        file.getFilename()
-                    );
+        int totalFilesProcessed = 0;
 
-                    String newUrl = blobStorageService.copyFileFromUrlToBlob(file.getBlobUrl(), destinationPath);
+        // Process each Kafka message and copy files from Blob URLs
+        for (KafkaMessage message : unprocessedMessages) {
+            for (BatchFile batchFile : message.getBatchFiles()) {
+                String targetBlobPath = buildTargetBlobPath(
+                        message.getSourceSystem(),
+                        message.getTimestamp(),
+                        message.getBatchId(),
+                        message.getUniqueConsumerRef(),
+                        message.getJobName(),
+                        batchFile.getFilename()
+                );
 
-                    SummaryProcessedFile processed = new SummaryProcessedFile();
-                    processed.setCustomerID("C001"); // placeholder
-                    processed.setAccountNumber("1234567890"); // placeholder
-                    processed.setPdfArchiveFileURL(newUrl);
-                    processed.setStatusCode("OK");
-                    processed.setStatusDescription("Success");
-                    processedFiles.add(processed);
+                logger.info("Copying file from '{}' to '{}'", batchFile.getBlobUrl(), targetBlobPath);
+                String newBlobUrl = blobStorageService.copyFileFromUrlToBlob(batchFile.getBlobUrl(), targetBlobPath);
 
-                    PrintFile printFile = new PrintFile();
-                    printFile.setPrintFileURL(newUrl.replace(".csv", ".ps"));
-                    printFiles.add(printFile);
-                }
+                // For demo, creating dummy processedFile data:
+                SummaryProcessedFile spf = new SummaryProcessedFile();
+                spf.setCustomerID("C001");
+                spf.setAccountNumber("123456780123456");
+                spf.setPdfArchiveFileURL(generatePdfUrl("archive", "123456780123456", message.getBatchId()));
+                spf.setPdfEmailFileURL(generatePdfUrl("email", "123456780123456", message.getBatchId()));
+                spf.setHtmlEmailFileURL(generatePdfUrl("html", "123456780123456", message.getBatchId()));
+                spf.setTxtEmailFileURL(generatePdfUrl("txt", "123456780123456", message.getBatchId()));
+                spf.setPdfMobstatFileURL(generatePdfUrl("mobstat", "123456780123456", message.getBatchId()));
+                spf.setStatusCode("OK");
+                spf.setStatusDescription("Success");
+                processedFiles.add(spf);
 
-                // Fill summary fields
-                header.setTenantCode(kafkaMessage.getTenantCode());
-                header.setSourceSystem(kafkaMessage.getSourceSystem());
-                header.setProduct(kafkaMessage.getProduct());
-                header.setJobName(kafkaMessage.getJobName());
-                header.setTimestamp(timestampStr);
-
-                details.setUniqueConsumerRef(kafkaMessage.getUniqueConsumerRef());
-                details.setRunPriority(kafkaMessage.getRunPriority());
-                details.setEventType(kafkaMessage.getEventType());
-
-                payload.setBatchID(kafkaMessage.getBatchId());
-                payload.setHeader(header);
-                payload.setMetadata(metadata);
-                payload.setPayload(details);
-                payload.setProcessedFiles(processedFiles);
-                payload.setPrintFiles(printFiles);
-                payload.setTimestamp(timestampStr);
-
-            } catch (IOException e) {
-                logger.error("Error processing Kafka message", e);
+                totalFilesProcessed++;
             }
+
+            // Simulate adding some print files for demo
+            PrintFile pf = new PrintFile();
+            pf.setPrintFileURL("https://" + azureBlobStorageAccount + "/pdfs/mobstat/PrintFileName1_" + message.getBatchId() + ".ps");
+            printFiles.add(pf);
         }
 
+        metadata.setTotalFilesProcessed(totalFilesProcessed);
+        metadata.setProcessingStatus("Completed");
+        metadata.setEventOutcomeCode("200");
+        metadata.setEventOutcomeDescription("Batch processed successfully");
+
+        summaryPayload.setBatchID(firstMessage.getBatchId());
+        summaryPayload.setFileName("summary_" + firstMessage.getBatchId() + ".json");
+        summaryPayload.setHeader(header);
+        summaryPayload.setMetadata(metadata);
+        summaryPayload.setPayload(payload);
+        summaryPayload.setProcessedFiles(processedFiles);
+        summaryPayload.setPrintFiles(printFiles);
+
+        // Write summary JSON locally
+        File summaryFile = new File(System.getProperty("java.io.tmpdir"), "summary.json");
         try {
-            objectMapper.writeValue(summaryFile, payload);
-            String summaryUrl = blobStorageService.uploadSummaryJson(summaryFile);
-            payload.setSummaryFileURL(summaryUrl);
-
-            ApiResponse finalResponse = new ApiResponse("Batch processed successfully", "success", payload);
-            String finalJson = objectMapper.writeValueAsString(finalResponse);
-            kafkaTemplate.send(outputTopic, finalJson);
-            logger.info("Final response sent to Kafka output topic: {}", outputTopic);
-
-            return finalResponse;
-
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(summaryFile, summaryPayload);
+            logger.info("Summary JSON written locally at {}", summaryFile.getAbsolutePath());
         } catch (IOException e) {
-            logger.error("Failed to write or upload summary.json", e);
-            return new ApiResponse("Failed", "error", payload);
+            logger.error("Failed to write summary.json", e);
+            throw new RuntimeException(e);
         }
+
+        // Upload summary.json to blob storage
+        String summaryBlobPath = String.format("%s/summary/%s/summary.json",
+                firstMessage.getSourceSystem(), firstMessage.getBatchId());
+        String summaryFileUrl = blobStorageService.uploadFile(summaryFile, summaryBlobPath);
+        summaryPayload.setSummaryFileURL(summaryFileUrl);
+
+        // Prepare API response
+        ApiResponse apiResponse = new ApiResponse();
+        apiResponse.setMessage("Batch processed successfully");
+        apiResponse.setStatus("success");
+        apiResponse.setSummaryPayload(summaryPayload);
+
+        // Send final response as Kafka producer message
+        try {
+            String apiResponseJson = objectMapper.writeValueAsString(apiResponse);
+            kafkaTemplate.send(outputTopic, apiResponseJson);
+            logger.info("Sent final API response to Kafka topic {}", outputTopic);
+        } catch (Exception e) {
+            logger.error("Failed to send response message to Kafka", e);
+        }
+
+        return apiResponse;
+    }
+
+    private List<KafkaMessage> readUnprocessedKafkaMessages() {
+        logger.info("Reading unprocessed Kafka messages from topic: {}", inputTopic);
+        List<KafkaMessage> messages = new ArrayList<>();
+
+        try (Consumer<String, String> consumer = consumerFactory.createConsumer()) {
+            consumer.assign(Collections.singletonList(new TopicPartition(inputTopic, 0)));
+
+            // Seek to last processed offset + 1 or beginning
+            long offset = lastProcessedOffsets.getOrDefault(new TopicPartition(inputTopic, 0), -1L);
+            if (offset >= 0) {
+                consumer.seek(new TopicPartition(inputTopic, 0), offset + 1);
+            } else {
+                consumer.seekToBeginning(Collections.singletonList(new TopicPartition(inputTopic, 0)));
+            }
+
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
+            logger.info("Polled {} records from Kafka", records.count());
+
+            for (ConsumerRecord<String, String> record : records) {
+                KafkaMessage msg = objectMapper.readValue(record.value(), KafkaMessage.class);
+                messages.add(msg);
+
+                lastProcessedOffsets.put(new TopicPartition(record.topic(), record.partition()), record.offset());
+            }
+        } catch (Exception e) {
+            logger.error("Error while reading Kafka messages", e);
+        }
+        return messages;
+    }
+
+    private String buildTargetBlobPath(String sourceSystem, Double timestamp, String batchId, String consumerRef, String processRef, String fileName) {
+        // convert timestamp double to ISO string
+        String timestampStr = instantToIsoString(timestamp);
+        return String.format("%s/input/%s/%s/%s_%s/%s",
+                sourceSystem,
+                timestampStr.replace(":", "-"),  // replace colon to avoid path issues
+                batchId,
+                consumerRef,
+                processRef,
+                fileName);
+    }
+
+    private String instantToIsoString(Double timestamp) {
+        // timestamp assumed to be epoch seconds in double, convert to ISO 8601 string
+        long epochSeconds = timestamp.longValue();
+        Instant instant = Instant.ofEpochSecond(epochSeconds);
+        return instant.toString();
+    }
+
+    private String generatePdfUrl(String type, String accountNumber, String batchId) {
+        return String.format("https://%s/pdfs/%s/%s_%s.%s",
+                azureBlobStorageAccount, type, accountNumber, batchId,
+                type.equals("html") ? "html" : "pdf");
+    }
+
+    private ApiResponse buildEmptyResponse() {
+        ApiResponse response = new ApiResponse();
+        response.setMessage("No new messages to process");
+        response.setStatus("success");
+        response.setSummaryPayload(new SummaryPayload());
+        return response;
     }
 }
