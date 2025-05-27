@@ -1,35 +1,8 @@
-public String copyFileFromUrlToBlob(String sourceUrl, String targetBlobPath) {
-    try {
-        initSecrets();
-
-        BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                .buildClient();
-
-        BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
-        BlobClient targetBlobClient = containerClient.getBlobClient(targetBlobPath);
-
-        InputStream inputStream = restTemplate.execute(sourceUrl, HttpMethod.GET, null, clientHttpResponse -> {
-            if (clientHttpResponse.getStatusCode() != HttpStatus.OK) {
-                throw new CustomAppException("Failed to fetch source file, status: " + clientHttpResponse.getStatusCode(), 404, HttpStatus.NOT_FOUND);
-            }
-            return clientHttpResponse.getBody();
-        });
-
-        if (inputStream == null) {
-            throw new CustomAppException("Unable to read source file from URL: " + sourceUrl, 404, HttpStatus.NOT_FOUND);
-        }
-
-        // Upload the stream directly without buffering entire file in memory
-        targetBlobClient.upload(inputStream, -1, true);  // -1 means unknown length, stream upload
-
-        logger.info("✅ Copied '{}' to '{}'", sourceUrl, targetBlobClient.getBlobUrl());
-
-        return targetBlobClient.getBlobUrl();
-
-    } catch (Exception e) {
-        logger.error("❌ Error copying file from URL: {}", e.getMessage(), e);
-        throw new CustomAppException("Error copying file from URL", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
-    }
+{
+    "noNewMessagesFound": "Failed to process message at offset 18531: Unrecognized field \"BatchId\" (class com.nedbank.kafka.filemanage.model.KafkaMessage), not marked as ignorable (12 known properties: \"eventType\", \"batchId\", \"timestamp\", \"tenantCode\", \"jobName\", \"sourceSystem\", \"uniqueConsumerRef\", \"batchFiles\", \"channelID\", \"audienceID\", \"product\", \"runPriority\"])\n at [Source: (String)\"{\r\n  \"BatchId\" : \"1c93525b-42d1-410a-9e26-aa957f19861a\",\r\n  \"SourceSystem\" : \"DEBTMAN\",\r\n  \"TenantCode\" : \"ZANBL\",\r\n  \"ChannelID\" : null,\r\n  \"AudienceID\" : null,\r\n  \"Product\" : \"DEBTMAN\",\r\n  \"JobName\" : \"DEBTMAN\",\r\n  \"UniqueConsumerRef\" : \"6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f\",\r\n  \"Timestamp\" : 1748351245.695410900,\r\n  \"RunPriority\" : null,\r\n  \"EventType\" : null,\r\n  \"BatchFiles\" : [ {\r\n    \"ObjectId\" : \"{1037A096-0000-CE1A-A484-3290CA7938C2}\",\r\n    \"RepositoryId\" : \"BATCH\",\r\n    \"BlobUrl\" : \"htt\"[truncated 149 chars]; line: 2, column: 16] (through reference chain: com.nedbank.kafka.filemanage.model.KafkaMessage[\"BatchId\"])",
+    "success": "Error",
+    "objects": null,
+    "message": null,
+    "status": null,
+    "summaryPayload": null
 }
