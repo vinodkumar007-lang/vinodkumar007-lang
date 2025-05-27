@@ -1,17 +1,14 @@
 package com.nedbank.kafka.filemanage.model;
 
+import lombok.AllArgsConstructor;
 import lombok.Data;
-
-import java.util.List;
+import lombok.NoArgsConstructor;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class ApiResponse {
-    private final String noNewMessagesFound;
-    private final String success;
-    private final List<Object> objects;
-    private String message;
-    private String status;
-    private SummaryPayload summaryPayload;
-
-    // Getters and Setters
+    private String message;     // e.g., "Batch processed successfully"
+    private String status;      // e.g., "success", "error", "info"
+    private Object data;        // can be SummaryPayload, List<Something>, or null
 }
