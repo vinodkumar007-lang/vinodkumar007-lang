@@ -1,65 +1,55 @@
-package com.nedbank.kafka.filemanage.test;
-
-import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.ProducerRecord;
-import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.clients.producer.RecordMetadata;
-import org.apache.kafka.common.serialization.StringSerializer;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
-
-public class KafkaTestProducer {
-
-    public static void main(String[] args) {
-        String topic = "str-ecp-batch-composition";
-
-        Properties props = new Properties();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "<your-bootstrap-server>"); // e.g. "kafka-broker:9093"
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
-
-        // SSL Config (update with real paths and passwords or read from application.properties)
-        props.put("security.protocol", "SSL");
-        props.put("ssl.keystore.location", "<path-to-keystore.jks>");
-        props.put("ssl.keystore.password", "<keystore-password>");
-        props.put("ssl.key.password", "<key-password>");
-        props.put("ssl.truststore.location", "<path-to-truststore.jks>");
-        props.put("ssl.truststore.password", "<truststore-password>");
-        props.put("ssl.protocol", "TLSv1.2");
-
-        // Create the Kafka producer
-        KafkaProducer<String, String> producer = new KafkaProducer<>(props);
-
-        // Test JSON message
-        String testMessage = """
-        {
-            "sourceSystem": "TEST_SYS",
-            "consumerReference": "TEST12345",
-            "processReference": "PROC98765",
-            "timestamp": "2025-05-27T15:00:00Z",
-            "blobURL": "https://your-original-blob-url/file1.pdf",
-            "eventOutcomeCode": "SUCCESS",
-            "eventOutcomeDescription": "Processed Successfully",
-            "customerSummary": {
-                "customerId": "CUST123",
-                "status": "SUCCESS"
-            },
-            "printFileURL": "https://your-original-blob-url/printfile1.pdf"
-        }
-        """;
-
+public String copyFileFromUrlToBlob(String sourceUrl, String targetBlobPath) {
         try {
-            ProducerRecord<String, String> record = new ProducerRecord<>(topic, testMessage);
-            RecordMetadata metadata = producer.send(record).get(); // blocking
-            System.out.printf("✅ Message sent to topic '%s', partition %d, offset %d%n",
-                metadata.topic(), metadata.partition(), metadata.offset());
+            initSecrets();
+
+            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+                    .buildClient();
+
+            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
+            BlobClient targetBlobClient = containerClient.getBlobClient(targetBlobPath);
+
+            try (InputStream inputStream = restTemplate.getForObject(sourceUrl, InputStream.class)) {
+                if (inputStream == null) {
+                    throw new CustomAppException("Unable to read source file from URL: " + sourceUrl, 404, HttpStatus.NOT_FOUND);
+                }
+
+                byte[] data = inputStream.readAllBytes();
+                targetBlobClient.upload(new java.io.ByteArrayInputStream(data), data.length, true);
+
+                logger.info("✅ Copied '{}' to '{}'", sourceUrl, targetBlobClient.getBlobUrl());
+            }
+
+            return targetBlobClient.getBlobUrl();
+
         } catch (Exception e) {
-            System.err.println("❌ Failed to send message");
-            e.printStackTrace();
-        } finally {
-            producer.close();
+            logger.error("❌ Error copying file from URL: {}", e.getMessage(), e);
+            throw new CustomAppException("Error copying file from URL", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
     }
-}
+
+    public String uploadFile(String content, String targetBlobPath) {
+        try {
+            initSecrets();
+
+            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+                    .buildClient();
+
+            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
+            BlobClient blobClient = containerClient.getBlobClient(targetBlobPath);
+
+            byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+            blobClient.upload(new java.io.ByteArrayInputStream(bytes), bytes.length, true);
+
+            logger.info("✅ Uploaded file to '{}'", blobClient.getBlobUrl());
+
+            return blobClient.getBlobUrl();
+
+        } catch (Exception e) {
+            logger.error("❌ Error uploading file: {}", e.getMessage(), e);
+            throw new CustomAppException("Error uploading file", 602, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
