@@ -1,291 +1,296 @@
 package com.nedbank.kafka.filemanage.service;
 
-import com.azure.storage.blob.*;
-import com.azure.storage.blob.models.BlobStorageException;
-import com.azure.storage.common.StorageSharedKeyCredential;
-import com.nedbank.kafka.filemanage.config.ProxySetup;
-import com.nedbank.kafka.filemanage.exception.CustomAppException;
-import org.json.JSONObject;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.*;
+import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
 
-import java.io.InputStream;
-import java.net.SocketException;
-import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
+import java.io.File;
+import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.*;
 
 @Service
-public class BlobStorageService {
+public class KafkaListenerService {
 
-    private static final Logger logger = LoggerFactory.getLogger(BlobStorageService.class);
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
-    private final RestTemplate restTemplate;
-    private final ProxySetup proxySetup;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final BlobStorageService blobStorageService;
+    private final ConsumerFactory<String, String> consumerFactory;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${vault.hashicorp.url}")
-    private String VAULT_URL;
+    @Value("${kafka.topic.input}")
+    private String inputTopic;
 
-    @Value("${vault.hashicorp.namespace}")
-    private String VAULT_NAMESPACE;
+    @Value("${kafka.topic.output}")
+    private String outputTopic;
 
-    @Value("${vault.hashicorp.passwordDev}")
-    private String passwordDev;
+    @Value("${azure.blob.storage.account}")
+    private String azureBlobStorageAccount;
 
-    @Value("${vault.hashicorp.passwordNbhDev}")
-    private String passwordNbhDev;
+    private final File summaryFile = new File(System.getProperty("user.home"), "summary.json");
+    private final Map<TopicPartition, Long> lastProcessedOffsets = new HashMap<>();
 
-    @Value("${use.proxy:false}")
-    private boolean useProxy;
-
-    public BlobStorageService(RestTemplate restTemplate, ProxySetup proxySetup) {
-        this.restTemplate = restTemplate;
-        this.proxySetup = proxySetup;
+    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
+                                BlobStorageService blobStorageService,
+                                ConsumerFactory<String, String> consumerFactory) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.blobStorageService = blobStorageService;
+        this.consumerFactory = consumerFactory;
     }
 
-    /**
-     * Copies a file from an external URL (e.g., blobUrl from Kafka message)
-     * into Azure Blob Storage with the folder structure:
-     * {sourceSystem}/input/{timestamp}/{batchId}/{consumerReference}_{processReference}/{fileName}
-     *
-     * @return The URL of the copied file in Azure Blob Storage
-     */
-    public String copyFileFromUrlToBlob(
-            String sourceUrl,
-            String sourceSystem,
-            String batchId,
-            String consumerReference,
-            String processReference,
-            String timestamp,
-            String fileName) {
+    public Map<String, Object> listen() {
+        logger.info("Starting to listen for Kafka messages...");
+        Consumer<String, String> consumer = consumerFactory.createConsumer();
+        List<SummaryPayload> processedPayloads = new ArrayList<>();
+        Map<TopicPartition, Long> newOffsets = new HashMap<>();
 
         try {
-            if (sourceUrl == null || sourceSystem == null || batchId == null
-                    || consumerReference == null || processReference == null
-                    || timestamp == null || fileName == null) {
-                throw new CustomAppException("Required parameters missing", 400, HttpStatus.BAD_REQUEST);
+            List<TopicPartition> partitions = new ArrayList<>();
+            consumer.partitionsFor(inputTopic).forEach(p -> partitions.add(new TopicPartition(p.topic(), p.partition())));
+            consumer.assign(partitions);
+            logger.info("Assigned to partitions: {}", partitions);
+
+            for (TopicPartition partition : partitions) {
+                if (lastProcessedOffsets.containsKey(partition)) {
+                    long nextOffset = lastProcessedOffsets.get(partition) + 1;
+                    consumer.seek(partition, nextOffset);
+                    logger.info("Seeking partition {} to offset {}", partition.partition(), nextOffset);
+                } else {
+                    consumer.seekToBeginning(Collections.singletonList(partition));
+                    logger.info("Seeking partition {} to beginning", partition.partition());
+                }
             }
 
-            // TODO: Replace these with secrets fetched from Vault
-            String accountKey = ""; // getSecretFromVault("account_key", getVaultToken());
-            String accountName = "nsndvextr01"; // getSecretFromVault("account_name", getVaultToken());
-            String containerName = "nsnakscontregecm001"; // getSecretFromVault("container_name", getVaultToken());
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
+            logger.info("Polled {} record(s)", records.count());
 
-            // Build target blob path with folder structure
-            String blobName = String.format("%s/input/%s/%s/%s_%s/%s",
-                    sourceSystem,
-                    timestamp,
-                    batchId,
-                    consumerReference.replaceAll("[{}]", ""),
-                    processReference.replaceAll("[{}]", ""),
-                    fileName);
+            for (ConsumerRecord<String, String> record : records) {
+                TopicPartition tp = new TopicPartition(record.topic(), record.partition());
 
-            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
-            BlobClient targetBlobClient = containerClient.getBlobClient(blobName);
-
-            // Download the file from the sourceUrl via RestTemplate
-            try (InputStream inputStream = restTemplate.getForObject(sourceUrl, InputStream.class)) {
-                if (inputStream == null) {
-                    throw new CustomAppException("Unable to read source file from URL: " + sourceUrl, 404, HttpStatus.NOT_FOUND);
+                if (lastProcessedOffsets.containsKey(tp) && record.offset() <= lastProcessedOffsets.get(tp)) {
+                    logger.debug("Skipping already processed record at offset {}", record.offset());
+                    continue;
                 }
 
-                // Read all bytes to get size - caution: for large files, consider streaming alternative
-                byte[] data = inputStream.readAllBytes();
+                logger.info("Processing message at offset {} from partition {}", record.offset(), record.partition());
+                SummaryPayload payload = processSingleMessage(record.value());
 
-                // Upload to target blob (overwrite if exists)
-                targetBlobClient.upload(new java.io.ByteArrayInputStream(data), data.length, true);
+                if (payload.getBatchId() == null || payload.getBatchId().isBlank()) {
+                    logger.warn("Skipping message with missing batch ID at offset {}", record.offset());
+                    continue;
+                }
 
-                logger.info("✅ Copied '{}' to '{}'", sourceUrl, targetBlobClient.getBlobUrl());
+               /* payload.setTopic(record.topic());
+                payload.setPartition(record.partition());
+                payload.setOffset(record.offset());*/
+
+                processedPayloads.add(payload);
+                newOffsets.put(tp, record.offset());
             }
 
-            return targetBlobClient.getBlobUrl();
-
-        } catch (CustomAppException cae) {
-            throw cae;
-        } catch (Exception e) {
-            logger.error("❌ Error copying file from URL: {}", e.getMessage(), e);
-            throw new CustomAppException("Error copying file from URL", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
-    }
-
-    /**
-     * Uploads the summary.json content to Azure Blob Storage with folder structure:
-     * {sourceSystem}/summary/{timestamp}/{batchId}/summary.json
-     *
-     * @return The URL of the uploaded summary.json file
-     */
-    public String uploadSummaryJson(
-            String sourceSystem,
-            String batchId,
-            String timestamp,
-            String summaryJsonContent) {
-
-        try {
-            if (summaryJsonContent == null || sourceSystem == null || batchId == null || timestamp == null) {
-                throw new CustomAppException("Required parameters missing for summary upload", 400, HttpStatus.BAD_REQUEST);
+            if (processedPayloads.isEmpty()) {
+                logger.warn("No new valid messages to process.");
+                return generateErrorResponse("204", "No new valid messages to process.");
             }
 
-            // TODO: Replace these with secrets fetched from Vault
-            String accountKey = "";
-            String accountName = "nsndvextr01";
-            String containerName = "nsnakscontregecm001";
+            logger.info("Appending payloads to summary.json file...");
+            SummaryJsonWriter.appendToSummaryJson(summaryFile, processedPayloads, azureBlobStorageAccount);
 
-            String blobName = String.format("%s/summary/%s/%s/summary.json",
-                    sourceSystem,
-                    timestamp,
-                    batchId);
+            logger.info("Uploading summary.json to blob storage...");
+            String summaryFileUrl = blobStorageService.uploadSummaryJson(summaryFile);
+            logger.info("Summary file uploaded to: {}", summaryFileUrl);
 
-            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
-            BlobClient summaryBlobClient = containerClient.getBlobClient(blobName);
-
-            byte[] jsonBytes = summaryJsonContent.getBytes(StandardCharsets.UTF_8);
-
-            summaryBlobClient.upload(new java.io.ByteArrayInputStream(jsonBytes), jsonBytes.length, true);
-
-            logger.info("✅ Uploaded summary.json to '{}'", summaryBlobClient.getBlobUrl());
-
-            return summaryBlobClient.getBlobUrl();
-
-        } catch (CustomAppException cae) {
-            throw cae;
-        } catch (Exception e) {
-            logger.error("❌ Error uploading summary.json: {}", e.getMessage(), e);
-            throw new CustomAppException("Error uploading summary.json", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
-    }
-
-    // Your existing method to upload file inside same container from a fileLocation path
-    // (you can keep this if needed; it's not used in above copy logic)
-    public String uploadFileAndReturnLocation(
-            String sourceSystem,
-            String fileLocation,
-            String batchId,
-            String objectId,
-            String consumerReference,
-            String processReference,
-            String timestamp) {
-
-        try {
-            if (sourceSystem == null || fileLocation == null || batchId == null || objectId == null
-                    || consumerReference == null || processReference == null || timestamp == null) {
-                throw new CustomAppException("Required parameters missing", 400, HttpStatus.BAD_REQUEST);
+            for (SummaryPayload payload : processedPayloads) {
+                payload.setSummaryFileURL(summaryFileUrl);
+                kafkaTemplate.send(outputTopic, payload.getBatchId(), objectMapper.writeValueAsString(payload));
+                logger.info("Sent processed payload to Kafka topic: {}", outputTopic);
             }
 
-            // TODO: Replace with Vault secrets
-            String accountKey = ""; // getSecretFromVault("account_key", getVaultToken());
-            String accountName = "nsndvextr01"; // getSecretFromVault("account_name", getVaultToken());
-            String containerName = "nsnakscontregecm001"; // getSecretFromVault("container_name", getVaultToken());
+            lastProcessedOffsets.putAll(newOffsets);
 
-            String sourceFileName = fileLocation.substring(fileLocation.lastIndexOf("/") + 1);
+            return buildBatchFinalResponse(processedPayloads);
 
-            String blobName = String.format("%s/input/%s/%s/%s_%s/%s",
-                    sourceSystem,
-                    timestamp,
-                    batchId,
-                    consumerReference.replaceAll("[{}]", ""),
-                    processReference.replaceAll("[{}]", ""),
-                    sourceFileName);
+        } catch (Exception e) {
+            logger.error("Error processing Kafka messages", e);
+            return generateErrorResponse("500", "Internal Server Error.");
+        } finally {
+            consumer.close();
+            logger.info("Kafka consumer closed.");
+        }
+    }
 
-            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
+    private Map<String, Object> buildBatchFinalResponse(List<SummaryPayload> payloads) {
+        Map<String, Object> batch = new LinkedHashMap<>();
+        batch.put("messagesProcessed", payloads.size());
 
-            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
-            BlobClient sourceBlobClient = containerClient.getBlobClient(sourceFileName);
-            BlobClient targetBlobClient = containerClient.getBlobClient(blobName);
+        List<Map<String, Object>> individual = new ArrayList<>();
+        for (SummaryPayload payload : payloads) {
+            individual.add(buildFinalResponse(payload));
+        }
+        batch.put("payloads", individual);
+        return batch;
+    }
 
-            try (InputStream inputStream = sourceBlobClient.openInputStream()) {
-                long size = sourceBlobClient.getProperties().getBlobSize();
-                targetBlobClient.upload(inputStream, size, true);
-                logger.info("✅ Uploaded '{}' to '{}'", sourceFileName, targetBlobClient.getBlobUrl());
-            } catch (BlobStorageException bse) {
-                logger.error("❌ Azure Blob Storage error: {}", bse.getMessage());
-                throw new CustomAppException("Blob storage operation failed", 453, HttpStatus.BAD_GATEWAY, bse);
-            } catch (SocketException se) {
-                logger.error("❌ Network error: {}", se.getMessage());
-                throw new CustomAppException("Network issue during blob transfer", 420, HttpStatus.GATEWAY_TIMEOUT, se);
-            } catch (Exception e) {
-                logger.error("❌ Unexpected error during blob transfer: {}", e.getMessage());
-                throw new CustomAppException("Unexpected blob error", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
+    private Map<String, Object> buildFinalResponse(SummaryPayload payload) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("message", "Processed successfully");
+        response.put("status", "SUCCESS");
+        response.put("summaryPayload", payload);
+        return response;
+    }
+
+    private Map<String, Object> generateErrorResponse(String status, String message) {
+        Map<String, Object> error = new LinkedHashMap<>();
+        error.put("status", status);
+        error.put("message", message);
+        return error;
+    }
+
+    private SummaryPayload processSingleMessage(String message) throws IOException {
+        logger.debug("Parsing message JSON");
+        JsonNode root = objectMapper.readTree(message);
+        JsonNode payloadNode = root.get("Payload");
+
+        String sourceSystem = safeGetText(root, "sourceSystem", false);
+        if (sourceSystem == null && payloadNode != null) {
+            sourceSystem = safeGetText(payloadNode, "sourceSystem", false);
+        }
+        if (sourceSystem == null) sourceSystem = "DEBTMAN";
+
+        String jobName = safeGetText(root, "JobName", false);
+        String batchId = safeGetText(root, "BatchId", true);
+        if (batchId == null) batchId = UUID.randomUUID().toString();
+        String timestamp = Instant.now().toString();
+
+        String consumerReference = safeGetText(root, "consumerReference", false);
+        if (consumerReference == null && payloadNode != null) {
+            consumerReference = safeGetText(payloadNode, "consumerReference", false);
+        }
+        if (consumerReference == null) consumerReference = "unknownConsumer";
+
+        String processReference = safeGetText(root, "eventID", false);
+        if (processReference == null && payloadNode != null) {
+            processReference = safeGetText(payloadNode, "eventID", false);
+        }
+        if (processReference == null) processReference = "unknownProcess";
+
+        List<CustomerSummary> customerSummaries = new ArrayList<>();
+        JsonNode batchFiles = root.get("BatchFiles");
+        if (batchFiles != null && batchFiles.isArray()) {
+            for (JsonNode file : batchFiles) {
+                String blobUrl = safeGetText(file, "BlobUrl", true);
+                String objectId = safeGetText(file, "ObjectId", true);
+                String status = safeGetText(file, "ValidationStatus", false);
+
+                if (blobUrl == null || objectId == null) continue;
+
+                logger.info("Copying file from blob URL to storage: {}", blobUrl);
+                String newBlobUrl = blobStorageService.uploadFileAndReturnLocation(
+                        sourceSystem, blobUrl, batchId, objectId,
+                        consumerReference, processReference, timestamp
+                );
+                logger.info("Copied file to: {}", newBlobUrl);
+
+                CustomerSummary.FileDetail detail = new CustomerSummary.FileDetail();
+                detail.setObjectId(objectId);
+                detail.setFileLocation(blobUrl);
+                detail.setFileUrl(newBlobUrl);
+                detail.setEncrypted(blobUrl.endsWith(".enc"));
+                detail.setStatus(status != null ? status : "OK");
+                detail.setType(determineType(blobUrl));
+
+                CustomerSummary customer = customerSummaries.stream()
+                        .filter(c -> c.getCustomerId().equals(objectId))
+                        .findFirst()
+                        .orElseGet(() -> {
+                            CustomerSummary c = new CustomerSummary();
+                            c.setCustomerId(objectId);
+                            c.setFiles(new ArrayList<>());
+                            customerSummaries.add(c);
+                            return c;
+                        });
+
+                customer.getFiles().add(detail);
             }
-
-            return targetBlobClient.getBlobUrl();
-
-        } catch (CustomAppException cae) {
-            throw cae;
-        } catch (Exception e) {
-            logger.error("❌ Generic error in uploadFileAndReturnLocation: {}", e.getMessage());
-            throw new CustomAppException("Internal blob error", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
+
+        HeaderInfo header = buildHeader(root.get("Header") != null ? root.get("Header") : root, jobName);
+        if (header.getBatchId() == null) header.setBatchId(batchId);
+        header.setProduct(safeGetText(root, "product", false));
+
+        PayloadInfo payloadInfo = new PayloadInfo();
+        if (payloadNode != null && !payloadNode.isNull()) {
+            payloadInfo.setUniqueConsumerRef(safeGetText(payloadNode, "uniqueConsumerRef", false));
+            payloadInfo.setUniqueECPBatchRef(safeGetText(payloadNode, "uniqueECPBatchRef", false));
+            payloadInfo.setRunPriority(safeGetText(payloadNode, "runPriority", false));
+            payloadInfo.setEventID(safeGetText(payloadNode, "eventID", false));
+            payloadInfo.setEventType(safeGetText(payloadNode, "eventType", false));
+            payloadInfo.setRestartKey(safeGetText(payloadNode, "restartKey", false));
+            payloadInfo.setBlobURL(safeGetText(payloadNode, "blobURL", false));
+            payloadInfo.setEventOutcomeCode(safeGetText(payloadNode, "eventOutcomeCode", false));
+            payloadInfo.setEventOutcomeDescription(safeGetText(payloadNode, "eventOutcomeDescription", false));
+
+            JsonNode printFiles = payloadNode.get("printFiles");
+            if (printFiles != null && printFiles.isArray()) {
+                List<String> pfList = new ArrayList<>();
+                for (JsonNode pf : printFiles) {
+                    pfList.add(pf.asText());
+                }
+                payloadInfo.setPrintFiles(pfList);
+            }
+        }
+
+        MetaDataInfo meta = new MetaDataInfo();
+        meta.setTotalCustomers(customerSummaries.size());
+        meta.setTotalFiles(customerSummaries.stream().mapToInt(c -> c.getFiles().size()).sum());
+
+        SummaryPayload payload = new SummaryPayload();
+        payload.setJobName(jobName);
+        payload.setBatchId(batchId);
+        //payload.setCustomerSummary(customerSummaries);
+        payload.setHeader(header);
+        //payload.setPayload(payloadInfo);
+        payload.setMetaData(meta);
+
+        logger.debug("Finished building SummaryPayload");
+        return payload;
     }
 
-    // Vault authentication method (unchanged)
-    private String getVaultToken() {
-        try {
-            String url = VAULT_URL + "/v1/auth/userpass/login/espire_dev";
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("x-vault-namespace", VAULT_NAMESPACE);
-
-            Map<String, String> body = new HashMap<>();
-            body.put("password", passwordDev);
-
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, request, String.class);
-
-            JSONObject json = new JSONObject(Objects.requireNonNull(response.getBody()));
-            return json.getJSONObject("auth").getString("client_token");
-        } catch (Exception e) {
-            logger.error("❌ Vault token fetch failed: {}", e.getMessage());
-            throw new CustomAppException("Vault authentication error", 401, HttpStatus.UNAUTHORIZED, e);
-        }
+    private HeaderInfo buildHeader(JsonNode node, String jobName) {
+        HeaderInfo header = new HeaderInfo();
+        header.setBatchId(safeGetText(node, "BatchId", false));
+        header.setRunPriority(safeGetText(node, "RunPriority", false));
+        header.setEventID(safeGetText(node, "EventID", false));
+        header.setEventType(safeGetText(node, "EventType", false));
+        header.setRestartKey(safeGetText(node, "RestartKey", false));
+        header.setJobName(jobName);
+        return header;
     }
 
-    // Vault secret fetch method (unchanged)
-    private String getSecretFromVault(String key, String token) {
-        try {
-            String url = VAULT_URL + "/v1/Store_Dev/10099";
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("x-vault-namespace", VAULT_NAMESPACE);
-            headers.set("x-vault-token", token);
-
-            Map<String, String> body = new HashMap<>();
-            body.put("password", passwordNbhDev);
-
-            HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, request, String.class);
-
-            JSONObject json = new JSONObject(Objects.requireNonNull(response.getBody()));
-            return json.getJSONObject("data").getString(key);
-        } catch (Exception e) {
-            logger.error("❌ Failed to retrieve secret from Vault: {}", e.getMessage());
-            throw new CustomAppException("Vault secret fetch error", 403, HttpStatus.FORBIDDEN, e);
-        }
+    private String determineType(String path) {
+        if (path.endsWith(".pdf")) return "PDF";
+        if (path.endsWith(".xml")) return "XML";
+        return "UNKNOWN";
     }
 
-    private String getFileNameFromUrl(String url) {
-        if (url == null || url.isEmpty()) return "unknownFile";
-        int lastSlashIndex = url.lastIndexOf('/');
-        if (lastSlashIndex < 0) return url;
-        return url.substring(lastSlashIndex + 1);
+    private String safeGetText(JsonNode node, String field, boolean mandatory) {
+        if (node != null && node.has(field)) {
+            return node.get(field).asText();
+        }
+        if (mandatory) {
+            logger.warn("Missing mandatory field: {}", field);
+        }
+        return null;
     }
 }
