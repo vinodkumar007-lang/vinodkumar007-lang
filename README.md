@@ -1,79 +1,37 @@
-private Map<String, Object> buildFinalResponse(SummaryPayload summaryPayload) {
-    Map<String, Object> response = new LinkedHashMap<>();
-
-    response.put("jobName", summaryPayload.getJobName());
-    response.put("batchId", summaryPayload.getBatchId());
-
-    // Header
-    Map<String, Object> headerMap = new LinkedHashMap<>();
-    HeaderInfo header = summaryPayload.getHeader();
-    if (header != null) {
-        headerMap.put("batchId", header.getBatchId());
-        headerMap.put("runPriority", header.getRunPriority());
-        headerMap.put("eventID", header.getEventID());
-        headerMap.put("eventType", header.getEventType());
-        headerMap.put("restartKey", header.getRestartKey());
-        headerMap.put("jobName", header.getJobName());
-        headerMap.put("product", header.getProduct());
-    }
-    response.put("header", headerMap);
-
-    // Metadata
-    Map<String, Object> metadataMap = new LinkedHashMap<>();
-    MetaDataInfo meta = summaryPayload.getMetaData();
-    if (meta != null) {
-        metadataMap.put("totalCustomers", meta.getTotalCustomers());
-        metadataMap.put("totalFiles", meta.getTotalFiles());
-    }
-    response.put("metaData", metadataMap);
-
-    // Payload
-    Map<String, Object> payloadMap = new LinkedHashMap<>();
-    PayloadInfo payload = summaryPayload.getPayload();
-    if (payload != null) {
-        payloadMap.put("uniqueConsumerRef", payload.getUniqueConsumerRef());
-        payloadMap.put("uniqueECPBatchRef", payload.getUniqueECPBatchRef());
-        payloadMap.put("runPriority", payload.getRunPriority());
-        payloadMap.put("eventID", payload.getEventID());
-        payloadMap.put("eventType", payload.getEventType());
-        payloadMap.put("restartKey", payload.getRestartKey());
-        payloadMap.put("blobURL", payload.getBlobURL());
-        payloadMap.put("eventOutcomeCode", payload.getEventOutcomeCode());
-        payloadMap.put("eventOutcomeDescription", payload.getEventOutcomeDescription());
-        payloadMap.put("printFiles", payload.getPrintFiles());
-    }
-    response.put("payload", payloadMap);
-
-    // CustomerSummary
-    List<Map<String, Object>> customerSummaries = new ArrayList<>();
-    if (summaryPayload.getCustomerSummary() != null) {
-        for (CustomerSummary customer : summaryPayload.getCustomerSummary()) {
-            Map<String, Object> customerMap = new LinkedHashMap<>();
-            customerMap.put("customerId", customer.getCustomerId());
-            customerMap.put("accountNumber", customer.getAccountNumber());
-
-            List<Map<String, Object>> filesList = new ArrayList<>();
-            for (CustomerSummary.FileDetail fileDetail : customer.getFiles()) {
-                Map<String, Object> fileMap = new LinkedHashMap<>();
-                fileMap.put("objectId", fileDetail.getObjectId());
-                fileMap.put("fileLocation", fileDetail.getFileLocation());
-                fileMap.put("fileUrl", fileDetail.getFileUrl());
-                fileMap.put("encrypted", fileDetail.isEncrypted());
-                fileMap.put("status", fileDetail.getStatus());
-                fileMap.put("type", fileDetail.getType());
-                filesList.add(fileMap);
-            }
-
-            customerMap.put("files", filesList);
-            customerSummaries.add(customerMap);
-        }
-    }
-    response.put("customerSummary", customerSummaries);
-
-    // Optional fields (if available from setTopic, setPartition, setOffset)
-    response.put("kafkaTopic", summaryPayload.getTopic());
-    response.put("partition", summaryPayload.getPartition());
-    response.put("offset", summaryPayload.getOffset());
-
-    return response;
-}
+java.lang.NullPointerException: Cannot invoke "java.util.List.isEmpty()" because the return value of "com.nedbank.kafka.filemanage.model.MetaDataInfo.getCustomerSummaries()" is null
+	at com.nedbank.kafka.filemanage.utils.SummaryJsonWriter.appendToSummaryJson(SummaryJsonWriter.java:53) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.listen(KafkaListenerService.java:128) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.controller.FileProcessingController.triggerFileProcessing(FileProcessingController.java:31) ~[classes/:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:884) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:797) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1080) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:973) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1003) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:906) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:731) ~[tomcat-embed-core-10.1.1.jar:6.0]
+	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:880) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:814) ~[tomcat-embed-core-10.1.1.jar:6.0]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:223) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:53) ~[tomcat-embed-websocket-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.apache.catalina.core.ApplicationFilte
