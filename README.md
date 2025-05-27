@@ -1,92 +1,68 @@
-package com.nedbank.kafka.filemanage.config;
+@Service
+public class KafkaListenerService {
 
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.common.serialization.StringDeserializer;
-import org.apache.kafka.common.serialization.StringSerializer;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.kafka.annotation.EnableKafka;
-import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
-import org.springframework.kafka.core.*;
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
-import java.util.HashMap;
-import java.util.Map;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final BlobStorageService blobStorageService;
+    private final ConsumerFactory<String, String> consumerFactory;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-@Configuration
-@EnableKafka
-public class KafkaConfig {
+    @Value("${kafka.topic.input}")
+    private String inputTopic;
 
-    @Value("${kafka.bootstrap.servers}")
-    private String bootstrapServers;
+    @Value("${kafka.topic.output}")
+    private String outputTopic;
 
-    @Value("${kafka.consumer.group.id}")
-    private String groupId;
-
-    @Value("${kafka.consumer.ssl.keystore.location}")
-    private String keystoreLocation;
-
-    @Value("${kafka.consumer.ssl.keystore.password}")
-    private String keystorePassword;
-
-    @Value("${kafka.consumer.ssl.key.password}")
-    private String keyPassword;
-
-    @Value("${kafka.consumer.ssl.truststore.location}")
-    private String truststoreLocation;
-
-    @Value("${kafka.consumer.ssl.truststore.password}")
-    private String truststorePassword;
-
-    @Value("${kafka.consumer.ssl.protocol}")
-    private String sslProtocol;
-
-    @Bean
-    public ConsumerFactory<String, String> consumerFactory() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");//earliest
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put("security.protocol", "SSL");
-        props.put("ssl.keystore.location", keystoreLocation);
-        props.put("ssl.keystore.password", keystorePassword);
-        props.put("ssl.key.password", keyPassword);
-        props.put("ssl.truststore.location", truststoreLocation);
-        props.put("ssl.truststore.password", truststorePassword);
-        props.put("ssl.protocol", sslProtocol);
-        return new DefaultKafkaConsumerFactory<>(props);
+    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
+                                BlobStorageService blobStorageService,
+                                ConsumerFactory<String, String> consumerFactory) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.blobStorageService = blobStorageService;
+        this.consumerFactory = consumerFactory;
     }
 
-    @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, String> factory =
-                new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(consumerFactory());
-        return factory;
-    }
+    public Map<String, Object> listen() {
+        // Create a KafkaConsumer from the injected ConsumerFactory (configured with SSL, etc)
+        try (KafkaConsumer<String, String> consumer = (KafkaConsumer<String, String>) consumerFactory.createConsumer()) {
+            consumer.subscribe(Collections.singletonList(inputTopic));
+            logger.info("Polling Kafka topic {} for new messages...", inputTopic);
 
-    @Bean
-    public ProducerFactory<String, String> producerFactory() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put("security.protocol", "SSL");
-        props.put("ssl.keystore.location", keystoreLocation);
-        props.put("ssl.keystore.password", keystorePassword);
-        props.put("ssl.key.password", keyPassword);
-        props.put("ssl.truststore.location", truststoreLocation);
-        props.put("ssl.truststore.password", truststorePassword);
-        props.put("ssl.protocol", sslProtocol);
-        return new DefaultKafkaProducerFactory<>(props);
-    }
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
 
-    @Bean
-    public KafkaTemplate<String, String> kafkaTemplate() {
-        return new KafkaTemplate<>(producerFactory());
+            if (records.isEmpty()) {
+                logger.info("No new Kafka messages found");
+                Map<String, Object> emptyResponse = new HashMap<>();
+                emptyResponse.put("message", "No new messages found");
+                emptyResponse.put("status", "empty");
+                emptyResponse.put("summaryPayload", null);
+                return emptyResponse;
+            }
+
+            ApiResponse lastResponse = null;
+            for (ConsumerRecord<String, String> record : records) {
+                logger.info("Processing Kafka message: partition={}, offset={}", record.partition(), record.offset());
+
+                KafkaMessage message = objectMapper.readValue(record.value(), KafkaMessage.class);
+                lastResponse = processSingleMessage(message);
+
+                String responseJson = objectMapper.writeValueAsString(lastResponse);
+                kafkaTemplate.send(outputTopic, responseJson);
+                logger.info("Sent processed response to Kafka topic {}", outputTopic);
+            }
+
+            Map<String, Object> responseMap = new HashMap<>();
+            responseMap.put("message", lastResponse.getMessage());
+            responseMap.put("status", lastResponse.getStatus());
+            responseMap.put("summaryPayload", lastResponse.getSummaryPayload());
+            return responseMap;
+
+        } catch (Exception e) {
+            logger.error("Error during manual Kafka consumption", e);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("message", "Error processing messages: " + e.getMessage());
+            errorResponse.put("status", "error");
+            errorResponse.put("summaryPayload", null);
+            return errorResponse;
+        }
     }
-}
