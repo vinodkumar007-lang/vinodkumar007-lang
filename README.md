@@ -1,123 +1,150 @@
-package com.nedbank.kafka.filemanage.utils;
+package com.example.demo.listener;
 
+import com.example.demo.service.BlobStorageService;
+import com.example.demo.service.SummaryJsonWriter;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.nedbank.kafka.filemanage.model.SummaryPayload;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
 
 import java.io.File;
-import java.io.IOException;
-import java.util.HashSet;
-import java.util.Set;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.*;
 
-public class SummaryJsonWriter {
+@Service
+public class KafkaListenerService {
 
-    private static final ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
-    private static final Set<String> processedCustomerAccounts = new HashSet<>();
-    private static final Set<String> addedPrintFileUrls = new HashSet<>();
-    private static boolean headerInitialized = false;
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
-    public static synchronized void appendToSummaryJson(File summaryFile, SummaryPayload payload) throws IOException {
-        ObjectNode root;
+    private final KafkaConsumer<String, String> consumer;
+    private final ObjectMapper objectMapper;
+    private final BlobStorageService blobStorageService;
+    private final SummaryJsonWriter summaryJsonWriter;
 
-        if (summaryFile.exists()) {
-            root = (ObjectNode) mapper.readTree(summaryFile);
-        } else {
-            root = mapper.createObjectNode();
-            root.putArray("processedFiles");
-            root.putArray("printFiles");
-        }
+    private final Set<String> processedMessageIds = new HashSet<>();
 
-        // Set batchID and fileName only once
-        if (!root.has("batchID")) {
-            root.put("batchID", payload.getBatchId());
-        }
-        if (!root.has("fileName")) {
-            root.put("fileName", payload.getFileName());
-        }
+    public KafkaListenerService(KafkaConsumer<String, String> consumer,
+                                ObjectMapper objectMapper,
+                                BlobStorageService blobStorageService,
+                                SummaryJsonWriter summaryJsonWriter) {
+        this.consumer = consumer;
+        this.objectMapper = objectMapper;
+        this.blobStorageService = blobStorageService;
+        this.summaryJsonWriter = summaryJsonWriter;
+    }
 
-        // Header - set once only
-        if (!headerInitialized && payload.getHeader() != null) {
-            ObjectNode header = mapper.createObjectNode();
-            header.put("tenantCode", payload.getHeader().getTenantCode());
-            header.put("channelID", payload.getHeader().getChannelID());
-            header.put("audienceID", payload.getHeader().getAudienceID());
-            header.put("timestamp", payload.getHeader().getTimestamp());
-            header.put("sourceSystem", payload.getHeader().getSourceSystem());
-            header.put("product", payload.getHeader().getProduct());
-            header.put("jobName", payload.getJobName());
-            root.set("header", header);
-            headerInitialized = true;
-        }
+    public Map<String, Object> listen() {
+        ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
+        List<Map<String, Object>> processedFiles = new ArrayList<>();
+        List<Map<String, Object>> printFiles = new ArrayList<>();
+        Map<String, Object> header = new HashMap<>();
+        String batchId = UUID.randomUUID().toString();
+        String fileName = "summary.json";
 
-        // Process customer summaries
-        if (payload.getMetaData() != null && payload.getMetaData().getCustomerSummaries() != null) {
-            for (var summary : payload.getMetaData().getCustomerSummaries()) {
-                String customerKey = summary.getCustomerId() + "|" + summary.getAccountNumber();
+        for (ConsumerRecord<String, String> record : records) {
+            String message = record.value();
 
-                // Add processedFiles entry only if not already added
-                if (!processedCustomerAccounts.contains(customerKey)) {
-                    ObjectNode processedEntry = mapper.createObjectNode();
-                    processedEntry.put("customerID", summary.getCustomerId());
-                    processedEntry.put("accountNumber", summary.getAccountNumber());
-                    processedEntry.put("pdfArchiveFileURL", summary.getPdfArchiveFileURL());
-                    processedEntry.put("pdfEmailFileURL", summary.getPdfEmailFileURL());
-                    processedEntry.put("htmlEmailFileURL", summary.getHtmlEmailFileURL());
-                    processedEntry.put("txtEmailFileURL", summary.getTxtEmailFileURL());
-                    processedEntry.put("pdfMobstatFileURL", summary.getPdfMobstatFileURL());
-                    processedEntry.put("statusCode", payload.getStatusCode());
-                    processedEntry.put("statusDescription", payload.getStatusDescription());
+            try {
+                JsonNode rootNode = objectMapper.readTree(message);
+                String messageId = rootNode.path("id").asText();
 
-                    ((ArrayNode) root.withArray("processedFiles")).add(processedEntry);
-                    processedCustomerAccounts.add(customerKey);
+                if (processedMessageIds.contains(messageId)) {
+                    continue;
                 }
 
-                // Add print file if not already added
-                if (summary.getPrintFileURL() != null && !addedPrintFileUrls.contains(summary.getPrintFileURL())) {
-                    ObjectNode printFileEntry = mapper.createObjectNode();
-                    printFileEntry.put("printFileURL", summary.getPrintFileURL());
+                processedMessageIds.add(messageId);
 
-                    ((ArrayNode) root.withArray("printFiles")).add(printFileEntry);
-                    addedPrintFileUrls.add(summary.getPrintFileURL());
+                JsonNode dataNode = rootNode.path("data");
+
+                String blobUrl = dataNode.path("blobUrl").asText();
+                String sourceSystem = dataNode.path("sourceSystem").asText();
+                String objectId = dataNode.path("objectId").asText();
+                String consumerReference = dataNode.path("consumerReference").asText();
+                String processReference = dataNode.path("processReference").asText();
+                String timestamp = dataNode.path("timestamp").asText();
+                String eventOutcomeCode = dataNode.path("eventOutcomeCode").asText();
+                String eventOutcomeDescription = dataNode.path("eventOutcomeDescription").asText();
+
+                String destPath = batchId + "/" + objectId;
+
+                // Correct call to copy file to Azure Blob
+                Map<String, String> metadata = new HashMap<>();
+                metadata.put("sourceSystem", sourceSystem);
+                metadata.put("consumerReference", consumerReference);
+                metadata.put("processReference", processReference);
+                metadata.put("timestamp", timestamp);
+
+                try {
+                    blobStorageService.copyFileFromUrlToBlob(blobUrl, destPath, metadata);
+                } catch (Exception e) {
+                    logger.warn("Failed to copy blob from URL {}: {}", blobUrl, e.getMessage());
                 }
+
+                Map<String, Object> processedFileEntry = new HashMap<>();
+                processedFileEntry.put("blobUrl", blobUrl);
+                processedFileEntry.put("sourceSystem", sourceSystem);
+                processedFileEntry.put("objectId", objectId);
+                processedFileEntry.put("consumerReference", consumerReference);
+                processedFileEntry.put("processReference", processReference);
+                processedFileEntry.put("timestamp", timestamp);
+                processedFileEntry.put("eventOutcomeCode", eventOutcomeCode);
+                processedFileEntry.put("eventOutcomeDescription", eventOutcomeDescription);
+
+                processedFiles.add(processedFileEntry);
+
+                // Optional: Add print file if present
+                if (dataNode.has("printFileURL")) {
+                    Map<String, Object> printEntry = new HashMap<>();
+                    printEntry.put("printFileURL", dataNode.path("printFileURL").asText());
+                    printFiles.add(printEntry);
+                }
+
+                // Populate header fields only once
+                if (header.isEmpty()) {
+                    header.put("batchID", batchId);
+                    header.put("fileName", fileName);
+                    header.put("timestamp", Instant.now().toString());
+                }
+
+            } catch (Exception e) {
+                logger.error("Failed to process Kafka message: {}", e.getMessage(), e);
             }
         }
 
-        // Write back to file
-        mapper.writeValue(summaryFile, root);
-    }
-}
-package com.nedbank.kafka.filemanage.controller;
+        File summaryFile = null;
+        String summaryBlobUrl = null;
+        Map<String, Object> response = new HashMap<>();
 
-import com.nedbank.kafka.filemanage.service.KafkaListenerService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.web.bind.annotation.*;
+        if (!processedFiles.isEmpty()) {
+            summaryFile = summaryJsonWriter.appendToSummaryJson(batchId, header, processedFiles, printFiles);
 
-import java.util.Map;
+            // Correct call to upload summary.json to Azure
+            try {
+                String summaryDestPath = "summaries/" + UUID.randomUUID() + "-summary.json";
+                summaryBlobUrl = blobStorageService.uploadSummaryJson(summaryFile, summaryDestPath);
+            } catch (Exception e) {
+                logger.error("Failed to upload summary.json: {}", e.getMessage(), e);
+            }
 
-@RestController
-@RequestMapping("/api/file")
-public class FileProcessingController {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("header", header);
+            payload.put("processedFiles", processedFiles);
+            payload.put("printFiles", printFiles);
+            payload.put("summaryFileURL", summaryBlobUrl);
 
-    private static final Logger logger = LoggerFactory.getLogger(FileProcessingController.class);
-    private final KafkaListenerService kafkaListenerService;
+            response.put("message", "Kafka messages processed successfully");
+            response.put("status", "success");
+            response.put("summaryPayload", payload);
+        } else {
+            response.put("message", "No new Kafka messages to process");
+            response.put("status", "success");
+        }
 
-    public FileProcessingController(KafkaListenerService kafkaListenerService) {
-        this.kafkaListenerService = kafkaListenerService;
-    }
-
-    // Health check
-    @GetMapping("/health")
-    public String healthCheck() {
-        logger.info("Health check endpoint hit.");
-        return "File Processing Service is up and running.";
-    }
-
-    @PostMapping("/process")
-    public Map<String, Object> triggerFileProcessing() {
-        logger.info("POST /process called to trigger Kafka message processing.");
-        return kafkaListenerService.listen();
+        return response;
     }
 }
