@@ -1,1195 +1,457 @@
-{
-    "payloads": [
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "1d047647-ee3c-4e94-bcd8-5370b639c4a2",
-                "timestamp": null
+package com.nedbank.kafka.filemanage.service;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.CustomerSummary;
+import com.nedbank.kafka.filemanage.model.HeaderInfo;
+import com.nedbank.kafka.filemanage.model.MetaDataInfo;
+import com.nedbank.kafka.filemanage.model.PayloadInfo;
+import com.nedbank.kafka.filemanage.model.SummaryPayload;
+import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.OffsetAndTimestamp;
+import org.apache.kafka.common.TopicPartition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
+
+import java.io.File;
+import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.*;
+
+@Service
+public class KafkaListenerService {
+
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final BlobStorageService blobStorageService;
+    private final ConsumerFactory<String, String> consumerFactory;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Value("${kafka.topic.input}")
+    private String inputTopic;
+
+    @Value("${kafka.topic.output}")
+    private String outputTopic;
+
+    @Value("${azure.blob.storage.account}")
+    private String azureBlobStorageAccount;
+
+    private final File summaryFile = new File(System.getProperty("user.home"), "summary.json");
+    // New: Map to store last processed offsets
+    private final Map<TopicPartition, Long> lastProcessedOffsets = new HashMap<>();
+    private String fileLocation;
+    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
+                                BlobStorageService blobStorageService,
+                                ConsumerFactory<String, String> consumerFactory) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.blobStorageService = blobStorageService;
+        this.consumerFactory = consumerFactory;
+    }
+
+    public Map<String, Object> listen() {
+        Consumer<String, String> consumer = consumerFactory.createConsumer();
+        List<SummaryPayload> processedPayloads = new ArrayList<>();
+        Map<TopicPartition, Long> newOffsets = new HashMap<>();
+
+        try {
+            List<TopicPartition> partitions = new ArrayList<>();
+
+            // Discover and assign partitions
+            consumer.partitionsFor(inputTopic).forEach(partitionInfo -> {
+                partitions.add(new TopicPartition(partitionInfo.topic(), partitionInfo.partition()));
+            });
+            consumer.assign(partitions);
+
+            // Seek to next unprocessed offset or beginning
+            for (TopicPartition partition : partitions) {
+                if (lastProcessedOffsets.containsKey(partition)) {
+                    long nextOffset = lastProcessedOffsets.get(partition) + 1;
+                    consumer.seek(partition, nextOffset);
+                    logger.info("Seeking partition {} to offset {}", partition.partition(), nextOffset);
+                } else {
+                    consumer.seekToBeginning(Collections.singletonList(partition));
+                    logger.warn("No previous offset for partition {}; seeking to beginning", partition.partition());
+                }
             }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "d6f5ab89-eb7b-4e91-a75a-aca5aa7dcc2e",
-                "timestamp": null
+
+            // Poll messages
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
+            logger.info("Polled {} record(s) from Kafka", records.count());
+
+            for (ConsumerRecord<String, String> record : records) {
+                TopicPartition currentPartition = new TopicPartition(record.topic(), record.partition());
+
+                // Skip already processed messages
+                if (lastProcessedOffsets.containsKey(currentPartition) &&
+                        record.offset() <= lastProcessedOffsets.get(currentPartition)) {
+                    logger.debug("Skipping already processed offset {} for partition {}", record.offset(), record.partition());
+                    continue;
+                }
+
+                logger.info("Processing record from topic-partition-offset {}-{}-{}: key='{}'",
+                        record.topic(), record.partition(), record.offset(), record.key());
+
+                SummaryPayload summaryPayload = processSingleMessage(record.value());
+                if (summaryPayload == null || summaryPayload.getBatchId() == null || summaryPayload.getBatchId().trim().isEmpty()) {
+                    logger.warn("Missing or empty mandatory field 'BatchId' at offset {}; skipping", record.offset());
+                    continue;
+                }
+
+                // Add extra tracking info for offset management (optional, if you can extend SummaryPayload)
+                summaryPayload.setTopic(record.topic());
+                summaryPayload.setPartition(record.partition());
+                summaryPayload.setOffset(record.offset());
+
+                processedPayloads.add(summaryPayload);
+
+                // Keep track of highest offset per partition for committing later
+                newOffsets.put(currentPartition, record.offset());
             }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "eba7d148-19b1-49dc-8422-111896b2d184",
-                "timestamp": null
+
+            if (processedPayloads.isEmpty()) {
+                return generateErrorResponse("204", "No new valid messages available in Kafka topic.");
             }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "bea3e8b1-cbf6-4f55-99ee-fb30dd01aa4b",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "e996ae1e-6161-4990-901c-c435def61361",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "6eaca62d-7ede-4109-b7cf-fddd19f53a23",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "e4c2c1d3-0406-42cb-aae4-6eedc9fab3d6",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "98e10e99-30fc-426c-b3fb-f7b516cb6773",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "db31e2a1-6eb7-4514-8dbe-72da4c3b13bc",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "7a47a018-7dc1-4559-a5f1-113427aadf1b",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "8f0bd673-84cc-4e86-a8b5-7a5dc5ec8d82",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "d0764e08-67f4-497e-b8fa-0ce1959c7f3e",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "881d4d06-bf89-4f81-adeb-11f9ee8890c4",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "afcc1c8b-7372-424e-afe9-859a20a51919",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "2682e131-d492-4040-b72c-727598173422",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "47c83158-5cb1-4dbe-93c8-123750e2a3f9",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "65335e59-02b8-4e89-a6c0-2d7b113739c5",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "3b9d3738-d3a6-4608-8ea7-94d29433553c",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "137b68b2-f9c6-4053-b54f-7672d4c9f2f0",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "761545f6-8a05-417f-94d6-5c26c478d8f5",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "fe153ee2-969e-4cfc-8316-5d265df79f50",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "c66725c2-4fe6-4dfc-b64b-8ae0d57b93c7",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "d50b3411-2dc0-43ca-92b8-9b6bb4cd70e7",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "bb8f2b26-38c2-42ff-aec3-c48a7380522a",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "23882373-ef6c-4b28-8a02-487a8e7abdc9",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "222fc43b-f057-44fd-8495-b7c5d4a8441d",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "66ba025d-ee92-4976-9651-0faf67e44277",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "e80c3e7c-0616-424b-9638-5adbfad9c312",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "099d2ee6-318d-4c4e-b7e0-971cbaf8edc6",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "dc910820-14ed-49ac-aa4a-2d80ae94ad47",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "96f586c4-082e-47bf-b83d-80bb7d773d0a",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "6be622f9-e269-44bb-b4e7-4efa576cd9da",
-                "timestamp": null
-            }
-        },
-        {
-            "message": "Batch processed successfully",
-            "status": "success",
-            "summaryPayload": {
-                "metadata": {
-                    "processingStatus": null,
-                    "eventOutcomeDescription": null,
-                    "totalFilesProcessed": 0,
-                    "eventOutcomeCode": null
-                },
-                "payload": {
-                    "restartKey": null,
-                    "uniqueECPBatchRef": null,
-                    "eventID": null,
-                    "eventOutcomeDescription": null,
-                    "uniqueConsumerRef": null,
-                    "blobURL": null,
-                    "eventType": null,
-                    "fileLocation": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-26T14%3A43%3A42.172238400Z%2Fcd668d76-241d-4262-a190-eb78f9de30d0%2FunknownConsumer_unknownProcess%2FDEBTMAN.csv",
-                    "eventOutcomeCode": null,
-                    "runPriority": null
-                },
-                "header": {
-                    "jobName": "DEBTMAN",
-                    "product": null,
-                    "sourceSystem": null,
-                    "tenantCode": null,
-                    "audienceID": null,
-                    "channelID": null,
-                    "timestamp": null
-                },
-                "summaryFileURL": "C:\\Users\\CC437236\\summary.json",
-                "batchID": "cd668d76-241d-4262-a190-eb78f9de30d0",
-                "timestamp": null
+
+            // Append all processed payloads at once to summary.json
+            SummaryJsonWriter.appendToSummaryJson(summaryFile, processedPayloads, azureBlobStorageAccount);
+
+            // Update last processed offsets only after successful append and sending
+            lastProcessedOffsets.putAll(newOffsets);
+
+            return buildBatchFinalResponse(processedPayloads);
+
+        } catch (Exception e) {
+            logger.error("Error while consuming Kafka message", e);
+            return generateErrorResponse("500", "Internal Server Error while processing Kafka message.");
+        } finally {
+            consumer.close();
+        }
+    }
+
+
+    private Map<String, Object> buildBatchFinalResponse(List<SummaryPayload> payloads) {
+        List<Map<String, Object>> processedList = new ArrayList<>();
+
+        for (SummaryPayload payload : payloads) {
+            processedList.add(buildFinalResponse(payload));
+        }
+
+        Map<String, Object> batchResponse = new HashMap<>();
+        batchResponse.put("statusCode", "200");
+        batchResponse.put("message", "Batch processed successfully");
+        batchResponse.put("messagesProcessed", processedList.size());
+        batchResponse.put("payloads", processedList);
+
+        return batchResponse;
+    }
+
+    private SummaryPayload processSingleMessage(String message) throws IOException {
+        JsonNode root = objectMapper.readTree(message);
+        logger.debug("Kafka message received  : " + message);
+        // ✅ Extract sourceSystem dynamically from root or Payload (fallback to DEBTMAN)
+        String sourceSystem = safeGetText(root, "sourceSystem", false);
+        if (sourceSystem == null) {
+            JsonNode payloadNode = root.get("Payload");
+            if (payloadNode != null) {
+                sourceSystem = safeGetText(payloadNode, "sourceSystem", false);
             }
         }
-    ],
-    "messagesProcessed": 33,
-    "message": "Batch processed successfully",
-    "statusCode": "200"
+        if (sourceSystem == null || sourceSystem.isBlank()) {
+            sourceSystem = "DEBTMAN";
+        }
+
+        // Extract jobName (optional)
+        String jobName = safeGetText(root, "JobName", false);
+        if (jobName == null) jobName = "";
+
+        // Extract BatchId (mandatory fallback to random UUID)
+        String batchId = safeGetText(root, "BatchId", true);
+        if (batchId == null) batchId = UUID.randomUUID().toString();
+
+        // Extract timestamp (use current timestamp if not in message)
+        String timestamp = Instant.now().toString();
+
+        // Extract consumerReference
+        String consumerReference = safeGetText(root, "consumerReference", false);
+        JsonNode payloadNode = root.get("Payload");
+        if (consumerReference == null && payloadNode != null) {
+            consumerReference = safeGetText(payloadNode, "consumerReference", false);
+        }
+        if (consumerReference == null) consumerReference = "unknownConsumer";
+
+        // Extract processReference (we'll use eventID as fallback)
+        String processReference = safeGetText(root, "eventID", false);
+        if (processReference == null && payloadNode != null) {
+            processReference = safeGetText(payloadNode, "eventID", false);
+        }
+        if (processReference == null) processReference = "unknownProcess";
+
+        // Process CustomerSummaries from BatchFiles array
+        List<CustomerSummary> customerSummaries = new ArrayList<>();
+        JsonNode batchFilesNode = root.get("BatchFiles");
+        if (batchFilesNode != null && batchFilesNode.isArray()) {
+            for (JsonNode fileNode : batchFilesNode) {
+                String filePath = safeGetText(fileNode, "BlobUrl", true);
+                String objectId = safeGetText(fileNode, "ObjectId", true);
+                String validationStatus = safeGetText(fileNode, "ValidationStatus", false);
+
+                if (filePath == null || objectId == null) {
+                    logger.warn("Skipping file with missing BlobUrl or ObjectId.");
+                    continue;
+                }
+
+                try {
+                    fileLocation = blobStorageService.uploadFileAndReturnLocation(
+                            sourceSystem,
+                            filePath,
+                            batchId,
+                            objectId,
+                            consumerReference,
+                            processReference,
+                            timestamp
+                    );
+                } catch (Exception e) {
+                    logger.warn("Blob upload failed for {}: {}", filePath, e.getMessage());
+                }
+
+                String extension = getFileExtension(filePath);
+                CustomerSummary.FileDetail detail = new CustomerSummary.FileDetail();
+                detail.setObjectId(objectId);
+                detail.setFileLocation(filePath);
+                detail.setFileUrl("https://" + azureBlobStorageAccount + "/" + filePath);
+                detail.setEncrypted(isEncrypted(filePath, extension));
+                detail.setStatus(validationStatus != null ? validationStatus : "OK");
+                detail.setType(determineType(filePath));
+
+                CustomerSummary customer = customerSummaries.stream()
+                        .filter(c -> c.getCustomerId().equals(objectId))
+                        .findFirst()
+                        .orElseGet(() -> {
+                            CustomerSummary c = new CustomerSummary();
+                            c.setCustomerId(objectId);
+                            c.setAccountNumber("");
+                            c.setFiles(new ArrayList<>());
+                            customerSummaries.add(c);
+                            return c;
+                        });
+
+                customer.getFiles().add(detail);
+            }
+        }
+
+        // Build Header info
+        HeaderInfo headerInfo;
+        JsonNode headerNode = root.get("Header");
+        if (headerNode != null && !headerNode.isNull()) {
+            headerInfo = buildHeader(headerNode, jobName);
+        } else {
+            headerInfo = buildHeader(root, jobName);
+        }
+        if (headerInfo.getBatchId() == null) {
+            headerInfo.setBatchId(batchId);
+        }
+
+        // Extract product field if present
+        String product = null;
+        if (headerNode != null && headerNode.has("product")) {
+            product = safeGetText(headerNode, "product", false);
+        }
+        if (product == null) {
+            product = safeGetText(root, "product", false);
+        }
+        headerInfo.setProduct(product);
+
+        // Build Payload info
+        PayloadInfo payloadInfo = new PayloadInfo();
+        if (payloadNode != null && !payloadNode.isNull()) {
+            payloadInfo.setUniqueConsumerRef(safeGetText(payloadNode, "uniqueConsumerRef", false));
+            payloadInfo.setUniqueECPBatchRef(safeGetText(payloadNode, "uniqueECPBatchRef", false));
+            payloadInfo.setRunPriority(safeGetText(payloadNode, "runPriority", false));
+            payloadInfo.setEventID(safeGetText(payloadNode, "eventID", false));
+            payloadInfo.setEventType(safeGetText(payloadNode, "eventType", false));
+            payloadInfo.setRestartKey(safeGetText(payloadNode, "restartKey", false));
+            payloadInfo.setBlobURL(safeGetText(payloadNode, "blobURL", false));
+            payloadInfo.setEventOutcomeCode(safeGetText(payloadNode, "eventOutcomeCode", false));
+            payloadInfo.setEventOutcomeDescription(safeGetText(payloadNode, "eventOutcomeDescription", false));
+
+            JsonNode printFilesNode = payloadNode.get("printFiles");
+            if (printFilesNode != null && printFilesNode.isArray()) {
+                List<String> printFiles = new ArrayList<>();
+                for (JsonNode pf : printFilesNode) {
+                    printFiles.add(pf.asText());
+                }
+                payloadInfo.setPrintFiles(printFiles);
+            }
+        }
+
+        MetaDataInfo metaDataInfo = new MetaDataInfo();
+        metaDataInfo.setTotalFiles(customerSummaries.stream().mapToInt(c -> c.getFiles().size()).sum());
+        metaDataInfo.setTotalCustomers(customerSummaries.size());
+
+        SummaryPayload summaryPayload = new SummaryPayload();
+        summaryPayload.setJobName(jobName);
+        summaryPayload.setBatchId(batchId);
+        summaryPayload.setCustomerSummary(customerSummaries);
+        summaryPayload.setHeader(headerInfo);
+        summaryPayload.setPayload(payloadInfo);
+        summaryPayload.setMetaData(metaDataInfo);
+
+        return summaryPayload;
+    }
+
+    private HeaderInfo buildHeader(JsonNode node, String jobName) {
+        HeaderInfo headerInfo = new HeaderInfo();
+        headerInfo.setBatchId(safeGetText(node, "BatchId", false));
+        headerInfo.setRunPriority(safeGetText(node, "RunPriority", false));
+        headerInfo.setEventID(safeGetText(node, "EventID", false));
+        headerInfo.setEventType(safeGetText(node, "EventType", false));
+        headerInfo.setRestartKey(safeGetText(node, "RestartKey", false));
+        headerInfo.setJobName(jobName);
+        return headerInfo;
+    }
+
+    private boolean isEncrypted(String filePath, String extension) {
+        // Your encryption logic here, e.g.:
+        return filePath.endsWith(".enc") || "enc".equalsIgnoreCase(extension);
+    }
+
+    private String determineType(String filePath) {
+        // Your type logic here, e.g.:
+        if (filePath.endsWith(".pdf")) return "PDF";
+        if (filePath.endsWith(".xml")) return "XML";
+        return "UNKNOWN";
+    }
+
+    private String getFileExtension(String filePath) {
+        if (filePath == null) return "";
+        int lastDot = filePath.lastIndexOf('.');
+        if (lastDot < 0) return "";
+        return filePath.substring(lastDot + 1);
+    }
+
+    private String safeGetText(JsonNode node, String fieldName, boolean mandatory) {
+        JsonNode child = node.get(fieldName);
+        if (child == null || child.isNull()) {
+            if (mandatory) {
+                logger.warn("Missing mandatory field '{}'", fieldName);
+            }
+            return null;
+        }
+        return child.asText();
+    }
+
+    private SummaryPayload mergeSummaryPayloads(List<SummaryPayload> payloads) {
+        if (payloads.isEmpty()) return new SummaryPayload();
+
+        SummaryPayload merged = new SummaryPayload();
+        List<CustomerSummary> allCustomers = new ArrayList<>();
+        MetaDataInfo metaData = new MetaDataInfo();
+
+        String jobName = payloads.get(0).getJobName();
+        String batchId = payloads.get(0).getBatchId();
+
+        for (SummaryPayload p : payloads) {
+            allCustomers.addAll(p.getCustomerSummary());
+        }
+
+        merged.setJobName(jobName);
+        merged.setBatchId(batchId);
+        merged.setCustomerSummary(allCustomers);
+        merged.setHeader(payloads.get(0).getHeader());
+        merged.setPayload(payloads.get(0).getPayload());
+
+        metaData.setTotalCustomers(allCustomers.size());
+        metaData.setTotalFiles(allCustomers.stream().mapToInt(c -> c.getFiles().size()).sum());
+        merged.setMetaData(metaData);
+
+        return merged;
+    }
+
+    private Map<String, Object> buildFinalResponse(SummaryPayload summaryPayload) {
+        Map<String, Object> finalResponse = new HashMap<>();
+        finalResponse.put("message", "Batch processed successfully");
+        finalResponse.put("status", "success");
+
+        Map<String, Object> summaryPayloadMap = new HashMap<>();
+
+        // Set batchID from header or null
+        summaryPayloadMap.put("batchID", summaryPayload.getBatchId());
+
+        // Header
+        Map<String, Object> headerMap = new HashMap<>();
+        HeaderInfo header = summaryPayload.getHeader();
+        if (header != null) {
+            headerMap.put("tenantCode", header.getTenantCode());
+            headerMap.put("channelID", header.getChannelID());
+            headerMap.put("audienceID", header.getAudienceID());
+            headerMap.put("timestamp", header.getTimestamp());
+            headerMap.put("sourceSystem", header.getSourceSystem());
+            headerMap.put("product", header.getProduct());
+            headerMap.put("jobName", header.getJobName());
+        }
+        summaryPayloadMap.put("header", headerMap);
+
+        // Metadata
+        Map<String, Object> metadataMap = new HashMap<>();
+        MetaDataInfo metaData = summaryPayload.getMetaData();
+        if (metaData != null) {
+            metadataMap.put("totalFilesProcessed", metaData.getTotalFilesProcessed());
+            metadataMap.put("processingStatus", metaData.getProcessingStatus());
+            metadataMap.put("eventOutcomeCode", metaData.getEventOutcomeCode());
+            metadataMap.put("eventOutcomeDescription", metaData.getEventOutcomeDescription());
+        }
+        summaryPayloadMap.put("metadata", metadataMap);
+
+        // Payload
+        Map<String, Object> payloadMap = new HashMap<>();
+        PayloadInfo payload = summaryPayload.getPayload();
+        if (payload != null) {
+            payloadMap.put("uniqueConsumerRef", payload.getUniqueConsumerRef());
+            payloadMap.put("uniqueECPBatchRef", payload.getUniqueECPBatchRef());
+            payloadMap.put("runPriority", payload.getRunPriority());
+            payloadMap.put("eventID", payload.getEventID());
+            payloadMap.put("eventType", payload.getEventType());
+            payloadMap.put("restartKey", payload.getRestartKey());
+            payloadMap.put("blobURL", payload.getBlobURL());
+            payloadMap.put("fileLocation", fileLocation);
+            payloadMap.put("eventOutcomeCode", payload.getEventOutcomeCode());
+            payloadMap.put("eventOutcomeDescription", payload.getEventOutcomeDescription());
+        }
+        summaryPayloadMap.put("payload", payloadMap);
+
+        // Processed files
+        //summaryPayloadMap.put("processedFiles", summaryPayload.getCustomerSummary());
+
+        // Summary file URL (adjust based on your actual path logic)
+        summaryPayloadMap.put("summaryFileURL", summaryFile.getAbsoluteFile());
+
+        // Timestamp (current or from summaryPayload)
+        summaryPayloadMap.put("timestamp", summaryPayload.getTimeStamp() != null ? summaryPayload.getTimeStamp() : null);
+
+        finalResponse.put("summaryPayload", summaryPayloadMap);
+
+        kafkaTemplate.send(outputTopic, finalResponse.toString());
+        logger.info("Final Response sent to topic: {}", outputTopic);
+
+        return finalResponse;
+    }
+
+
+    private Map<String, Object> generateErrorResponse(String code, String message) {
+        Map<String, Object> error = new HashMap<>();
+        error.put("code", code);
+        error.put("message", message);
+        return error;
+    }
+
+    // Keeping your other existing methods (like uploadSummaryToBlob, sendToKafka, etc.) unchanged...
 }
