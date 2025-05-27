@@ -3,18 +3,20 @@ package com.nedbank.kafka.filemanage.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nedbank.kafka.filemanage.model.*;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
+import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 @Service
 public class KafkaListenerService {
@@ -25,6 +27,11 @@ public class KafkaListenerService {
     private final BlobStorageService blobStorageService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    private final KafkaConsumer<String, String> kafkaConsumer;
+
+    @Value("${kafka.topic.input}")
+    private String inputTopic;
+
     @Value("${kafka.topic.output}")
     private String outputTopic;
 
@@ -32,46 +39,66 @@ public class KafkaListenerService {
     private String azureBlobStorageAccount;
 
     public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
-                                BlobStorageService blobStorageService) {
+                                BlobStorageService blobStorageService,
+                                KafkaConsumer<String, String> kafkaConsumer) {
         this.kafkaTemplate = kafkaTemplate;
         this.blobStorageService = blobStorageService;
+        this.kafkaConsumer = kafkaConsumer;
+
+        // Subscribe consumer to the input topic
+        this.kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
     }
 
     /**
-     * Kafka listener method that receives messages from the configured input topic.
-     * Processes each message as it arrives.
+     * Manual trigger method - polls Kafka messages and processes them.
      */
-    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
-    public void listen(ConsumerRecord<String, String> record) {
-        logger.info("Received message from Kafka topic {}: partition={}, offset={}",
-                record.topic(), record.partition(), record.offset());
+    public void listen() {
+        logger.info("Starting manual poll of Kafka messages from topic '{}'", inputTopic);
 
         try {
-            KafkaMessage message = objectMapper.readValue(record.value(), KafkaMessage.class);
-            ApiResponse response = processSingleMessage(message);
+            // Poll messages with a timeout
+            ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(5));
+            if (records.isEmpty()) {
+                logger.info("No new messages found in topic '{}'", inputTopic);
+                return;
+            }
 
-            // Send the response JSON to output Kafka topic
-            String responseJson = objectMapper.writeValueAsString(response);
-            kafkaTemplate.send(outputTopic, responseJson);
-            logger.info("Sent processed response to Kafka topic {}", outputTopic);
+            for (ConsumerRecord<String, String> record : records) {
+                logger.info("Processing message from topic {}, partition={}, offset={}",
+                        record.topic(), record.partition(), record.offset());
+
+                try {
+                    KafkaMessage message = objectMapper.readValue(record.value(), KafkaMessage.class);
+                    ApiResponse response = processSingleMessage(message);
+
+                    // Send response to output topic
+                    String responseJson = objectMapper.writeValueAsString(response);
+                    kafkaTemplate.send(outputTopic, responseJson);
+                    logger.info("Sent processed response to Kafka topic {}", outputTopic);
+
+                    // Commit offset after successful processing
+                    kafkaConsumer.commitSync(Collections.singletonMap(
+                            new TopicPartition(record.topic(), record.partition()),
+                            new org.apache.kafka.clients.consumer.OffsetAndMetadata(record.offset() + 1)
+                    ));
+
+                } catch (Exception e) {
+                    logger.error("Error processing Kafka message at offset " + record.offset(), e);
+                    // Decide on error handling: skip, retry, or stop processing
+                }
+            }
 
         } catch (Exception e) {
-            logger.error("Error processing Kafka message", e);
-            // Handle error or DLQ routing as appropriate
+            logger.error("Error during Kafka polling", e);
         }
     }
 
-    /**
-     * Processes one KafkaMessage: copies files, generates summary JSON,
-     * uploads summary file, and builds API response.
-     */
     private ApiResponse processSingleMessage(KafkaMessage message) {
         logger.info("Processing batchId={}, sourceSystem={}", message.getBatchId(), message.getSourceSystem());
 
         List<SummaryProcessedFile> processedFiles = new ArrayList<>();
         List<PrintFile> printFiles = new ArrayList<>();
 
-        // Setup header, payload, metadata using message data
         Header header = new Header();
         header.setTenantCode(message.getTenantCode());
         header.setChannelID(message.getChannelID());
@@ -89,7 +116,6 @@ public class KafkaListenerService {
         Metadata metadata = new Metadata();
         int totalFilesProcessed = 0;
 
-        // Process each file: copy from source blob URL to new blob location
         for (BatchFile batchFile : message.getBatchFiles()) {
             String targetBlobPath = buildTargetBlobPath(
                     message.getSourceSystem(),
@@ -118,7 +144,6 @@ public class KafkaListenerService {
             totalFilesProcessed++;
         }
 
-        // Add sample print files
         PrintFile pf = new PrintFile();
         pf.setPrintFileURL("https://" + azureBlobStorageAccount + "/pdfs/mobstat/PrintFileName1_" + message.getBatchId() + ".ps");
         printFiles.add(pf);
