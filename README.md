@@ -1,27 +1,12 @@
-private Map<String, Object> buildFinalResponse(SummaryPayload summaryPayload) {
-    Map<String, Object> response = new HashMap<>();
-    response.put("status", "success");
-    response.put("message", "Processed all unprocessed messages.");
+***************************
+APPLICATION FAILED TO START
+***************************
 
-    Map<String, Object> summaryMap = new HashMap<>();
-    summaryMap.put("batchID", summaryPayload.getBatchID());
-    summaryMap.put("fileName", summaryPayload.getFileName());
-    summaryMap.put("timestamp", summaryPayload.getTimestamp());
-    summaryMap.put("summaryFileURL", summaryPayload.getSummaryFileURL());
+Description:
 
-    Map<String, Object> headerMap = new HashMap<>();
-    headerMap.put("sourceSystem", summaryPayload.getSourceSystem());
-    headerMap.put("consumerReference", summaryPayload.getConsumerReference());
-    headerMap.put("processReference", summaryPayload.getProcessReference());
-    headerMap.put("timestamp", summaryPayload.getHeaderTimestamp());
-    summaryMap.put("header", headerMap);
+Parameter 3 of constructor in com.nedbank.kafka.filemanage.service.KafkaListenerService required a bean of type 'java.lang.String' that could not be found.
 
-    Map<String, Object> payloadMap = new HashMap<>();
-    payloadMap.put("processedFiles", summaryPayload.getProcessedFiles());
-    // REMOVED: payloadMap.put("printFiles", summaryPayload.getPrintFiles());
-    summaryMap.put("payload", payloadMap);
 
-    response.put("summaryPayload", summaryMap);
+Action:
 
-    return response;
-}
+Consider defining a bean of type 'java.lang.String' in your configuration.
