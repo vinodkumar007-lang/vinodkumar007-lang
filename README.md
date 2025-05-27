@@ -1,18 +1,139 @@
-2025-05-27T13:47:32.024+02:00  INFO 19756 --- [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
-2025-05-27T13:47:32.025+02:00  INFO 19756 --- [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
-2025-05-27T13:47:32.076+02:00  INFO 19756 --- [nio-8080-exec-1] c.n.k.f.c.FileProcessingController       : POST /process called to trigger Kafka message processing.
-2025-05-27T13:47:32.076+02:00  INFO 19756 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Starting manual poll of Kafka messages from topic 'str-ecp-batch-composition'
-2025-05-27T13:47:33.425+02:00  INFO 19756 --- [nio-8080-exec-1] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Resetting the last seen epoch of partition str-ecp-batch-composition-0 to 16 since the associated topicId changed from null to MwBBZLPpRK6MmJMBo7pw8g
-2025-05-27T13:47:33.430+02:00  INFO 19756 --- [nio-8080-exec-1] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Cluster ID: y0ml4PnGSeO_hhGMyIz-pA
-2025-05-27T13:47:33.431+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Discovered group coordinator nsnxeteelpka01.nednet.co.za:9093 (id: 2147483647 rack: null)
-2025-05-27T13:47:33.435+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] (Re-)joining group
-2025-05-27T13:47:33.539+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Request joining group due to: need to re-join with the given member-id: consumer-str-ecp-batch-1-f56ee9e4-bb14-4683-a2eb-df1ecda2e863
-2025-05-27T13:47:33.540+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Request joining group due to: rebalance failed due to 'The group member needs to have a valid member id before actually entering a consumer group.' (MemberIdRequiredException)
-2025-05-27T13:47:33.540+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] (Re-)joining group
-2025-05-27T13:47:33.547+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Successfully joined group with generation Generation{generationId=196, memberId='consumer-str-ecp-batch-1-f56ee9e4-bb14-4683-a2eb-df1ecda2e863', protocol='range'}
-2025-05-27T13:47:33.551+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Finished assignment for group at generation 196: {consumer-str-ecp-batch-1-f56ee9e4-bb14-4683-a2eb-df1ecda2e863=Assignment(partitions=[str-ecp-batch-composition-0])}
-2025-05-27T13:47:33.562+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Successfully synced group in generation Generation{generationId=196, memberId='consumer-str-ecp-batch-1-f56ee9e4-bb14-4683-a2eb-df1ecda2e863', protocol='range'}
-2025-05-27T13:47:33.562+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Notifying assignor about the new Assignment(partitions=[str-ecp-batch-composition-0])
-2025-05-27T13:47:33.566+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Adding newly assigned partitions: str-ecp-batch-composition-0
-2025-05-27T13:47:33.587+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Setting offset for partition str-ecp-batch-composition-0 to the committed offset FetchPosition{offset=18531, offsetEpoch=Optional[16], currentLeader=LeaderAndEpoch{leader=Optional[nsnxeteelpka03.nednet.co.za:9093 (id: 2 rack: null)], epoch=16}}
-2025-05-27T13:47:37.081+02:00  INFO 19756 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : No new messages found in topic 'str-ecp-batch-composition'
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.*;
+
+public class KafkaListenerService {
+
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+
+    private final KafkaConsumer<String, String> kafkaConsumer;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final String inputTopic;
+    private final String outputTopic;
+    private final ObjectMapper objectMapper;
+    private final SummaryJsonWriter summaryJsonWriter;
+
+    public KafkaListenerService(KafkaConsumer<String, String> kafkaConsumer,
+                                KafkaTemplate<String, String> kafkaTemplate,
+                                String inputTopic,
+                                String outputTopic,
+                                ObjectMapper objectMapper,
+                                SummaryJsonWriter summaryJsonWriter) {
+        this.kafkaConsumer = kafkaConsumer;
+        this.kafkaTemplate = kafkaTemplate;
+        this.inputTopic = inputTopic;
+        this.outputTopic = outputTopic;
+        this.objectMapper = objectMapper;
+        this.summaryJsonWriter = summaryJsonWriter;
+    }
+
+    public ApiResponse listen() {
+        logger.info("Starting manual poll of Kafka messages from topic '{}'", inputTopic);
+
+        List<SummaryPayload> processedSummaries = new ArrayList<>();
+        List<Long> offsetsProcessed = new ArrayList<>();
+        List<String> messageUUIDs = new ArrayList<>();
+        Map<String, Long> blobUploadTimes = new HashMap<>();
+        String timestamp = Instant.now().toString();
+
+        try {
+            ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(5));
+
+            if (records.isEmpty()) {
+                logger.info("No new messages found in topic '{}'", inputTopic);
+                return new ApiResponse("No new messages found",
+                        "Success",
+                        Collections.emptyList(),
+                        inputTopic,
+                        Collections.emptyList(),
+                        timestamp,
+                        0,
+                        Collections.emptyList(),
+                        Collections.emptyMap());
+            }
+
+            for (ConsumerRecord<String, String> record : records) {
+                logger.info("Processing message from topic {}, partition={}, offset={}",
+                        record.topic(), record.partition(), record.offset());
+
+                try {
+                    KafkaMessage message = objectMapper.readValue(record.value(), KafkaMessage.class);
+                    String messageUUID = UUID.randomUUID().toString();
+                    logger.info("Generated UUID {} for message at offset {}", messageUUID, record.offset());
+
+                    Instant startUpload = Instant.now();
+                    ApiResponse response = processSingleMessage(message);
+                    Instant endUpload = Instant.now();
+
+                    long uploadDurationMs = Duration.between(startUpload, endUpload).toMillis();
+                    logger.info("Blob upload took {} ms for message UUID {}", uploadDurationMs, messageUUID);
+
+                    // Assuming response contains summaryPayload and you want to track upload times per file
+                    // For demo, put upload time keyed by messageUUID (or file name if available)
+                    blobUploadTimes.put(messageUUID, uploadDurationMs);
+
+                    // Send the response as Kafka producer message
+                    String responseJson = objectMapper.writeValueAsString(response);
+                    kafkaTemplate.send(outputTopic, responseJson);
+                    logger.info("Sent response message to topic '{}'", outputTopic);
+
+                    if (response.getSummaryPayload() != null) {
+                        processedSummaries.add(response.getSummaryPayload());
+                        offsetsProcessed.add(record.offset());
+                        messageUUIDs.add(messageUUID);
+                    }
+
+                    // Commit offset after processing
+                    kafkaConsumer.commitSync(Collections.singletonMap(
+                            new TopicPartition(record.topic(), record.partition()),
+                            new OffsetAndMetadata(record.offset() + 1)
+                    ));
+                    logger.info("Committed offset {} for partition {}", record.offset() + 1, record.partition());
+
+                } catch (Exception e) {
+                    logger.error("Error processing Kafka message at offset " + record.offset(), e);
+                    return new ApiResponse("Failed at offset " + record.offset() + ": " + e.getMessage(),
+                            "Error",
+                            null,
+                            inputTopic,
+                            offsetsProcessed,
+                            timestamp,
+                            processedSummaries.size(),
+                            messageUUIDs,
+                            blobUploadTimes);
+                }
+            }
+
+        } catch (Exception e) {
+            logger.error("Error during Kafka polling", e);
+            return new ApiResponse("Kafka polling failed: " + e.getMessage(),
+                    "Error",
+                    null,
+                    inputTopic,
+                    offsetsProcessed,
+                    timestamp,
+                    processedSummaries.size(),
+                    messageUUIDs,
+                    blobUploadTimes);
+        }
+
+        logger.info("Processed {} message(s) with offsets {}", processedSummaries.size(), offsetsProcessed);
+
+        return new ApiResponse("Processed " + processedSummaries.size() + " message(s)",
+                "Success",
+                processedSummaries,
+                inputTopic,
+                offsetsProcessed,
+                timestamp,
+                processedSummaries.size(),
+                messageUUIDs,
+                blobUploadTimes);
+    }
