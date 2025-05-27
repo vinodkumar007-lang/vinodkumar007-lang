@@ -1,4 +1,3 @@
- // Collect the summary payload
-                    if (response.getSummaryPayload() != null) {
-                        processedSummaries.add(response.getSummaryPayload());
-                    }
+if (response.getData() instanceof SummaryPayload) {
+    processedSummaries.add((SummaryPayload) response.getData());
+}
