@@ -1,59 +1,18 @@
-@Autowired
-    public KafkaListenerService(
-            KafkaTemplate<String, String> kafkaTemplate,
-            BlobStorageService blobStorageService,
-            KafkaConsumer<String, String> kafkaConsumer,
-            @Value("${kafka.topic.input}") String inputTopic,
-            @Value("${kafka.topic.output}") String outputTopic,
-            @Value("${azure.blob.storage.account}") String azureBlobStorageAccount
-    ) {
-        this.kafkaTemplate = kafkaTemplate;
-        this.blobStorageService = blobStorageService;
-        this.kafkaConsumer = kafkaConsumer;
-        this.inputTopic = inputTopic;
-        this.outputTopic = outputTopic;
-        this.azureBlobStorageAccount = azureBlobStorageAccount;
-
-        // ✅ Subscribe after topic is initialized
-        if (inputTopic == null || inputTopic.trim().isEmpty()) {
-            throw new IllegalArgumentException("Input topic is null or empty");
-        }
-        this.kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
-    }
-
-    public void listen() {
-        logger.info("Starting manual poll of Kafka messages from topic '{}'", inputTopic);
-
-        try {
-            ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(5));
-            if (records.isEmpty()) {
-                logger.info("No new messages found in topic '{}'", inputTopic);
-                return;
-            }
-
-            for (ConsumerRecord<String, String> record : records) {
-                logger.info("Processing message from topic {}, partition={}, offset={}",
-                        record.topic(), record.partition(), record.offset());
-
-                try {
-                    KafkaMessage message = objectMapper.readValue(record.value(), KafkaMessage.class);
-                    ApiResponse response = processSingleMessage(message);
-
-                    String responseJson = objectMapper.writeValueAsString(response);
-                    kafkaTemplate.send(outputTopic, responseJson);
-                    logger.info("Sent processed response to Kafka topic {}", outputTopic);
-
-                    kafkaConsumer.commitSync(Collections.singletonMap(
-                            new TopicPartition(record.topic(), record.partition()),
-                            new org.apache.kafka.clients.consumer.OffsetAndMetadata(record.offset() + 1)
-                    ));
-
-                } catch (Exception e) {
-                    logger.error("Error processing Kafka message at offset " + record.offset(), e);
-                }
-            }
-
-        } catch (Exception e) {
-            logger.error("Error during Kafka polling", e);
-        }
-    }
+2025-05-27T13:47:32.024+02:00  INFO 19756 --- [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2025-05-27T13:47:32.025+02:00  INFO 19756 --- [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
+2025-05-27T13:47:32.076+02:00  INFO 19756 --- [nio-8080-exec-1] c.n.k.f.c.FileProcessingController       : POST /process called to trigger Kafka message processing.
+2025-05-27T13:47:32.076+02:00  INFO 19756 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Starting manual poll of Kafka messages from topic 'str-ecp-batch-composition'
+2025-05-27T13:47:33.425+02:00  INFO 19756 --- [nio-8080-exec-1] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Resetting the last seen epoch of partition str-ecp-batch-composition-0 to 16 since the associated topicId changed from null to MwBBZLPpRK6MmJMBo7pw8g
+2025-05-27T13:47:33.430+02:00  INFO 19756 --- [nio-8080-exec-1] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Cluster ID: y0ml4PnGSeO_hhGMyIz-pA
+2025-05-27T13:47:33.431+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Discovered group coordinator nsnxeteelpka01.nednet.co.za:9093 (id: 2147483647 rack: null)
+2025-05-27T13:47:33.435+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] (Re-)joining group
+2025-05-27T13:47:33.539+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Request joining group due to: need to re-join with the given member-id: consumer-str-ecp-batch-1-f56ee9e4-bb14-4683-a2eb-df1ecda2e863
+2025-05-27T13:47:33.540+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Request joining group due to: rebalance failed due to 'The group member needs to have a valid member id before actually entering a consumer group.' (MemberIdRequiredException)
+2025-05-27T13:47:33.540+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] (Re-)joining group
+2025-05-27T13:47:33.547+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Successfully joined group with generation Generation{generationId=196, memberId='consumer-str-ecp-batch-1-f56ee9e4-bb14-4683-a2eb-df1ecda2e863', protocol='range'}
+2025-05-27T13:47:33.551+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Finished assignment for group at generation 196: {consumer-str-ecp-batch-1-f56ee9e4-bb14-4683-a2eb-df1ecda2e863=Assignment(partitions=[str-ecp-batch-composition-0])}
+2025-05-27T13:47:33.562+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Successfully synced group in generation Generation{generationId=196, memberId='consumer-str-ecp-batch-1-f56ee9e4-bb14-4683-a2eb-df1ecda2e863', protocol='range'}
+2025-05-27T13:47:33.562+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Notifying assignor about the new Assignment(partitions=[str-ecp-batch-composition-0])
+2025-05-27T13:47:33.566+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Adding newly assigned partitions: str-ecp-batch-composition-0
+2025-05-27T13:47:33.587+02:00  INFO 19756 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Setting offset for partition str-ecp-batch-composition-0 to the committed offset FetchPosition{offset=18531, offsetEpoch=Optional[16], currentLeader=LeaderAndEpoch{leader=Optional[nsnxeteelpka03.nednet.co.za:9093 (id: 2 rack: null)], epoch=16}}
+2025-05-27T13:47:37.081+02:00  INFO 19756 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : No new messages found in topic 'str-ecp-batch-composition'
