@@ -1,33 +1,25 @@
-package com.nedbank.kafka.filemanage.controller;
-
-import com.nedbank.kafka.filemanage.service.KafkaListenerService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.Map;
-
-@RestController
-@RequestMapping("/api/file")
-public class FileProcessingController {
-
-    private static final Logger logger = LoggerFactory.getLogger(FileProcessingController.class);
-    private final KafkaListenerService kafkaListenerService;
-
-    public FileProcessingController(KafkaListenerService kafkaListenerService) {
-        this.kafkaListenerService = kafkaListenerService;
-    }
-
-    // Health check
-    @GetMapping("/health")
-    public String healthCheck() {
-        logger.info("Health check endpoint hit.");
-        return "File Processing Service is up and running.";
-    }
-
-    @PostMapping("/process")
-    public void triggerFileProcessing() {
-        logger.info("POST /process called to trigger Kafka message processing.");
-        kafkaListenerService.listen();
-    }
-}
+2025-05-27T14:42:36.703+02:00  INFO 22328 --- [           main] o.a.kafka.common.utils.AppInfoParser     : Kafka version: 3.3.1
+2025-05-27T14:42:36.706+02:00  INFO 22328 --- [           main] o.a.kafka.common.utils.AppInfoParser     : Kafka commitId: e23c59d00e687ff5
+2025-05-27T14:42:36.706+02:00  INFO 22328 --- [           main] o.a.kafka.common.utils.AppInfoParser     : Kafka startTimeMs: 1748349756700
+2025-05-27T14:42:36.717+02:00  INFO 22328 --- [           main] o.a.k.clients.consumer.KafkaConsumer     : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Subscribed to topic(s): str-ecp-batch-composition
+2025-05-27T14:42:37.710+02:00  INFO 22328 --- [           main] o.s.b.w.embedded.tomcat.TomcatWebServer  : Tomcat started on port(s): 8080 (http) with context path ''
+2025-05-27T14:42:37.730+02:00  INFO 22328 --- [           main] c.nedbank.kafka.filemanage.Application   : Started Application in 6.553 seconds (process running for 8.474)
+2025-05-27T14:43:26.539+02:00  INFO 22328 --- [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2025-05-27T14:43:26.540+02:00  INFO 22328 --- [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2025-05-27T14:43:26.542+02:00  INFO 22328 --- [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 1 ms
+2025-05-27T14:43:26.608+02:00  INFO 22328 --- [nio-8080-exec-1] c.n.k.f.c.FileProcessingController       : POST /process called to trigger Kafka message processing.
+2025-05-27T14:43:26.608+02:00  INFO 22328 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Starting manual poll of Kafka messages from topic 'str-ecp-batch-composition'
+2025-05-27T14:43:27.570+02:00  INFO 22328 --- [nio-8080-exec-1] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Resetting the last seen epoch of partition str-ecp-batch-composition-0 to 16 since the associated topicId changed from null to MwBBZLPpRK6MmJMBo7pw8g
+2025-05-27T14:43:27.573+02:00  INFO 22328 --- [nio-8080-exec-1] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Cluster ID: y0ml4PnGSeO_hhGMyIz-pA
+2025-05-27T14:43:27.576+02:00  INFO 22328 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Discovered group coordinator nsnxeteelpka01.nednet.co.za:9093 (id: 2147483647 rack: null)
+2025-05-27T14:43:27.580+02:00  INFO 22328 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] (Re-)joining group
+2025-05-27T14:43:27.676+02:00  INFO 22328 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Request joining group due to: need to re-join with the given member-id: consumer-str-ecp-batch-1-82e9dfbd-5a3b-4792-94bd-a48196148c69
+2025-05-27T14:43:27.677+02:00  INFO 22328 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Request joining group due to: rebalance failed due to 'The group member needs to have a valid member id before actually entering a consumer group.' (MemberIdRequiredException)
+2025-05-27T14:43:27.677+02:00  INFO 22328 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] (Re-)joining group
+2025-05-27T14:43:27.684+02:00  INFO 22328 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Successfully joined group with generation Generation{generationId=200, memberId='consumer-str-ecp-batch-1-82e9dfbd-5a3b-4792-94bd-a48196148c69', protocol='range'}
+2025-05-27T14:43:27.687+02:00  INFO 22328 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Finished assignment for group at generation 200: {consumer-str-ecp-batch-1-82e9dfbd-5a3b-4792-94bd-a48196148c69=Assignment(partitions=[str-ecp-batch-composition-0])}
+2025-05-27T14:43:27.699+02:00  INFO 22328 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Successfully synced group in generation Generation{generationId=200, memberId='consumer-str-ecp-batch-1-82e9dfbd-5a3b-4792-94bd-a48196148c69', protocol='range'}
+2025-05-27T14:43:27.700+02:00  INFO 22328 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Notifying assignor about the new Assignment(partitions=[str-ecp-batch-composition-0])
+2025-05-27T14:43:27.704+02:00  INFO 22328 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Adding newly assigned partitions: str-ecp-batch-composition-0
+2025-05-27T14:43:27.721+02:00  INFO 22328 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Setting offset for partition str-ecp-batch-composition-0 to the committed offset FetchPosition{offset=18531, offsetEpoch=Optional[16], currentLeader=LeaderAndEpoch{leader=Optional[nsnxeteelpka03.nednet.co.za:9093 (id: 2 rack: null)], epoch=16}}
+2025-05-27T14:43:31.623+02:00  INFO 22328 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : No new messages found in topic 'str-ecp-batch-composition'
