@@ -1,100 +1,69 @@
-java.lang.NullPointerException: Cannot invoke "java.util.List.size()" because the return value of "com.nedbank.kafka.filemanage.model.MetaDataInfo.getCustomerSummaries()" is null
-	at com.nedbank.kafka.filemanage.utils.SummaryJsonWriter.appendToSummaryJson(SummaryJsonWriter.java:54) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.listen(KafkaListenerService.java:128) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.controller.FileProcessingController.triggerFileProcessing(FileProcessingController.java:31) ~[classes/:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
-	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:884) ~[spring-webmvc-
+public static synchronized void appendToSummaryJson(File summaryFile, SummaryPayload payload) throws IOException {
+    ObjectNode root;
 
- package com.nedbank.kafka.filemanage.utils;
+    if (summaryFile.exists()) {
+        root = (ObjectNode) mapper.readTree(summaryFile);
+    } else {
+        root = mapper.createObjectNode();
+        root.putArray("processedFiles");
+        root.putArray("printFiles");
+    }
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.nedbank.kafka.filemanage.model.SummaryPayload;
+    // Set batchID and fileName only once
+    if (!root.has("batchID")) {
+        root.put("batchID", payload.getBatchId());
+    }
+    if (!root.has("fileName")) {
+        root.put("fileName", payload.getFileName());
+    }
 
-import java.io.File;
-import java.io.IOException;
-import java.util.HashSet;
-import java.util.Set;
+    // Header - set once only
+    if (!headerInitialized && payload.getHeader() != null) {
+        ObjectNode header = mapper.createObjectNode();
+        header.put("tenantCode", payload.getHeader().getTenantCode());
+        header.put("channelID", payload.getHeader().getChannelID());
+        header.put("audienceID", payload.getHeader().getAudienceID());
+        header.put("timestamp", payload.getHeader().getTimestamp());
+        header.put("sourceSystem", payload.getHeader().getSourceSystem());
+        header.put("product", payload.getHeader().getProduct());
+        header.put("jobName", payload.getJobName());
+        root.set("header", header);
+        headerInitialized = true;
+    }
 
-public class SummaryJsonWriter {
+    // Process customer summaries
+    if (payload.getMetaData() != null && payload.getMetaData().getCustomerSummaries() != null) {
+        for (var summary : payload.getMetaData().getCustomerSummaries()) {
+            String customerKey = summary.getCustomerId() + "|" + summary.getAccountNumber();
 
-    private static final ObjectMapper mapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
-    private static final Set<String> processedCustomerAccounts = new HashSet<>();
-    private static final Set<String> addedPrintFileUrls = new HashSet<>();
-    private static boolean headerInitialized = false;
+            // Add processedFiles entry only if not already added
+            if (!processedCustomerAccounts.contains(customerKey)) {
+                ObjectNode processedEntry = mapper.createObjectNode();
+                processedEntry.put("customerID", summary.getCustomerId());
+                processedEntry.put("accountNumber", summary.getAccountNumber());
+                processedEntry.put("pdfArchiveFileURL", summary.getPdfArchiveFileURL());
+                processedEntry.put("pdfEmailFileURL", summary.getPdfEmailFileURL());
+                processedEntry.put("htmlEmailFileURL", summary.getHtmlEmailFileURL());
+                processedEntry.put("txtEmailFileURL", summary.getTxtEmailFileURL());
+                processedEntry.put("pdfMobstatFileURL", summary.getPdfMobstatFileURL());
+                processedEntry.put("statusCode", payload.getStatusCode());
+                processedEntry.put("statusDescription", payload.getStatusDescription());
 
-    public static synchronized void appendToSummaryJson(File summaryFile, SummaryPayload payload) throws IOException {
-        ObjectNode root;
+                ((ArrayNode) root.withArray("processedFiles")).add(processedEntry);
+                processedCustomerAccounts.add(customerKey);
+            }
 
-        if (summaryFile.exists()) {
-            root = (ObjectNode) mapper.readTree(summaryFile);
-        } else {
-            root = mapper.createObjectNode();
-            root.putArray("processedFiles");
-            root.putArray("printFiles");
-        }
+            // Add print file if not already added
+            if (summary.getPrintFileURL() != null && !addedPrintFileUrls.contains(summary.getPrintFileURL())) {
+                ObjectNode printFileEntry = mapper.createObjectNode();
+                printFileEntry.put("printFileURL", summary.getPrintFileURL());
 
-        // Set batchID and fileName only once
-        if (!root.has("batchID")) {
-            root.put("batchID", payload.getBatchId());
-        }
-        if (!root.has("fileName")) {
-            root.put("fileName", payload.getFileName());
-        }
-
-        // Header - set once only
-        if (!headerInitialized) {
-            ObjectNode header = mapper.createObjectNode();
-            header.put("tenantCode", payload.getHeader().getTenantCode());
-            header.put("channelID", payload.getHeader().getChannelID());
-            header.put("audienceID", payload.getHeader().getAudienceID());
-            header.put("timestamp", payload.getHeader().getTimestamp());
-            header.put("sourceSystem", payload.getHeader().getSourceSystem());
-            header.put("product", payload.getHeader().getProduct());
-            header.put("jobName", payload.getJobName());
-            root.set("header", header);
-            headerInitialized = true;
-        }
-        if(payload.getCustomerSummaries() != null) {
-            for (int i = 0; i < payload.getMetaData().getCustomerSummaries().size(); i++) {
-                // Add processedFiles entry only if not already added
-                String customerKey = payload.getMetaData().getCustomerSummaries().get(i).getCustomerId()
-                        + "|" + payload.getMetaData().getCustomerSummaries().get(i).getAccountNumber();
-                if (!processedCustomerAccounts.contains(customerKey)) {
-                    ObjectNode processedEntry = mapper.createObjectNode();
-                    processedEntry.put("customerID", payload.getMetaData().getCustomerSummaries().get(i).getCustomerId());
-                    processedEntry.put("accountNumber", payload.getMetaData().getCustomerSummaries().get(i).getAccountNumber());
-                    processedEntry.put("pdfArchiveFileURL", payload.getMetaData().getCustomerSummaries().get(i).getPdfArchiveFileURL());
-                    processedEntry.put("pdfEmailFileURL", payload.getMetaData().getCustomerSummaries().get(i).getPdfEmailFileURL());
-                    processedEntry.put("htmlEmailFileURL", payload.getMetaData().getCustomerSummaries().get(i).getHtmlEmailFileURL());
-                    processedEntry.put("txtEmailFileURL", payload.getMetaData().getCustomerSummaries().get(i).getTxtEmailFileURL());
-                    processedEntry.put("pdfMobstatFileURL", payload.getMetaData().getCustomerSummaries().get(i).getPdfMobstatFileURL());
-                    processedEntry.put("statusCode", payload.getStatusCode());
-                    processedEntry.put("statusDescription", payload.getStatusDescription());
-
-                    ((ArrayNode) root.withArray("processedFiles")).add(processedEntry);
-                    processedCustomerAccounts.add(customerKey);
-                }
-
-                // Add print file if not already added
-                if (payload.getMetaData().getCustomerSummaries().get(i).getPrintFileURL() != null && !addedPrintFileUrls.contains(payload.getMetaData().getCustomerSummaries().get(i).getPrintFileURL())) {
-                    ObjectNode printFileEntry = mapper.createObjectNode();
-                    printFileEntry.put("printFileURL", payload.getMetaData().getCustomerSummaries().get(i).getPrintFileURL());
-
-                    ((ArrayNode) root.withArray("printFiles")).add(printFileEntry);
-                    addedPrintFileUrls.add(payload.getMetaData().getCustomerSummaries().get(i).getPrintFileURL());
-                }
+                ((ArrayNode) root.withArray("printFiles")).add(printFileEntry);
+                addedPrintFileUrls.add(summary.getPrintFileURL());
             }
         }
-        // Write back to file
-        mapper.writeValue(summaryFile, root);
     }
+
+    // Write back to file
+    mapper.writeValue(summaryFile, root);
 }
