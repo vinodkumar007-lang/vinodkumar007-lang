@@ -1,3 +1,21 @@
+package com.nedbank.kafka.filemanage.service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.KafkaMessage;
+import com.nedbank.kafka.filemanage.model.ApiResponse;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.kafka.core.ConsumerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
+
+import java.time.Duration;
+import java.util.*;
+
 @Service
 public class KafkaListenerService {
 
@@ -23,15 +41,15 @@ public class KafkaListenerService {
     }
 
     public Map<String, Object> listen() {
-        // Create a KafkaConsumer from the injected ConsumerFactory (configured with SSL, etc)
+        // Use try-with-resources to ensure consumer is closed
         try (KafkaConsumer<String, String> consumer = (KafkaConsumer<String, String>) consumerFactory.createConsumer()) {
             consumer.subscribe(Collections.singletonList(inputTopic));
-            logger.info("Polling Kafka topic {} for new messages...", inputTopic);
+            logger.info("Subscribed to topic: {}", inputTopic);
 
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
 
             if (records.isEmpty()) {
-                logger.info("No new Kafka messages found");
+                logger.info("No new Kafka messages found.");
                 Map<String, Object> emptyResponse = new HashMap<>();
                 emptyResponse.put("message", "No new messages found");
                 emptyResponse.put("status", "empty");
@@ -40,25 +58,36 @@ public class KafkaListenerService {
             }
 
             ApiResponse lastResponse = null;
+
             for (ConsumerRecord<String, String> record : records) {
-                logger.info("Processing Kafka message: partition={}, offset={}", record.partition(), record.offset());
+                logger.info("Processing message at partition {}, offset {}", record.partition(), record.offset());
 
-                KafkaMessage message = objectMapper.readValue(record.value(), KafkaMessage.class);
-                lastResponse = processSingleMessage(message);
+                try {
+                    KafkaMessage message = objectMapper.readValue(record.value(), KafkaMessage.class);
 
-                String responseJson = objectMapper.writeValueAsString(lastResponse);
-                kafkaTemplate.send(outputTopic, responseJson);
-                logger.info("Sent processed response to Kafka topic {}", outputTopic);
+                    // Process the message (your existing logic)
+                    lastResponse = processSingleMessage(message);
+
+                    // Send response to output Kafka topic
+                    String responseJson = objectMapper.writeValueAsString(lastResponse);
+                    kafkaTemplate.send(outputTopic, responseJson);
+                    logger.info("Sent processed response to output topic: {}", outputTopic);
+
+                } catch (Exception ex) {
+                    logger.error("Error processing Kafka message at offset {}: {}", record.offset(), ex.getMessage(), ex);
+                    // Optionally handle message failure or continue
+                }
             }
 
+            // Prepare final response for controller
             Map<String, Object> responseMap = new HashMap<>();
-            responseMap.put("message", lastResponse.getMessage());
-            responseMap.put("status", lastResponse.getStatus());
-            responseMap.put("summaryPayload", lastResponse.getSummaryPayload());
+            responseMap.put("message", lastResponse != null ? lastResponse.getMessage() : "No messages processed");
+            responseMap.put("status", lastResponse != null ? lastResponse.getStatus() : "no_data");
+            responseMap.put("summaryPayload", lastResponse != null ? lastResponse.getSummaryPayload() : null);
             return responseMap;
 
         } catch (Exception e) {
-            logger.error("Error during manual Kafka consumption", e);
+            logger.error("Exception during Kafka consumption", e);
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("message", "Error processing messages: " + e.getMessage());
             errorResponse.put("status", "error");
