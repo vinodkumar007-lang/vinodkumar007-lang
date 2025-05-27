@@ -38,13 +38,16 @@ public class KafkaListenerService {
         this.summaryJsonWriter = summaryJsonWriter;
     }
 
-    public Map<String, Object> listen() {
+    public SummaryResponse listen() {
         ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(1));
-        List<Map<String, Object>> processedFiles = new ArrayList<>();
-        List<Map<String, Object>> printFiles = new ArrayList<>();
-        Map<String, Object> header = new HashMap<>();
+        List<ProcessedFile> processedFiles = new ArrayList<>();
+        List<PrintFile> printFiles = new ArrayList<>();
+
         String batchId = UUID.randomUUID().toString();
         String fileName = "summary.json";
+
+        Header header = null;
+        Metadata metadata = null;
 
         for (ConsumerRecord<String, String> record : records) {
             String message = record.value();
@@ -70,45 +73,40 @@ public class KafkaListenerService {
                 String eventOutcomeCode = dataNode.path("eventOutcomeCode").asText();
                 String eventOutcomeDescription = dataNode.path("eventOutcomeDescription").asText();
 
+                // Copy file to Azure Blob Storage
                 String destPath = batchId + "/" + objectId;
 
-                // Correct call to copy file to Azure Blob
-                Map<String, String> metadata = new HashMap<>();
-                metadata.put("sourceSystem", sourceSystem);
-                metadata.put("consumerReference", consumerReference);
-                metadata.put("processReference", processReference);
-                metadata.put("timestamp", timestamp);
+                Map<String, String> metaMap = new HashMap<>();
+                metaMap.put("sourceSystem", sourceSystem);
+                metaMap.put("consumerReference", consumerReference);
+                metaMap.put("processReference", processReference);
+                metaMap.put("timestamp", timestamp);
 
                 try {
-                    blobStorageService.copyFileFromUrlToBlob(blobUrl, destPath, metadata);
+                    blobStorageService.copyFileFromUrlToBlob(blobUrl, destPath, metaMap);
                 } catch (Exception e) {
                     logger.warn("Failed to copy blob from URL {}: {}", blobUrl, e.getMessage());
                 }
 
-                Map<String, Object> processedFileEntry = new HashMap<>();
-                processedFileEntry.put("blobUrl", blobUrl);
-                processedFileEntry.put("sourceSystem", sourceSystem);
-                processedFileEntry.put("objectId", objectId);
-                processedFileEntry.put("consumerReference", consumerReference);
-                processedFileEntry.put("processReference", processReference);
-                processedFileEntry.put("timestamp", timestamp);
-                processedFileEntry.put("eventOutcomeCode", eventOutcomeCode);
-                processedFileEntry.put("eventOutcomeDescription", eventOutcomeDescription);
+                // Build processed file POJO
+                ProcessedFile processedFile = new ProcessedFile(blobUrl, sourceSystem, objectId,
+                        consumerReference, processReference, timestamp,
+                        eventOutcomeCode, eventOutcomeDescription);
+                processedFiles.add(processedFile);
 
-                processedFiles.add(processedFileEntry);
-
-                // Optional: Add print file if present
+                // Build print file POJO if available
                 if (dataNode.has("printFileURL")) {
-                    Map<String, Object> printEntry = new HashMap<>();
-                    printEntry.put("printFileURL", dataNode.path("printFileURL").asText());
-                    printFiles.add(printEntry);
+                    printFiles.add(new PrintFile(dataNode.path("printFileURL").asText()));
                 }
 
-                // Populate header fields only once
-                if (header.isEmpty()) {
-                    header.put("batchID", batchId);
-                    header.put("fileName", fileName);
-                    header.put("timestamp", Instant.now().toString());
+                // Build header once
+                if (header == null) {
+                    header = new Header(batchId, fileName, Instant.now().toString());
+                }
+
+                // Build metadata once from first processed file
+                if (metadata == null) {
+                    metadata = new Metadata(sourceSystem, consumerReference, processReference, timestamp);
                 }
 
             } catch (Exception e) {
@@ -116,35 +114,199 @@ public class KafkaListenerService {
             }
         }
 
-        File summaryFile = null;
-        String summaryBlobUrl = null;
-        Map<String, Object> response = new HashMap<>();
-
-        if (!processedFiles.isEmpty()) {
-            summaryFile = summaryJsonWriter.appendToSummaryJson(batchId, header, processedFiles, printFiles);
-
-            // Correct call to upload summary.json to Azure
-            try {
-                String summaryDestPath = "summaries/" + UUID.randomUUID() + "-summary.json";
-                summaryBlobUrl = blobStorageService.uploadSummaryJson(summaryFile, summaryDestPath);
-            } catch (Exception e) {
-                logger.error("Failed to upload summary.json: {}", e.getMessage(), e);
-            }
-
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("header", header);
-            payload.put("processedFiles", processedFiles);
-            payload.put("printFiles", printFiles);
-            payload.put("summaryFileURL", summaryBlobUrl);
-
-            response.put("message", "Kafka messages processed successfully");
-            response.put("status", "success");
-            response.put("summaryPayload", payload);
-        } else {
-            response.put("message", "No new Kafka messages to process");
-            response.put("status", "success");
+        if (processedFiles.isEmpty()) {
+            return new SummaryResponse("No new Kafka messages to process", "success", null);
         }
 
-        return response;
+        // Create summary.json file with the SummaryJsonWriter utility
+        File summaryFile = summaryJsonWriter.appendToSummaryJson(batchId, header, processedFiles, printFiles);
+
+        String summaryBlobUrl = null;
+        try {
+            summaryBlobUrl = blobStorageService.uploadSummaryJson(summaryFile,
+                    "summaries/" + UUID.randomUUID() + "-summary.json");
+        } catch (Exception e) {
+            logger.error("Failed to upload summary.json: {}", e.getMessage(), e);
+        }
+
+        SummaryPayload summaryPayload = new SummaryPayload(header, metadata, processedFiles, printFiles, summaryBlobUrl);
+        return new SummaryResponse("Kafka messages processed successfully", "success", summaryPayload);
     }
+
+
+    // ---- POJO Classes ----
+
+    public static class SummaryResponse {
+        private String message;
+        private String status;
+        private SummaryPayload summaryPayload;
+
+        public SummaryResponse() {}
+
+        public SummaryResponse(String message, String status, SummaryPayload summaryPayload) {
+            this.message = message;
+            this.status = status;
+            this.summaryPayload = summaryPayload;
+        }
+
+        // Getters and setters
+        public String getMessage() { return message; }
+        public void setMessage(String message) { this.message = message; }
+
+        public String getStatus() { return status; }
+        public void setStatus(String status) { this.status = status; }
+
+        public SummaryPayload getSummaryPayload() { return summaryPayload; }
+        public void setSummaryPayload(SummaryPayload summaryPayload) { this.summaryPayload = summaryPayload; }
+    }
+
+    public static class SummaryPayload {
+        private Header header;
+        private Metadata metadata;
+        private List<ProcessedFile> processedFiles;
+        private List<PrintFile> printFiles;
+        private String summaryFileURL;
+
+        public SummaryPayload() {}
+
+        public SummaryPayload(Header header, Metadata metadata, List<ProcessedFile> processedFiles,
+                              List<PrintFile> printFiles, String summaryFileURL) {
+            this.header = header;
+            this.metadata = metadata;
+            this.processedFiles = processedFiles;
+            this.printFiles = printFiles;
+            this.summaryFileURL = summaryFileURL;
+        }
+
+        public Header getHeader() { return header; }
+        public void setHeader(Header header) { this.header = header; }
+
+        public Metadata getMetadata() { return metadata; }
+        public void setMetadata(Metadata metadata) { this.metadata = metadata; }
+
+        public List<ProcessedFile> getProcessedFiles() { return processedFiles; }
+        public void setProcessedFiles(List<ProcessedFile> processedFiles) { this.processedFiles = processedFiles; }
+
+        public List<PrintFile> getPrintFiles() { return printFiles; }
+        public void setPrintFiles(List<PrintFile> printFiles) { this.printFiles = printFiles; }
+
+        public String getSummaryFileURL() { return summaryFileURL; }
+        public void setSummaryFileURL(String summaryFileURL) { this.summaryFileURL = summaryFileURL; }
+    }
+
+    public static class Header {
+        private String batchID;
+        private String fileName;
+        private String timestamp;
+
+        public Header() {}
+
+        public Header(String batchID, String fileName, String timestamp) {
+            this.batchID = batchID;
+            this.fileName = fileName;
+            this.timestamp = timestamp;
+        }
+
+        public String getBatchID() { return batchID; }
+        public void setBatchID(String batchID) { this.batchID = batchID; }
+
+        public String getFileName() { return fileName; }
+        public void setFileName(String fileName) { this.fileName = fileName; }
+
+        public String getTimestamp() { return timestamp; }
+        public void setTimestamp(String timestamp) { this.timestamp = timestamp; }
+    }
+
+    public static class Metadata {
+        private String sourceSystem;
+        private String consumerReference;
+        private String processReference;
+        private String timestamp;
+
+        public Metadata() {}
+
+        public Metadata(String sourceSystem, String consumerReference,
+                        String processReference, String timestamp) {
+            this.sourceSystem = sourceSystem;
+            this.consumerReference = consumerReference;
+            this.processReference = processReference;
+            this.timestamp = timestamp;
+        }
+
+        public String getSourceSystem() { return sourceSystem; }
+        public void setSourceSystem(String sourceSystem) { this.sourceSystem = sourceSystem; }
+
+        public String getConsumerReference() { return consumerReference; }
+        public void setConsumerReference(String consumerReference) { this.consumerReference = consumerReference; }
+
+        public String getProcessReference() { return processReference; }
+        public void setProcessReference(String processReference) { this.processReference = processReference; }
+
+        public String getTimestamp() { return timestamp; }
+        public void setTimestamp(String timestamp) { this.timestamp = timestamp; }
+    }
+
+    public static class ProcessedFile {
+        private String blobUrl;
+        private String sourceSystem;
+        private String objectId;
+        private String consumerReference;
+        private String processReference;
+        private String timestamp;
+        private String eventOutcomeCode;
+        private String eventOutcomeDescription;
+
+        public ProcessedFile() {}
+
+        public ProcessedFile(String blobUrl, String sourceSystem, String objectId,
+                             String consumerReference, String processReference, String timestamp,
+                             String eventOutcomeCode, String eventOutcomeDescription) {
+            this.blobUrl = blobUrl;
+            this.sourceSystem = sourceSystem;
+            this.objectId = objectId;
+            this.consumerReference = consumerReference;
+            this.processReference = processReference;
+            this.timestamp = timestamp;
+            this.eventOutcomeCode = eventOutcomeCode;
+            this.eventOutcomeDescription = eventOutcomeDescription;
+        }
+
+        public String getBlobUrl() { return blobUrl; }
+        public void setBlobUrl(String blobUrl) { this.blobUrl = blobUrl; }
+
+        public String getSourceSystem() { return sourceSystem; }
+        public void setSourceSystem(String sourceSystem) { this.sourceSystem = sourceSystem; }
+
+        public String getObjectId() { return objectId; }
+        public void setObjectId(String objectId) { this.objectId = objectId; }
+
+        public String getConsumerReference() { return consumerReference; }
+        public void setConsumerReference(String consumerReference) { this.consumerReference = consumerReference; }
+
+        public String getProcessReference() { return processReference; }
+        public void setProcessReference(String processReference) { this.processReference = processReference; }
+
+        public String getTimestamp() { return timestamp; }
+        public void setTimestamp(String timestamp) { this.timestamp = timestamp; }
+
+        public String getEventOutcomeCode() { return eventOutcomeCode; }
+        public void setEventOutcomeCode(String eventOutcomeCode) { this.eventOutcomeCode = eventOutcomeCode; }
+
+        public String getEventOutcomeDescription() { return eventOutcomeDescription; }
+        public void setEventOutcomeDescription(String eventOutcomeDescription) { this.eventOutcomeDescription = eventOutcomeDescription; }
+    }
+
+    public static class PrintFile {
+        private String printFileURL;
+
+        public PrintFile() {}
+
+        public PrintFile(String printFileURL) {
+            this.printFileURL = printFileURL;
+        }
+
+        public String getPrintFileURL() { return printFileURL; }
+        public void setPrintFileURL(String printFileURL) { this.printFileURL = printFileURL; }
+    }
+
 }
