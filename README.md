@@ -1,4 +1,4 @@
- public String copyFileFromUrlToBlob(String sourceUrl, String targetBlobPath) {
+public String copyFileFromUrlToBlob(String sourceUrl, String targetBlobPath) {
         try {
             initSecrets();
 
@@ -53,30 +53,5 @@
         } catch (Exception e) {
             logger.error("❌ Error copying file from URL: {}", e.getMessage(), e);
             throw new CustomAppException("Error copying file from URL", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
-    }
-
-    public String uploadFile(String content, String targetBlobPath) {
-        try {
-            initSecrets();
-
-            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
-            BlobClient blobClient = containerClient.getBlobClient(targetBlobPath);
-
-            byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-            blobClient.upload(new java.io.ByteArrayInputStream(bytes), bytes.length, true);
-
-            logger.info("✅ Uploaded file to '{}'", blobClient.getBlobUrl());
-
-            return blobClient.getBlobUrl();
-
-        } catch (Exception e) {
-            logger.error("❌ Error uploading file: {}", e.getMessage(), e);
-            throw new CustomAppException("Error uploading file", 602, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
     }
