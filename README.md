@@ -1,6 +1,7 @@
 package com.nedbank.kafka.filemanage.config;
 
 import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -47,7 +48,7 @@ public class KafkaConfig {
         Map<String, Object> props = new HashMap<>();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");//earliest
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
         props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
         props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
@@ -89,4 +90,29 @@ public class KafkaConfig {
     public KafkaTemplate<String, String> kafkaTemplate() {
         return new KafkaTemplate<>(producerFactory());
     }
+
+    // 🔥 Add manual KafkaConsumer bean for use in KafkaListenerService
+    @Bean
+    public KafkaConsumer<String, String> manualKafkaConsumer() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        props.put("security.protocol", "SSL");
+        props.put("ssl.keystore.location", keystoreLocation);
+        props.put("ssl.keystore.password", keystorePassword);
+        props.put("ssl.key.password", keyPassword);
+        props.put("ssl.truststore.location", truststoreLocation);
+        props.put("ssl.truststore.password", truststorePassword);
+        props.put("ssl.protocol", sslProtocol);
+
+        return new KafkaConsumer<>(props);
+    }
 }
+@Autowired
+public KafkaListenerService(SummaryJsonWriter summaryJsonWriter,
+                            KafkaConsumer<String, String> kafkaConsumer,
+                            KafkaTemplate<String, String> kafkaTemplate) {
