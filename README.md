@@ -1,70 +1,24 @@
-kafka:
-  bootstrap:
-    servers: nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
-  consumer:
-    group:
-      id: str-ecp-batch
-    auto:
-      offset:
-        reset: earliest
-    enable:
-      auto:
-        commit: true
-    security:
-      protocol: SSL
-    ssl:
-      keystore:
-        location: C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
-        password: 3dX7y3Yz9Jv6L4F
-      key:
-        password: 3dX7y3Yz9Jv6L4F
-      truststore:
-        location: C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
-        password: nedbank1
-      protocol: TLSv1.2
-    key:
-      deserializer: org.apache.kafka.common.serialization.StringDeserializer
-    value:
-      deserializer: org.apache.kafka.common.serialization.StringDeserializer
-  producer:
-    key:
-      serializer: org.apache.kafka.common.serialization.StringSerializer
-    value:
-      serializer: org.apache.kafka.common.serialization.StringSerializer
-    security:
-      protocol: SSL
-    ssl:
-      keystore:
-        location: C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
-        password: 3dX7y3Yz9Jv6L4F
-      key:
-        password: 3dX7y3Yz9Jv6L4F
-      truststore:
-        location: C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
-        password: nedbank1
-      protocol: TLSv1.2
-    bootstrap:
-      servers: nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
-  topic:
-    input: str-ecp-batch-composition
-    output: str-ecp-batch-composition-complete
+I am currently setting up the development environment on my Windows system. As part of this setup, I am using the following local paths for the JDK and Kafka certificate files:
 
-azure:
-  keyvault:
-    uri: https://nsn-dev-ecm-kva-001.vault.azure.net/secrets
-  blob:
-    storage:
-      account: https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001
+pgsql
+Copy
+Edit
+JDK Keystore Location: C:\Users\CC437236\jdk-17.0.12_windows-x64_bin\jdk-17.0.12\lib\security\keystore.jks  
+Keystore Password: 3dX7y3Yz9Jv6L4F  
+Key Password: 3dX7y3Yz9Jv6L4F
 
-vault:
-  hashicorp:
-    url: https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200
-    namespace: admin/espire
-    passwordDev: Dev+Cred4#
-    passwordNbhDev: nbh_dev1
+Truststore Location: C:\Users\CC437236\jdk-17.0.12_windows-x64_bin\jdk-17.0.12\lib\security\truststore.jks  
+Truststore Password: nedbank1
+To ensure proper configuration in the dev environment, Kulshan will need the equivalent Linux paths in order to set these up in her pipeline.
 
-logging:
-  level:
-    org:
-      springframework:
-        kafka: DEBUG
+Could you please provide the following Linux file paths:
+
+Location of the installed JDK
+
+Path to the keystore file
+
+Path to the truststore file
+
+This will help align our local and pipeline configurations correctly.
+
+Thank you for your support.
