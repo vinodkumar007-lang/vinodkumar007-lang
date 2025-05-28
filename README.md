@@ -1,9 +1,17 @@
-Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
-2025-05-28T12:28:35.380Z ERROR 1 --- [           main] o.s.boot.SpringApplication               : Application run failed
- 
-org.springframework.context.ApplicationContextException: Unable to start web server
- at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.onRefresh(ServletWebServerApplicationContext.java:164) ~[spring-boot-3.0.0.jar!/:3.0.0]
- at org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:578) ~[spring-context-6.0.2.jar!/:6.0.2]
+Error creating bean with name 'kafkaListenerService' defined in URL [jar:file:/app/file-manager-1.0-SNAPSHOT.jar!/BOOT-INF/classes!/com/nedbank/kafka/filemanage/service/KafkaListenerService.class]: Unsatisfied dependency expressed through constructor parameter 2: Error creating bean with name 'manualKafkaConsumer' defined in class path resource [com/nedbank/kafka/filemanage/config/KafkaConfig.class]: Failed to instantiate [org.apache.kafka.clients.consumer.KafkaConsumer]: Factory method 'manualKafkaConsumer' threw exception with message: Failed to construct kafka consumer
+ at org.springframework.beans.factory.support.ConstructorResolver.createArgumentArray(ConstructorResolver.java:793) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.ConstructorResolver.autowireConstructor(ConstructorResolver.java:242) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.autowireConstructor(AbstractAutowireCapableBeanFactory.java:1344) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBeanInstance(AbstractAutowireCapableBeanFactory.java:1188) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:561) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:521) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:326) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:234) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:324) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:200) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.DefaultListableBeanFactory.preInstantiateSingletons(DefaultListableBeanFactory.java:961) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.context.support.AbstractApplicationContext.finishBeanFactoryInitialization(AbstractApplicationContext.java:915) ~[spring-context-6.0.2.jar!/:6.0.2]
+ at org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:584) ~[spring-context-6.0.2.jar!/:6.0.2]
  at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.refresh(ServletWebServerApplicationContext.java:146) ~[spring-boot-3.0.0.jar!/:3.0.0]
  at org.springframework.boot.SpringApplication.refresh(SpringApplication.java:730) ~[spring-boot-3.0.0.jar!/:3.0.0]
  at org.springframework.boot.SpringApplication.refreshContext(SpringApplication.java:432) ~[spring-boot-3.0.0.jar!/:3.0.0]
@@ -19,21 +27,63 @@ org.springframework.context.ApplicationContextException: Unable to start web ser
  at org.springframework.boot.loader.Launcher.launch(Launcher.java:95) ~[file-manager-1.0-SNAPSHOT.jar:na]
  at org.springframework.boot.loader.Launcher.launch(Launcher.java:58) ~[file-manager-1.0-SNAPSHOT.jar:na]
  at org.springframework.boot.loader.JarLauncher.main(JarLauncher.java:65) ~[file-manager-1.0-SNAPSHOT.jar:na]
-Caused by: org.springframework.boot.web.server.WebServerException: Unable to create tempDir. java.io.tmpdir is set to /tmp
- at org.springframework.boot.web.server.AbstractConfigurableWebServerFactory.createTempDir(AbstractConfigurableWebServerFactory.java:208) ~[spring-boot-3.0.0.jar!/:3.0.0]
- at org.springframework.boot.web.embedded.tomcat.TomcatServletWebServerFactory.getWebServer(TomcatServletWebServerFactory.java:194) ~[spring-boot-3.0.0.jar!/:3.0.0]
- at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.createWebServer(ServletWebServerApplicationContext.java:183) ~[spring-boot-3.0.0.jar!/:3.0.0]
- at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.onRefresh(ServletWebServerApplicationContext.java:161) ~[spring-boot-3.0.0.jar!/:3.0.0]
- ... 16 common frames omitted
-Caused by: java.nio.file.FileSystemException: /tmp/tomcat.8080.15177094959256078919: Read-only file system
- at java.base/sun.nio.fs.UnixException.translateToIOException(UnixException.java:100) ~[na:na]
+Caused by: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'manualKafkaConsumer' defined in class path resource [com/nedbank/kafka/filemanage/config/KafkaConfig.class]: Failed to instantiate [org.apache.kafka.clients.consumer.KafkaConsumer]: Factory method 'manualKafkaConsumer' threw exception with message: Failed to construct kafka consumer
+ at org.springframework.beans.factory.support.ConstructorResolver.instantiate(ConstructorResolver.java:652) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.ConstructorResolver.instantiateUsingFactoryMethod(ConstructorResolver.java:488) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.instantiateUsingFactoryMethod(AbstractAutowireCapableBeanFactory.java:1324) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBeanInstance(AbstractAutowireCapableBeanFactory.java:1161) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:561) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:521) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:326) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:234) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:324) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:200) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.config.DependencyDescriptor.resolveCandidate(DependencyDescriptor.java:254) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.DefaultListableBeanFactory.doResolveDependency(DefaultListableBeanFactory.java:1405) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.DefaultListableBeanFactory.resolveDependency(DefaultListableBeanFactory.java:1325) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.ConstructorResolver.resolveAutowiredArgument(ConstructorResolver.java:880) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.ConstructorResolver.createArgumentArray(ConstructorResolver.java:784) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ ... 27 common frames omitted
+Caused by: org.springframework.beans.BeanInstantiationException: Failed to instantiate [org.apache.kafka.clients.consumer.KafkaConsumer]: Factory method 'manualKafkaConsumer' threw exception with message: Failed to construct kafka consumer
+ at org.springframework.beans.factory.support.SimpleInstantiationStrategy.instantiate(SimpleInstantiationStrategy.java:171) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ at org.springframework.beans.factory.support.ConstructorResolver.instantiate(ConstructorResolver.java:648) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ ... 41 common frames omitted
+Caused by: org.apache.kafka.common.KafkaException: Failed to construct kafka consumer
+ at org.apache.kafka.clients.consumer.KafkaConsumer.<init>(KafkaConsumer.java:830) ~[kafka-clients-3.3.1.jar!/:na]
+ at org.apache.kafka.clients.consumer.KafkaConsumer.<init>(KafkaConsumer.java:666) ~[kafka-clients-3.3.1.jar!/:na]
+ at org.apache.kafka.clients.consumer.KafkaConsumer.<init>(KafkaConsumer.java:614) ~[kafka-clients-3.3.1.jar!/:na]
+ at com.nedbank.kafka.filemanage.config.KafkaConfig.manualKafkaConsumer(KafkaConfig.java:112) ~[classes!/:na]
+ at com.nedbank.kafka.filemanage.config.KafkaConfig$$SpringCGLIB$$0.CGLIB$manualKafkaConsumer$0(<generated>) ~[classes!/:na]
+ at com.nedbank.kafka.filemanage.config.KafkaConfig$$SpringCGLIB$$2.invoke(<generated>) ~[classes!/:na]
+ at org.springframework.cglib.proxy.MethodProxy.invokeSuper(MethodProxy.java:257) ~[spring-core-6.0.2.jar!/:6.0.2]
+ at org.springframework.context.annotation.ConfigurationClassEnhancer$BeanMethodInterceptor.intercept(ConfigurationClassEnhancer.java:331) ~[spring-context-6.0.2.jar!/:6.0.2]
+ at com.nedbank.kafka.filemanage.config.KafkaConfig$$SpringCGLIB$$0.manualKafkaConsumer(<generated>) ~[classes!/:na]
+ at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+ at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+ at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+ at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+ at org.springframework.beans.factory.support.SimpleInstantiationStrategy.instantiate(SimpleInstantiationStrategy.java:139) ~[spring-beans-6.0.2.jar!/:6.0.2]
+ ... 42 common frames omitted
+Caused by: org.apache.kafka.common.KafkaException: Failed to load SSL keystore C:\Users\CC437236\jdk-17.0.12_windows-x64_bin\jdk-17.0.12\lib\security\keystore.jks of type JKS
+ at org.apache.kafka.common.security.ssl.DefaultSslEngineFactory$FileBasedStore.load(DefaultSslEngineFactory.java:375) ~[kafka-clients-3.3.1.jar!/:na]
+ at org.apache.kafka.common.security.ssl.DefaultSslEngineFactory$FileBasedStore.<init>(DefaultSslEngineFactory.java:347) ~[kafka-clients-3.3.1.jar!/:na]
+ at org.apache.kafka.common.security.ssl.DefaultSslEngineFactory.createKeystore(DefaultSslEngineFactory.java:297) ~[kafka-clients-3.3.1.jar!/:na]
+ at org.apache.kafka.common.security.ssl.DefaultSslEngineFactory.configure(DefaultSslEngineFactory.java:161) ~[kafka-clients-3.3.1.jar!/:na]
+ at org.apache.kafka.common.security.ssl.SslFactory.instantiateSslEngineFactory(SslFactory.java:140) ~[kafka-clients-3.3.1.jar!/:na]
+ at org.apache.kafka.common.security.ssl.SslFactory.configure(SslFactory.java:97) ~[kafka-clients-3.3.1.jar!/:na]
+ at org.apache.kafka.common.network.SslChannelBuilder.configure(SslChannelBuilder.java:73) ~[kafka-clients-3.3.1.jar!/:na]
+ at org.apache.kafka.common.network.ChannelBuilders.create(ChannelBuilders.java:192) ~[kafka-clients-3.3.1.jar!/:na]
+ at org.apache.kafka.common.network.ChannelBuilders.clientChannelBuilder(ChannelBuilders.java:81) ~[kafka-clients-3.3.1.jar!/:na]
+ at org.apache.kafka.clients.ClientUtils.createChannelBuilder(ClientUtils.java:105) ~[kafka-clients-3.3.1.jar!/:na]
+ at org.apache.kafka.clients.consumer.KafkaConsumer.<init>(KafkaConsumer.java:738) ~[kafka-clients-3.3.1.jar!/:na]
+ ... 55 common frames omitted
+Caused by: java.nio.file.NoSuchFileException: C:\Users\CC437236\jdk-17.0.12_windows-x64_bin\jdk-17.0.12\lib\security\keystore.jks
+ at java.base/sun.nio.fs.UnixException.translateToIOException(UnixException.java:92) ~[na:na]
  at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:106) ~[na:na]
  at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:111) ~[na:na]
- at java.base/sun.nio.fs.UnixFileSystemProvider.createDirectory(UnixFileSystemProvider.java:397) ~[na:na]
- at java.base/java.nio.file.Files.createDirectory(Files.java:700) ~[na:na]
- at java.base/java.nio.file.TempFileHelper.create(TempFileHelper.java:134) ~[na:na]
- at java.base/java.nio.file.TempFileHelper.createTempDirectory(TempFileHelper.java:171) ~[na:na]
- at java.base/java.nio.file.Files.createTempDirectory(Files.java:1017) ~[na:na]
- at org.springframework.boot.web.server.AbstractConfigurableWebServerFactory.createTempDir(AbstractConfigurableWebServerFactory.java:202) ~[spring-boot-3.0.0.jar!/:3.0.0]
- ... 19 common frames omitted
- 
+ at java.base/sun.nio.fs.UnixFileSystemProvider.newByteChannel(UnixFileSystemProvider.java:218) ~[na:na]
+ at java.base/java.nio.file.Files.newByteChannel(Files.java:380) ~[na:na]
+ at java.base/java.nio.file.Files.newByteChannel(Files.java:432) ~[na:na]
+ at java.base/java.nio.file.spi.FileSystemProvider.newInputStream(FileSystemProvider.java:422) ~[na:na]
+ at java.base/java.nio.file.Files.newInputStream(Files.java:160) ~[na:na]
+ at org.apache.kafka.common.security.ssl.DefaultSslEngineFactory$FileBasedStore.load(DefaultSslEngineFactory.java:368) ~[kafka-clients-3.3.1.jar!/:na]
