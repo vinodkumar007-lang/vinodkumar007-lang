@@ -1,89 +1,51 @@
-Error creating bean with name 'kafkaListenerService' defined in URL [jar:file:/app/file-manager-1.0-SNAPSHOT.jar!/BOOT-INF/classes!/com/nedbank/kafka/filemanage/service/KafkaListenerService.class]: Unsatisfied dependency expressed through constructor parameter 2: Error creating bean with name 'manualKafkaConsumer' defined in class path resource [com/nedbank/kafka/filemanage/config/KafkaConfig.class]: Failed to instantiate [org.apache.kafka.clients.consumer.KafkaConsumer]: Factory method 'manualKafkaConsumer' threw exception with message: Failed to construct kafka consumer
- at org.springframework.beans.factory.support.ConstructorResolver.createArgumentArray(ConstructorResolver.java:793) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.ConstructorResolver.autowireConstructor(ConstructorResolver.java:242) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.autowireConstructor(AbstractAutowireCapableBeanFactory.java:1344) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBeanInstance(AbstractAutowireCapableBeanFactory.java:1188) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:561) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:521) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:326) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:234) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:324) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:200) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.DefaultListableBeanFactory.preInstantiateSingletons(DefaultListableBeanFactory.java:961) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.context.support.AbstractApplicationContext.finishBeanFactoryInitialization(AbstractApplicationContext.java:915) ~[spring-context-6.0.2.jar!/:6.0.2]
- at org.springframework.context.support.AbstractApplicationContext.refresh(AbstractApplicationContext.java:584) ~[spring-context-6.0.2.jar!/:6.0.2]
- at org.springframework.boot.web.servlet.context.ServletWebServerApplicationContext.refresh(ServletWebServerApplicationContext.java:146) ~[spring-boot-3.0.0.jar!/:3.0.0]
- at org.springframework.boot.SpringApplication.refresh(SpringApplication.java:730) ~[spring-boot-3.0.0.jar!/:3.0.0]
- at org.springframework.boot.SpringApplication.refreshContext(SpringApplication.java:432) ~[spring-boot-3.0.0.jar!/:3.0.0]
- at org.springframework.boot.SpringApplication.run(SpringApplication.java:308) ~[spring-boot-3.0.0.jar!/:3.0.0]
- at org.springframework.boot.SpringApplication.run(SpringApplication.java:1302) ~[spring-boot-3.0.0.jar!/:3.0.0]
- at org.springframework.boot.SpringApplication.run(SpringApplication.java:1291) ~[spring-boot-3.0.0.jar!/:3.0.0]
- at com.nedbank.kafka.filemanage.Application.main(Application.java:10) ~[classes!/:na]
- at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
- at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
- at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
- at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
- at org.springframework.boot.loader.MainMethodRunner.run(MainMethodRunner.java:49) ~[file-manager-1.0-SNAPSHOT.jar:na]
- at org.springframework.boot.loader.Launcher.launch(Launcher.java:95) ~[file-manager-1.0-SNAPSHOT.jar:na]
- at org.springframework.boot.loader.Launcher.launch(Launcher.java:58) ~[file-manager-1.0-SNAPSHOT.jar:na]
- at org.springframework.boot.loader.JarLauncher.main(JarLauncher.java:65) ~[file-manager-1.0-SNAPSHOT.jar:na]
-Caused by: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'manualKafkaConsumer' defined in class path resource [com/nedbank/kafka/filemanage/config/KafkaConfig.class]: Failed to instantiate [org.apache.kafka.clients.consumer.KafkaConsumer]: Factory method 'manualKafkaConsumer' threw exception with message: Failed to construct kafka consumer
- at org.springframework.beans.factory.support.ConstructorResolver.instantiate(ConstructorResolver.java:652) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.ConstructorResolver.instantiateUsingFactoryMethod(ConstructorResolver.java:488) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.instantiateUsingFactoryMethod(AbstractAutowireCapableBeanFactory.java:1324) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBeanInstance(AbstractAutowireCapableBeanFactory.java:1161) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:561) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:521) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractBeanFactory.lambda$doGetBean$0(AbstractBeanFactory.java:326) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.DefaultSingletonBeanRegistry.getSingleton(DefaultSingletonBeanRegistry.java:234) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractBeanFactory.doGetBean(AbstractBeanFactory.java:324) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.AbstractBeanFactory.getBean(AbstractBeanFactory.java:200) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.config.DependencyDescriptor.resolveCandidate(DependencyDescriptor.java:254) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.DefaultListableBeanFactory.doResolveDependency(DefaultListableBeanFactory.java:1405) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.DefaultListableBeanFactory.resolveDependency(DefaultListableBeanFactory.java:1325) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.ConstructorResolver.resolveAutowiredArgument(ConstructorResolver.java:880) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.ConstructorResolver.createArgumentArray(ConstructorResolver.java:784) ~[spring-beans-6.0.2.jar!/:6.0.2]
- ... 27 common frames omitted
-Caused by: org.springframework.beans.BeanInstantiationException: Failed to instantiate [org.apache.kafka.clients.consumer.KafkaConsumer]: Factory method 'manualKafkaConsumer' threw exception with message: Failed to construct kafka consumer
- at org.springframework.beans.factory.support.SimpleInstantiationStrategy.instantiate(SimpleInstantiationStrategy.java:171) ~[spring-beans-6.0.2.jar!/:6.0.2]
- at org.springframework.beans.factory.support.ConstructorResolver.instantiate(ConstructorResolver.java:648) ~[spring-beans-6.0.2.jar!/:6.0.2]
- ... 41 common frames omitted
-Caused by: org.apache.kafka.common.KafkaException: Failed to construct kafka consumer
- at org.apache.kafka.clients.consumer.KafkaConsumer.<init>(KafkaConsumer.java:830) ~[kafka-clients-3.3.1.jar!/:na]
- at org.apache.kafka.clients.consumer.KafkaConsumer.<init>(KafkaConsumer.java:666) ~[kafka-clients-3.3.1.jar!/:na]
- at org.apache.kafka.clients.consumer.KafkaConsumer.<init>(KafkaConsumer.java:614) ~[kafka-clients-3.3.1.jar!/:na]
- at com.nedbank.kafka.filemanage.config.KafkaConfig.manualKafkaConsumer(KafkaConfig.java:112) ~[classes!/:na]
- at com.nedbank.kafka.filemanage.config.KafkaConfig$$SpringCGLIB$$0.CGLIB$manualKafkaConsumer$0(<generated>) ~[classes!/:na]
- at com.nedbank.kafka.filemanage.config.KafkaConfig$$SpringCGLIB$$2.invoke(<generated>) ~[classes!/:na]
- at org.springframework.cglib.proxy.MethodProxy.invokeSuper(MethodProxy.java:257) ~[spring-core-6.0.2.jar!/:6.0.2]
- at org.springframework.context.annotation.ConfigurationClassEnhancer$BeanMethodInterceptor.intercept(ConfigurationClassEnhancer.java:331) ~[spring-context-6.0.2.jar!/:6.0.2]
- at com.nedbank.kafka.filemanage.config.KafkaConfig$$SpringCGLIB$$0.manualKafkaConsumer(<generated>) ~[classes!/:na]
- at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
- at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
- at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
- at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
- at org.springframework.beans.factory.support.SimpleInstantiationStrategy.instantiate(SimpleInstantiationStrategy.java:139) ~[spring-beans-6.0.2.jar!/:6.0.2]
- ... 42 common frames omitted
-Caused by: org.apache.kafka.common.KafkaException: Failed to load SSL keystore C:\Users\CC437236\jdk-17.0.12_windows-x64_bin\jdk-17.0.12\lib\security\keystore.jks of type JKS
- at org.apache.kafka.common.security.ssl.DefaultSslEngineFactory$FileBasedStore.load(DefaultSslEngineFactory.java:375) ~[kafka-clients-3.3.1.jar!/:na]
- at org.apache.kafka.common.security.ssl.DefaultSslEngineFactory$FileBasedStore.<init>(DefaultSslEngineFactory.java:347) ~[kafka-clients-3.3.1.jar!/:na]
- at org.apache.kafka.common.security.ssl.DefaultSslEngineFactory.createKeystore(DefaultSslEngineFactory.java:297) ~[kafka-clients-3.3.1.jar!/:na]
- at org.apache.kafka.common.security.ssl.DefaultSslEngineFactory.configure(DefaultSslEngineFactory.java:161) ~[kafka-clients-3.3.1.jar!/:na]
- at org.apache.kafka.common.security.ssl.SslFactory.instantiateSslEngineFactory(SslFactory.java:140) ~[kafka-clients-3.3.1.jar!/:na]
- at org.apache.kafka.common.security.ssl.SslFactory.configure(SslFactory.java:97) ~[kafka-clients-3.3.1.jar!/:na]
- at org.apache.kafka.common.network.SslChannelBuilder.configure(SslChannelBuilder.java:73) ~[kafka-clients-3.3.1.jar!/:na]
- at org.apache.kafka.common.network.ChannelBuilders.create(ChannelBuilders.java:192) ~[kafka-clients-3.3.1.jar!/:na]
- at org.apache.kafka.common.network.ChannelBuilders.clientChannelBuilder(ChannelBuilders.java:81) ~[kafka-clients-3.3.1.jar!/:na]
- at org.apache.kafka.clients.ClientUtils.createChannelBuilder(ClientUtils.java:105) ~[kafka-clients-3.3.1.jar!/:na]
- at org.apache.kafka.clients.consumer.KafkaConsumer.<init>(KafkaConsumer.java:738) ~[kafka-clients-3.3.1.jar!/:na]
- ... 55 common frames omitted
-Caused by: java.nio.file.NoSuchFileException: C:\Users\CC437236\jdk-17.0.12_windows-x64_bin\jdk-17.0.12\lib\security\keystore.jks
- at java.base/sun.nio.fs.UnixException.translateToIOException(UnixException.java:92) ~[na:na]
- at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:106) ~[na:na]
- at java.base/sun.nio.fs.UnixException.rethrowAsIOException(UnixException.java:111) ~[na:na]
- at java.base/sun.nio.fs.UnixFileSystemProvider.newByteChannel(UnixFileSystemProvider.java:218) ~[na:na]
- at java.base/java.nio.file.Files.newByteChannel(Files.java:380) ~[na:na]
- at java.base/java.nio.file.Files.newByteChannel(Files.java:432) ~[na:na]
- at java.base/java.nio.file.spi.FileSystemProvider.newInputStream(FileSystemProvider.java:422) ~[na:na]
- at java.base/java.nio.file.Files.newInputStream(Files.java:160) ~[na:na]
- at org.apache.kafka.common.security.ssl.DefaultSslEngineFactory$FileBasedStore.load(DefaultSslEngineFactory.java:368) ~[kafka-clients-3.3.1.jar!/:na]
+# Kafka Consumer Configuration
+kafka.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
+kafka.consumer.group.id=str-ecp-batch
+kafka.consumer.auto.offset.reset=earliest
+kafka.consumer.enable.auto.commit=true
+
+# SSL Configuration
+kafka.consumer.security.protocol=SSL
+kafka.consumer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
+kafka.consumer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
+kafka.consumer.ssl.key.password=3dX7y3Yz9Jv6L4F
+kafka.consumer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
+kafka.consumer.ssl.truststore.password=nedbank1
+kafka.consumer.ssl.protocol=TLSv1.2
+
+# Kafka Consumer Deserialization
+kafka.consumer.key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+kafka.consumer.value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+
+# Kafka Producer Configuration (to send Summary File URL)
+kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
+kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
+kafka.producer.security.protocol=SSL
+kafka.producer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
+kafka.producer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
+kafka.producer.ssl.key.password=3dX7y3Yz9Jv6L4F
+kafka.producer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
+kafka.producer.ssl.truststore.password=nedbank1
+kafka.producer.ssl.protocol=TLSv1.2
+kafka.producer.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
+
+azure.keyvault.uri=https://nsn-dev-ecm-kva-001.vault.azure.net/secrets
+
+logging.level.org.springframework.kafka=DEBUG
+
+kafka.topic.input=str-ecp-batch-composition
+kafka.topic.output=str-ecp-batch-composition-complete
+
+vault.hashicorp.url=https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200
+vault.hashicorp.namespace =admin/espire
+
+vault.hashicorp.passwordDev=Dev+Cred4#
+vault.hashicorp.passwordNbhDev=nbh_dev1
+
+azure.blob.storage.account =https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001
+
+proxy.host=proxyprod.africa.nedcor.net
+proxy.port=80
+proxy.username=CC437236
+proxy.password=34dYaB@jEh56
+use.proxy=false
