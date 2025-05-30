@@ -1,5 +1,29 @@
-{
-    "message": "Processed 0 message(s)",
-    "status": "success",
-    "data": []
-}
+2025-05-30T10:13:50.440+02:00  INFO 8628 --- [nio-8080-exec-1] o.a.c.c.C.[Tomcat].[localhost].[/]       : Initializing Spring DispatcherServlet 'dispatcherServlet'
+2025-05-30T10:13:50.440+02:00  INFO 8628 --- [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Initializing Servlet 'dispatcherServlet'
+2025-05-30T10:13:50.442+02:00  INFO 8628 --- [nio-8080-exec-1] o.s.web.servlet.DispatcherServlet        : Completed initialization in 2 ms
+2025-05-30T10:13:50.490+02:00  INFO 8628 --- [nio-8080-exec-1] c.n.k.f.c.FileProcessingController       : POST /process called to trigger Kafka message processing.
+2025-05-30T10:13:50.490+02:00  INFO 8628 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Subscribing to Kafka topic 'str-ecp-batch-composition'
+2025-05-30T10:13:50.491+02:00  INFO 8628 --- [nio-8080-exec-1] o.a.k.clients.consumer.KafkaConsumer     : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Subscribed to topic(s): str-ecp-batch-composition
+2025-05-30T10:13:50.492+02:00  INFO 8628 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Polling Kafka topic 'str-ecp-batch-composition'
+2025-05-30T10:13:51.399+02:00  INFO 8628 --- [nio-8080-exec-1] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Resetting the last seen epoch of partition str-ecp-batch-composition-0 to 16 since the associated topicId changed from null to MwBBZLPpRK6MmJMBo7pw8g
+2025-05-30T10:13:51.402+02:00  INFO 8628 --- [nio-8080-exec-1] org.apache.kafka.clients.Metadata        : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Cluster ID: y0ml4PnGSeO_hhGMyIz-pA
+2025-05-30T10:13:51.408+02:00  INFO 8628 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Discovered group coordinator nsnxeteelpka01.nednet.co.za:9093 (id: 2147483647 rack: null)
+2025-05-30T10:13:51.414+02:00  INFO 8628 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] (Re-)joining group
+2025-05-30T10:13:51.499+02:00  INFO 8628 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Request joining group due to: need to re-join with the given member-id: consumer-str-ecp-batch-1-f8139eee-a5c1-4e63-b9b4-b843b2933301
+2025-05-30T10:13:51.500+02:00  INFO 8628 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Request joining group due to: rebalance failed due to 'The group member needs to have a valid member id before actually entering a consumer group.' (MemberIdRequiredException)
+2025-05-30T10:13:51.500+02:00  INFO 8628 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] (Re-)joining group
+2025-05-30T10:13:51.508+02:00  INFO 8628 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Successfully joined group with generation Generation{generationId=232, memberId='consumer-str-ecp-batch-1-f8139eee-a5c1-4e63-b9b4-b843b2933301', protocol='range'}
+2025-05-30T10:13:51.511+02:00  INFO 8628 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Finished assignment for group at generation 232: {consumer-str-ecp-batch-1-f8139eee-a5c1-4e63-b9b4-b843b2933301=Assignment(partitions=[str-ecp-batch-composition-0])}
+2025-05-30T10:13:51.523+02:00  INFO 8628 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Successfully synced group in generation Generation{generationId=232, memberId='consumer-str-ecp-batch-1-f8139eee-a5c1-4e63-b9b4-b843b2933301', protocol='range'}
+2025-05-30T10:13:51.524+02:00  INFO 8628 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Notifying assignor about the new Assignment(partitions=[str-ecp-batch-composition-0])
+2025-05-30T10:13:51.529+02:00  INFO 8628 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Adding newly assigned partitions: str-ecp-batch-composition-0
+2025-05-30T10:13:51.551+02:00  INFO 8628 --- [nio-8080-exec-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Setting offset for partition str-ecp-batch-composition-0 to the committed offset FetchPosition{offset=18555, offsetEpoch=Optional.empty, currentLeader=LeaderAndEpoch{leader=Optional[nsnxeteelpka03.nednet.co.za:9093 (id: 2 rack: null)], epoch=16}}
+2025-05-30T10:13:51.702+02:00  INFO 8628 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Processing message at offset 18555
+2025-05-30T10:13:51.852+02:00  INFO 8628 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Handling batchId=1c93525b-42d1-410a-9e26-aa957f19861b, sourceSystem=DEBTMAN
+2025-05-30T10:13:51.863+02:00  INFO 8628 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Copying blob from 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv' to 'DEBTMAN/input/2025-05-27T13-07-25Z/1c93525b-42d1-410a-9e26-aa957f19861b/6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7g_DEBTMAN/DEBTMAN.csv'
+2025-05-30T10:13:51.864+02:00  INFO 8628 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : Vault secrets initialized for Blob Storage
+2025-05-30T10:13:54.661+02:00  INFO 8628 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : 📄 Source blob 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv' size: 4640 bytes
+2025-05-30T10:13:54.902+02:00  INFO 8628 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Copied 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv' to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Finput%2F2025-05-27T13-07-25Z%2F1c93525b-42d1-410a-9e26-aa957f19861b%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7g_DEBTMAN%2FDEBTMAN.csv'
+2025-05-30T10:13:54.925+02:00  INFO 8628 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Written summary.json locally at C:\Users\CC437236\AppData\Local\Temp\summary_DEBTMAN.csv
+2025-05-30T10:13:54.991+02:00  INFO 8628 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ✅ Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Fsummary%2F1c93525b-42d1-410a-9e26-aa957f19861b%2Fsummary_DEBTMAN.csv'
+2
