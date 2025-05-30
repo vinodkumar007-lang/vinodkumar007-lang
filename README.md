@@ -42,11 +42,12 @@ public class KafkaListenerService {
         this.kafkaTemplate = kafkaTemplate;
         this.blobStorageService = blobStorageService;
         this.kafkaConsumer = kafkaConsumer;
-
-        kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
     }
 
     public ApiResponse listen() {
+        logger.info("Subscribing to Kafka topic '{}'", inputTopic);
+        kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
+
         logger.info("Polling Kafka topic '{}'", inputTopic);
         List<SummaryPayload> summaryPayloads = new ArrayList<>();
 
