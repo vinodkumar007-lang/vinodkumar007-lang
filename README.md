@@ -12,7 +12,6 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 
@@ -114,16 +113,25 @@ public class KafkaListenerService {
         Metadata metadata = new Metadata();
         int fileCount = 0;
         String summaryFileUrl = null;
+        String lastCopiedFileUrl = null;
 
         for (BatchFile file : message.getBatchFiles()) {
             try {
+                // Extract blob URL and filename from Kafka message batchFile
+                String sourceBlobUrl = file.getBlobUrl();
+                String fileName = file.getFilename();
+
+                // Build target blob path using metadata and filename
                 String targetPath = buildTargetBlobPath(
                         message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
-                        message.getUniqueConsumerRef(), message.getJobName(), file.getFilename()
+                        message.getUniqueConsumerRef(), message.getJobName(), fileName
                 );
 
-                logger.info("Copying blob from '{}' to '{}'", file.getBlobUrl(), targetPath);
-                String copiedUrl = blobStorageService.copyFileFromUrlToBlob(file.getBlobUrl(), targetPath);
+                logger.info("Copying blob from '{}' to '{}'", sourceBlobUrl, targetPath);
+                String copiedUrl = blobStorageService.copyFileFromUrlToBlob(sourceBlobUrl, targetPath);
+
+                // Store last copied URL for API response
+                lastCopiedFileUrl = copiedUrl;
 
                 SummaryProcessedFile processedFile = new SummaryProcessedFile();
                 processedFile.setCustomerID("C001");
@@ -155,7 +163,12 @@ public class KafkaListenerService {
 
         SummaryPayload summary = new SummaryPayload();
         summary.setBatchID(message.getBatchId());
-        summary.setFileName("summary_" + message.getBatchId() + ".json");
+        // Extract fileName from first batchFile's filename if exists, else fallback
+        if (!message.getBatchFiles().isEmpty()) {
+            summary.setFileName("summary_" + message.getBatchFiles().get(0).getFilename());
+        } else {
+            summary.setFileName("summary_" + message.getBatchId() + ".json");
+        }
         summary.setHeader(header);
         summary.setMetadata(metadata);
         summary.setPayload(payload);
@@ -177,7 +190,22 @@ public class KafkaListenerService {
             logger.error("Failed to write or upload summary.json", ex);
         }
 
-        return new ApiResponse("Batch processed successfully", "success", summary);
+        // Build API response data without processedFiles and printFiles
+        SummaryPayload responsePayload = new SummaryPayload();
+        responsePayload.setBatchID(summary.getBatchID());
+        responsePayload.setFileName(summary.getFileName());
+        responsePayload.setHeader(summary.getHeader());
+        responsePayload.setMetadata(summary.getMetadata());
+        responsePayload.setPayload(summary.getPayload());
+        responsePayload.setSummaryFileURL(summaryFileUrl);
+        // processedFiles and printFiles are intentionally omitted here for API response
+
+        Map<String, Object> apiData = new HashMap<>();
+        apiData.put("summaryPayload", responsePayload);
+        apiData.put("fileLocation", lastCopiedFileUrl);
+        apiData.put("timestamp", Instant.now().toString());
+
+        return new ApiResponse("Batch processed successfully", "success", apiData);
     }
 
     private String buildTargetBlobPath(String sourceSystem, Double timestamp, String batchId,
