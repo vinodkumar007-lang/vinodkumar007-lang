@@ -2,15 +2,11 @@ package com.nedbank.kafka.filemanage.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nedbank.kafka.filemanage.model.*;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.*;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
@@ -28,7 +24,6 @@ public class KafkaListenerService {
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final BlobStorageService blobStorageService;
     private final ObjectMapper objectMapper = new ObjectMapper();
-
     private final KafkaConsumer<String, String> kafkaConsumer;
 
     @Value("${kafka.topic.input}")
@@ -55,37 +50,24 @@ public class KafkaListenerService {
         this.inputTopic = inputTopic;
         this.outputTopic = outputTopic;
         this.azureBlobStorageAccount = azureBlobStorageAccount;
-
-        // ✅ Subscribe after topic is initialized
-        if (inputTopic == null || inputTopic.trim().isEmpty()) {
-            throw new IllegalArgumentException("Input topic is null or empty");
-        }
         this.kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
     }
-    public ApiResponse listen() {
-        logger.info("Starting manual poll of Kafka messages from topic '{}'", inputTopic);
 
+    public ApiResponse listen() {
         List<SummaryPayload> processedSummaries = new ArrayList<>();
 
         try {
             ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(5));
 
             if (records.isEmpty()) {
-                logger.info("No new messages found in topic '{}'", inputTopic);
                 return new ApiResponse("No new messages found", "info", Collections.emptyList());
-
             }
 
             for (ConsumerRecord<String, String> record : records) {
-                logger.info("Received message: {}", record.value());
-                logger.info("Processing message from topic {}, partition={}, offset={}",
-                        record.topic(), record.partition(), record.offset());
-
                 try {
                     KafkaMessage message = objectMapper.readValue(record.value(), KafkaMessage.class);
                     ApiResponse response = processSingleMessage(message);
 
-                    // Send response to producer topic
                     String responseJson = objectMapper.writeValueAsString(response);
                     kafkaTemplate.send(outputTopic, responseJson);
 
@@ -93,23 +75,19 @@ public class KafkaListenerService {
                         processedSummaries.add((SummaryPayload) response.getData());
                     }
 
-                    // Commit this record's offset
                     kafkaConsumer.commitSync(Collections.singletonMap(
                             new TopicPartition(record.topic(), record.partition()),
                             new OffsetAndMetadata(record.offset() + 1)
                     ));
-
                 } catch (Exception e) {
-                    logger.error("Error processing Kafka message at offset " + record.offset(), e);
-                    return new ApiResponse("Failed to process message at offset " + record.offset() + ": " + e.getMessage(), "Error", null);
-
+                    logger.error("Error processing Kafka message at offset {}", record.offset(), e);
+                    return new ApiResponse("Failed to process message at offset " + record.offset(), "Error", null);
                 }
             }
 
         } catch (Exception e) {
-            logger.error("Error during Kafka polling", e);
+            logger.error("Kafka polling failed", e);
             return new ApiResponse("Kafka polling failed: " + e.getMessage(), "Error", null);
-
         }
 
         return new ApiResponse("Processed " + processedSummaries.size() + " message(s)", "Success", Collections.singletonList(processedSummaries));
@@ -117,12 +95,8 @@ public class KafkaListenerService {
 
     private ApiResponse processSingleMessage(KafkaMessage message) {
         if (message == null) {
-            /*noMessageResponse.setMessage("No new Kafka messages found");
-            noMessageResponse.setStatus("info");*/
             return new ApiResponse("No new Kafka messages found", "No Data", null);
         }
-
-        logger.info("Processing batchId={}, sourceSystem={}", message.getBatchId(), message.getSourceSystem());
 
         List<SummaryProcessedFile> processedFiles = new ArrayList<>();
         List<PrintFile> printFiles = new ArrayList<>();
@@ -155,17 +129,16 @@ public class KafkaListenerService {
                     batchFile.getFilename()
             );
 
-            logger.info("Copying file from '{}' to '{}'", batchFile.getBlobUrl(), targetBlobPath);
             newBlobUrl = blobStorageService.copyFileFromUrlToBlob(batchFile.getBlobUrl(), targetBlobPath);
 
             SummaryProcessedFile spf = new SummaryProcessedFile();
-            spf.setCustomerID("C001");
-            spf.setAccountNumber("123456780123456");
-            spf.setPdfArchiveFileURL(generatePdfUrl("archive", "123456780123456", message.getBatchId()));
-            spf.setPdfEmailFileURL(generatePdfUrl("email", "123456780123456", message.getBatchId()));
-            spf.setHtmlEmailFileURL(generatePdfUrl("html", "123456780123456", message.getBatchId()));
-            spf.setTxtEmailFileURL(generatePdfUrl("txt", "123456780123456", message.getBatchId()));
-            spf.setPdfMobstatFileURL(generatePdfUrl("mobstat", "123456780123456", message.getBatchId()));
+            spf.setCustomerID(batchFile.getCustomerId()); // Replace with actual field
+            spf.setAccountNumber(batchFile.getAccountNumber()); // Replace with actual field
+            spf.setPdfArchiveFileURL(generatePdfUrl("archive", spf.getAccountNumber(), message.getBatchId()));
+            spf.setPdfEmailFileURL(generatePdfUrl("email", spf.getAccountNumber(), message.getBatchId()));
+            spf.setHtmlEmailFileURL(generatePdfUrl("html", spf.getAccountNumber(), message.getBatchId()));
+            spf.setTxtEmailFileURL(generatePdfUrl("txt", spf.getAccountNumber(), message.getBatchId()));
+            spf.setPdfMobstatFileURL(generatePdfUrl("mobstat", spf.getAccountNumber(), message.getBatchId()));
             spf.setStatusCode("OK");
             spf.setStatusDescription("Success");
             processedFiles.add(spf);
@@ -192,39 +165,21 @@ public class KafkaListenerService {
         summaryPayload.setProcessedFiles(processedFiles);
         summaryPayload.setPrintFiles(printFiles);
 
-        // Write summary JSON locally
         File summaryFile = new File(System.getProperty("java.io.tmpdir"), "summary.json");
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(summaryFile, summaryPayload);
-            logger.info("Summary JSON written locally at {}", summaryFile.getAbsolutePath());
         } catch (IOException e) {
             logger.error("Failed to write summary.json", e);
             throw new RuntimeException(e);
         }
 
-        // Upload summary.json to blob storage
         String summaryBlobPath = String.format("%s/summary/%s/summary.json",
                 message.getSourceSystem(), message.getBatchId());
         String summaryFileUrl = blobStorageService.uploadFile(String.valueOf(summaryFile), summaryBlobPath);
         summaryPayload.setSummaryFileURL(summaryFileUrl);
 
-        /*apiResponse.setStatus("success");
-        apiResponse.setSummaryPayload(summaryPayload);*/
-
         return new ApiResponse("Batch processed successfully", "success", summaryPayload);
     }
-
-    /*private String buildTargetBlobPath(String sourceSystem, Double timestamp, String batchId,
-                                       String consumerRef, String processRef, String fileName) {
-        String timestampStr = instantToIsoString(timestamp);
-        return String.format("%s/input/%s/%s/%s_%s/%s",
-                sourceSystem,
-                timestampStr.replace(":", "-"),
-                batchId,
-                consumerRef,
-                processRef,
-                fileName);
-    }*/
 
     private String buildTargetBlobPath(String sourceSystem, Double timestamp, String batchId,
                                        String consumerRef, String processRef, String fileName) {
@@ -234,8 +189,7 @@ public class KafkaListenerService {
 
     private String instantToIsoString(Double timestamp) {
         long epochSeconds = timestamp.longValue();
-        Instant instant = Instant.ofEpochSecond(epochSeconds);
-        return instant.toString();
+        return Instant.ofEpochSecond(epochSeconds).toString();
     }
 
     private String generatePdfUrl(String type, String accountNumber, String batchId) {
