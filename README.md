@@ -1,1 +1,2 @@
-Error creating bean with name 'manualKafkaConsumer' defined in class path resource [com/nedbank/kafka/filemanage/config/KafkaConfig.class]: Failed to instantiate [org.apache.kafka.clients.consumer.KafkaConsumer]: Factory method 'manualKafkaConsumer' threw exception with message: Failed to construct kafka consumer
+COPY truststore.jks /usr/lib/jvm/java-17-openjdk/lib/security/truststore.jks
+COPY keystore.jks /usr/lib/jvm/java-17-openjdk/lib/security/keystore.jks
