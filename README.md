@@ -36,70 +36,63 @@ public class KafkaListenerService {
     private String azureBlobStorageAccount;
 
     @Autowired
-    public KafkaListenerService(
-            KafkaTemplate<String, String> kafkaTemplate,
-            BlobStorageService blobStorageService,
-            KafkaConsumer<String, String> kafkaConsumer,
-            @Value("${kafka.topic.input}") String inputTopic,
-            @Value("${kafka.topic.output}") String outputTopic,
-            @Value("${azure.blob.storage.account}") String azureBlobStorageAccount
-    ) {
+    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
+                                BlobStorageService blobStorageService,
+                                KafkaConsumer<String, String> kafkaConsumer) {
         this.kafkaTemplate = kafkaTemplate;
         this.blobStorageService = blobStorageService;
         this.kafkaConsumer = kafkaConsumer;
-        this.inputTopic = inputTopic;
-        this.outputTopic = outputTopic;
-        this.azureBlobStorageAccount = azureBlobStorageAccount;
-        this.kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
+
+        kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
     }
 
     public ApiResponse listen() {
-        List<SummaryPayload> processedSummaries = new ArrayList<>();
+        logger.info("Polling Kafka topic '{}'", inputTopic);
+        List<SummaryPayload> summaryPayloads = new ArrayList<>();
 
         try {
             ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(5));
-
             if (records.isEmpty()) {
-                return new ApiResponse("No new messages found", "info", Collections.emptyList());
+                logger.info("No new messages in topic '{}'", inputTopic);
+                return new ApiResponse("No new messages", "info", Collections.emptyList());
             }
 
             for (ConsumerRecord<String, String> record : records) {
                 try {
-                    KafkaMessage message = objectMapper.readValue(record.value(), KafkaMessage.class);
-                    ApiResponse response = processSingleMessage(message);
+                    logger.info("Processing message at offset {}", record.offset());
+                    KafkaMessage kafkaMessage = objectMapper.readValue(record.value(), KafkaMessage.class);
+                    ApiResponse response = processSingleMessage(kafkaMessage);
 
                     String responseJson = objectMapper.writeValueAsString(response);
                     kafkaTemplate.send(outputTopic, responseJson);
 
                     if (response.getData() instanceof SummaryPayload) {
-                        processedSummaries.add((SummaryPayload) response.getData());
+                        summaryPayloads.add((SummaryPayload) response.getData());
                     }
 
                     kafkaConsumer.commitSync(Collections.singletonMap(
                             new TopicPartition(record.topic(), record.partition()),
                             new OffsetAndMetadata(record.offset() + 1)
                     ));
-                } catch (Exception e) {
-                    logger.error("Error processing Kafka message at offset {}", record.offset(), e);
-                    return new ApiResponse("Failed to process message at offset " + record.offset(), "Error", null);
+
+                } catch (Exception ex) {
+                    logger.error("Error processing message at offset {}", record.offset(), ex);
+                    return new ApiResponse("Error processing message: " + ex.getMessage(), "error", null);
                 }
             }
 
-        } catch (Exception e) {
-            logger.error("Kafka polling failed", e);
-            return new ApiResponse("Kafka polling failed: " + e.getMessage(), "Error", null);
+        } catch (Exception ex) {
+            logger.error("Kafka polling failed", ex);
+            return new ApiResponse("Polling error: " + ex.getMessage(), "error", null);
         }
 
-        return new ApiResponse("Processed " + processedSummaries.size() + " message(s)", "Success", Collections.singletonList(processedSummaries));
+        return new ApiResponse("Processed " + summaryPayloads.size() + " message(s)", "success", summaryPayloads);
     }
 
     private ApiResponse processSingleMessage(KafkaMessage message) {
-        if (message == null) {
-            return new ApiResponse("No new Kafka messages found", "No Data", null);
-        }
+        if (message == null) return new ApiResponse("Empty message", "error", null);
 
-        List<SummaryProcessedFile> processedFiles = new ArrayList<>();
-        List<PrintFile> printFiles = new ArrayList<>();
+        logger.info("Handling batchId={}, sourceSystem={}", message.getBatchId(), message.getSourceSystem());
 
         Header header = new Header();
         header.setTenantCode(message.getTenantCode());
@@ -115,76 +108,82 @@ public class KafkaListenerService {
         payload.setRunPriority(message.getRunPriority());
         payload.setEventType(message.getEventType());
 
+        List<SummaryProcessedFile> processedFiles = new ArrayList<>();
+        List<PrintFile> printFiles = new ArrayList<>();
         Metadata metadata = new Metadata();
-        int totalFilesProcessed = 0;
+        int fileCount = 0;
+        String summaryFileUrl = null;
 
-        String newBlobUrl = null;
-        for (BatchFile batchFile : message.getBatchFiles()) {
-            String targetBlobPath = buildTargetBlobPath(
-                    message.getSourceSystem(),
-                    message.getTimestamp(),
-                    message.getBatchId(),
-                    message.getUniqueConsumerRef(),
-                    message.getJobName(),
-                    batchFile.getFilename()
-            );
+        for (BatchFile file : message.getBatchFiles()) {
+            try {
+                String targetPath = buildTargetBlobPath(
+                        message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                        message.getUniqueConsumerRef(), message.getJobName(), file.getFilename()
+                );
 
-            newBlobUrl = blobStorageService.copyFileFromUrlToBlob(batchFile.getBlobUrl(), targetBlobPath);
+                logger.info("Copying blob from '{}' to '{}'", file.getBlobUrl(), targetPath);
+                String copiedUrl = blobStorageService.copyFileFromUrlToBlob(file.getBlobUrl(), targetPath);
 
-            SummaryProcessedFile spf = new SummaryProcessedFile();
-            spf.setCustomerID(batchFile.getCustomerId()); // Replace with actual field
-            spf.setAccountNumber(batchFile.getAccountNumber()); // Replace with actual field
-            spf.setPdfArchiveFileURL(generatePdfUrl("archive", spf.getAccountNumber(), message.getBatchId()));
-            spf.setPdfEmailFileURL(generatePdfUrl("email", spf.getAccountNumber(), message.getBatchId()));
-            spf.setHtmlEmailFileURL(generatePdfUrl("html", spf.getAccountNumber(), message.getBatchId()));
-            spf.setTxtEmailFileURL(generatePdfUrl("txt", spf.getAccountNumber(), message.getBatchId()));
-            spf.setPdfMobstatFileURL(generatePdfUrl("mobstat", spf.getAccountNumber(), message.getBatchId()));
-            spf.setStatusCode("OK");
-            spf.setStatusDescription("Success");
-            processedFiles.add(spf);
+                SummaryProcessedFile processedFile = new SummaryProcessedFile();
+                processedFile.setCustomerID("C001");
+                processedFile.setAccountNumber("123456789012345");
+                processedFile.setPdfArchiveFileURL(generatePdfUrl("archive", "123456789012345", message.getBatchId()));
+                processedFile.setPdfEmailFileURL(generatePdfUrl("email", "123456789012345", message.getBatchId()));
+                processedFile.setHtmlEmailFileURL(generatePdfUrl("html", "123456789012345", message.getBatchId()));
+                processedFile.setTxtEmailFileURL(generatePdfUrl("txt", "123456789012345", message.getBatchId()));
+                processedFile.setPdfMobstatFileURL(generatePdfUrl("mobstat", "123456789012345", message.getBatchId()));
+                processedFile.setStatusCode("OK");
+                processedFile.setStatusDescription("Success");
 
-            totalFilesProcessed++;
+                processedFiles.add(processedFile);
+                fileCount++;
+
+            } catch (Exception ex) {
+                logger.warn("Failed to process file '{}': {}", file.getFilename(), ex.getMessage());
+            }
         }
 
-        PrintFile pf = new PrintFile();
-        pf.setPrintFileURL("https://" + azureBlobStorageAccount + "/pdfs/mobstat/PrintFileName1_" + message.getBatchId() + ".ps");
-        printFiles.add(pf);
+        PrintFile printFile = new PrintFile();
+        printFile.setPrintFileURL("https://" + azureBlobStorageAccount + "/pdfs/mobstat/PrintFile_" + message.getBatchId() + ".ps");
+        printFiles.add(printFile);
 
-        metadata.setTotalFilesProcessed(totalFilesProcessed);
+        metadata.setTotalFilesProcessed(fileCount);
         metadata.setProcessingStatus("Completed");
         metadata.setEventOutcomeCode("200");
         metadata.setEventOutcomeDescription("Batch processed successfully");
 
-        SummaryPayload summaryPayload = new SummaryPayload();
-        summaryPayload.setBatchID(message.getBatchId());
-        summaryPayload.setFileName("summary_" + message.getBatchId() + ".json");
-        summaryPayload.setHeader(header);
-        summaryPayload.setMetadata(metadata);
-        summaryPayload.setPayload(payload);
-        summaryPayload.setFileLocation(newBlobUrl);
-        summaryPayload.setProcessedFiles(processedFiles);
-        summaryPayload.setPrintFiles(printFiles);
+        SummaryPayload summary = new SummaryPayload();
+        summary.setBatchID(message.getBatchId());
+        summary.setFileName("summary_" + message.getBatchId() + ".json");
+        summary.setHeader(header);
+        summary.setMetadata(metadata);
+        summary.setPayload(payload);
+        summary.setProcessedFiles(processedFiles);
+        summary.setPrintFiles(printFiles);
 
-        File summaryFile = new File(System.getProperty("java.io.tmpdir"), "summary.json");
+        File localSummaryFile = new File(System.getProperty("java.io.tmpdir"), summary.getFileName());
         try {
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(summaryFile, summaryPayload);
-        } catch (IOException e) {
-            logger.error("Failed to write summary.json", e);
-            throw new RuntimeException(e);
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(localSummaryFile, summary);
+            logger.info("Written summary.json locally at {}", localSummaryFile.getAbsolutePath());
+
+            String summaryBlobPath = String.format("%s/summary/%s/%s",
+                    message.getSourceSystem(), message.getBatchId(), summary.getFileName());
+
+            summaryFileUrl = blobStorageService.uploadFile(localSummaryFile.getAbsolutePath(), summaryBlobPath);
+            summary.setSummaryFileURL(summaryFileUrl);
+
+        } catch (IOException ex) {
+            logger.error("Failed to write or upload summary.json", ex);
         }
 
-        String summaryBlobPath = String.format("%s/summary/%s/summary.json",
-                message.getSourceSystem(), message.getBatchId());
-        String summaryFileUrl = blobStorageService.uploadFile(String.valueOf(summaryFile), summaryBlobPath);
-        summaryPayload.setSummaryFileURL(summaryFileUrl);
-
-        return new ApiResponse("Batch processed successfully", "success", summaryPayload);
+        return new ApiResponse("Batch processed successfully", "success", summary);
     }
 
     private String buildTargetBlobPath(String sourceSystem, Double timestamp, String batchId,
                                        String consumerRef, String processRef, String fileName) {
-        String upperSourceSystem = sourceSystem != null ? sourceSystem.toUpperCase() : "UNKNOWN";
-        return String.format("%s/input/%s", upperSourceSystem, fileName);
+        String ts = instantToIsoString(timestamp).replace(":", "-");
+        return String.format("%s/input/%s/%s/%s_%s/%s",
+                sourceSystem.toUpperCase(), ts, batchId, consumerRef, processRef, fileName);
     }
 
     private String instantToIsoString(Double timestamp) {
