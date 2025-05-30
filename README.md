@@ -1,8 +1,112 @@
-FROM docker.ncr.devops.nednet.co.za/nedbank/openjdk-17:latest
-WORKDIR /app
-COPY . /app
-COPY target/file-manager-1.0-SNAPSHOT.jar .
-COPY truststore.jks /usr/lib/jvm/java-17-openjdk/lib/security/truststore.jks
-COPY keystore.jks /usr/lib/jvm/java-17-openjdk/lib/security/keystore.jks
-EXPOSE 8080
-CMD ["java", "-jar", "file-manager-1.0-SNAPSHOT.jar"]
+trigger:
+  branches:
+    include:
+      - main
+ 
+pool:
+  name: 'Rancher-prod-azure'
+ 
+variables:
+  imageName: file-manager
+  dockerRegistryServiceConnection: nsnakscontregecm001
+  containerRegistry: nsnakscontregecm001.azurecr.io
+ 
+stages:
+  - stage: Build
+    jobs:
+      - job: BuildWithMaven
+        steps:
+          - task: DownloadSecureFile@1
+            name: DownloadSettings
+            inputs:
+              secureFile: maven-settings.xml
+ 
+          - task: Maven@3
+            inputs:
+              mavenPomFile: './file-manager/pom.xml'
+              goals: 'dependency:go-offline'
+              options: '-s $(DownloadSettings.secureFilePath)'
+              publishJUnitResults: false
+ 
+          - task: Maven@3
+            inputs:
+              mavenPomFile: './file-manager/pom.xml'
+              goals: 'package'
+              options: '-s $(DownloadSettings.secureFilePath) -DskipTests'
+              publishJUnitResults: false
+          - task: Maven@3
+            inputs:
+              mavenPomFile: './file-manager/pom.xml'
+              goals: 'clean install'
+              options: '-X'  # enables detailed debug logging
+              publishJUnitResults: true
+              testResultsFiles: '**/surefire-reports/TEST-*.xml'
+          - task: Docker@2
+            inputs:
+              containerRegistry: $(dockerRegistryServiceConnection)            
+              # repository: $(containerRegistry)
+              command: buildAndPush
+              Dockerfile: '**/Dockerfile'
+              tags: latest
+ 
+ 
+this is for docker build and push
+ 
+share me docker file also
+ 
+trigger:
+  branches:
+    include:
+      - main
+ 
+pool:
+  name: 'Rancher-prod-azure'
+ 
+variables:
+  imageName: file-manager
+  dockerRegistryServiceConnection: nsnakscontregecm001
+  containerRegistry: nsnakscontregecm001.azurecr.io
+ 
+stages:
+  - stage: Build
+    jobs:
+      - job: BuildWithMaven
+        steps:
+          - task: DownloadSecureFile@1
+            name: DownloadSettings
+            inputs:
+              secureFile: maven-settings.xml
+ 
+          - task: Maven@3
+            inputs:
+              mavenPomFile: './file-manager/pom.xml'
+              goals: 'clean install'
+              options: '-X'  # enables detailed debug logging
+              publishJUnitResults: true
+              testResultsFiles: '**/surefire-reports/TEST-*.xml'   
+               
+          - task: Docker@2
+            inputs:
+              containerRegistry: $(dockerRegistryServiceConnection)            
+              # repository: $(containerRegistry)
+              command: buildAndPush
+              Dockerfile: '**/Dockerfile'
+              tags: latest
+ 
+ 
+          - task: Maven@3
+            inputs:
+              mavenPomFile: './file-manager/pom.xml'
+              goals: 'dependency:go-offline'
+              options: '-s $(DownloadSettings.secureFilePath)'
+              publishJUnitResults: false
+ 
+          - task: Maven@3
+            inputs:
+              mavenPomFile: './file-manager/pom.xml'
+              goals: 'package'
+              options: '-s $(DownloadSettings.secureFilePath) -DskipTests'
+              publishJUnitResults: false
+ 
+ 
+ 
