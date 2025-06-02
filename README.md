@@ -35,7 +35,7 @@ public class KafkaListenerService {
     @Value("${azure.blob.storage.account}")
     private String azureBlobStorageAccount;
 
-    private boolean firstSubscribeDone = false;
+    private boolean isSubscribed = false;
 
     @Autowired
     public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
@@ -46,39 +46,39 @@ public class KafkaListenerService {
         this.kafkaConsumer = kafkaConsumer;
     }
 
-    public ApiResponse listen() {
-        // Subscribe once only
-        if (!firstSubscribeDone) {
+    public synchronized ApiResponse listen() {
+        if (!isSubscribed) {
             kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
-            firstSubscribeDone = true;
+            isSubscribed = true;
         }
 
-        ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(5));
+        ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(2));
 
         if (records.isEmpty()) {
             return new ApiResponse("No new messages", "info", null);
         }
 
+        // Process only the first unprocessed message
         for (ConsumerRecord<String, String> record : records) {
             try {
-                logger.info("Processing message at offset {}", record.offset());
                 KafkaMessage kafkaMessage = objectMapper.readValue(record.value(), KafkaMessage.class);
 
                 ApiResponse response = processSingleMessage(kafkaMessage);
 
-                // Send output Kafka message
+                // Send processed response to output topic
                 kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
 
-                // Commit offset AFTER successful processing
+                // Commit offset ONLY after successful processing
                 kafkaConsumer.commitSync(Collections.singletonMap(
                         new TopicPartition(record.topic(), record.partition()),
                         new OffsetAndMetadata(record.offset() + 1)
                 ));
 
-                return response; // Only one message per request
+                logger.info("Successfully processed offset {}", record.offset());
+                return response;
 
             } catch (Exception ex) {
-                logger.error("Error processing message", ex);
+                logger.error("Error processing Kafka message", ex);
                 return new ApiResponse("Error processing message: " + ex.getMessage(), "error", null);
             }
         }
@@ -149,15 +149,18 @@ public class KafkaListenerService {
             }
         }
 
+        // Add dummy print file
         PrintFile printFile = new PrintFile();
         printFile.setPrintFileURL("https://" + azureBlobStorageAccount + "/pdfs/mobstat/PrintFile_" + message.getBatchId() + ".ps");
         printFiles.add(printFile);
 
+        // Metadata
         metadata.setTotalFilesProcessed(fileCount);
         metadata.setProcessingStatus("Completed");
         metadata.setEventOutcomeCode("200");
         metadata.setEventOutcomeDescription("Batch processed successfully");
 
+        // SummaryPayload
         SummaryPayload summaryPayload = new SummaryPayload();
         summaryPayload.setBatchID(message.getBatchId());
         summaryPayload.setFileName(fileName);
@@ -167,6 +170,7 @@ public class KafkaListenerService {
         summaryPayload.setProcessedFiles(processedFiles);
         summaryPayload.setPrintFiles(printFiles);
 
+        // Write to summary.json and upload
         File summaryJsonFile = new File(System.getProperty("java.io.tmpdir"), fileName);
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(summaryJsonFile, summaryPayload);
@@ -177,6 +181,7 @@ public class KafkaListenerService {
             logger.error("Failed to write/upload summary.json", e);
         }
 
+        // Final API Response
         SummaryPayload apiPayload = new SummaryPayload();
         apiPayload.setBatchID(summaryPayload.getBatchID());
         apiPayload.setFileName(summaryPayload.getFileName());
