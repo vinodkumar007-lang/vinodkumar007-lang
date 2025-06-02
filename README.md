@@ -1,162 +1,243 @@
-Each batchId should have its own Kafka message, and its own summary file
- 
-{
+package com.nedbank.kafka.filemanage.service;
 
-    "message": "Batch processed successfully",
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.*;
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.*;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
 
-    "status": "success",
+import java.io.File;
+import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.*;
 
-    "summaryPayload": {
+@Service
+public class KafkaListenerService {
 
-        "batchID": "12345",
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
-        "header": {
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final BlobStorageService blobStorageService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final KafkaConsumer<String, String> kafkaConsumer;
 
-            "tenantCode": "ZANBL",
+    @Value("${kafka.topic.input}")
+    private String inputTopic;
 
-            "channelID": "100",
+    @Value("${kafka.topic.output}")
+    private String outputTopic;
 
-            "audienceID": "",
+    @Value("${azure.blob.storage.account}")
+    private String azureBlobStorageAccount;
 
-            "timestamp": "Thu May 22 05:44:21 SAST 2025",
-
-            "sourceSystem": "DEBTMAN",
-
-            "product": "DEBTMANAGER",
-
-            "jobName": "DEBTMAN"
-
-        },
-
-        "metadata": {
-
-            "totalFilesProcessed": 1,
-
-            "processingStatus": "200",
-
-            "eventOutcomeCode": "Sucess",
-
-            "eventOutcomeDescription": "Successful"
-
-        },
-
-        "payload": {
-
-            "uniqueConsumerRef": "",
-
-            "uniqueECPBatchRef": "",
-
-            "runPriority": "",
-
-            "eventID": "200",
-
-            "eventType": "Success",
-
-            "restartKey": ""
-
-        },
-
-        "summaryFileURL": "/main/nedcor/dia/ecm-batch/debtman/output/guid/exstreamsummaryfile/batchID_summary_sample.json",
-
-        "timestamp": ""
-
+    @Autowired
+    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
+                                BlobStorageService blobStorageService,
+                                KafkaConsumer<String, String> kafkaConsumer) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.blobStorageService = blobStorageService;
+        this.kafkaConsumer = kafkaConsumer;
     }
 
-}
- 
-van Zyl, Armand. (Armand)
-Each batchId should have its own Kafka message, and its own summary file
-ok
- 
-Example of Kafka message, you can ignore the summaryFileURL, it is just for me to create a mock file
- 
-And then only the customer information and file details inside the summary file for the specific 1 batchID
- 
-Thanks 
- 
-If you have any other questions or needs assistance please let me know
- 
-Just a summary file example...
- 
-That was wrong, here is the correct example, if you want to use it
- 
-{
+    public ApiResponse listen() {
+        logger.info("Subscribing to Kafka topic '{}'", inputTopic);
+        kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
 
-  "batchID": "759af791-99fe-4a1b-a6de-ca06b2754c46",
+        logger.info("Polling Kafka topic '{}'", inputTopic);
+        List<Map<String, Object>> summaryPayloads = new ArrayList<>();
+        String globalSummaryFileURL = null;
 
-  "fileName": "DEBTMAN_20250505.csv",
+        try {
+            ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(5));
+            if (records.isEmpty()) {
+                logger.info("No new messages in topic '{}'", inputTopic);
+                return new ApiResponse("No new messages", "info", Collections.emptyList());
+            }
 
-  "header": {
+            for (ConsumerRecord<String, String> record : records) {
+                try {
+                    logger.info("Processing message at offset {}", record.offset());
+                    KafkaMessage kafkaMessage = objectMapper.readValue(record.value(), KafkaMessage.class);
+                    ApiResponse response = processSingleMessage(kafkaMessage);
 
-    "tenantCode": "ZANBL",
+                    String responseJson = objectMapper.writeValueAsString(response);
+                    kafkaTemplate.send(outputTopic, responseJson);
 
-    "channelID": "100",
+                    if (response.getData() instanceof Map) {
+                        Map<String, Object> data = (Map<String, Object>) response.getData();
 
-    "audienceID": "f7359b3f-4d8f-41a5-8df5-84b115cd8a74",
+                        // Capture summaryFileURL from the first message only
+                        if (globalSummaryFileURL == null && data.containsKey("summaryFileURL")) {
+                            globalSummaryFileURL = (String) data.get("summaryFileURL");
+                        }
 
-    "timestamp": "2025-02-06T12:34:56Z",
+                        // Remove summaryFileURL from individual message payloads
+                        data.remove("summaryFileURL");
 
-    "sourceSystem": "CARD",
+                        summaryPayloads.add(data);
+                    }
 
-    "product": "DEBTMANAGER",
+                    kafkaConsumer.commitSync(Collections.singletonMap(
+                            new TopicPartition(record.topic(), record.partition()),
+                            new OffsetAndMetadata(record.offset() + 1)
+                    ));
 
-    "jobName": "DEBTMAN"
+                } catch (Exception ex) {
+                    logger.error("Error processing message at offset {}", record.offset(), ex);
+                    return new ApiResponse("Error processing message: " + ex.getMessage(), "error", null);
+                }
+            }
 
-  },
+        } catch (Exception ex) {
+            logger.error("Kafka polling failed", ex);
+            return new ApiResponse("Polling error: " + ex.getMessage(), "error", null);
+        }
 
-  "processedFiles": [
+        Map<String, Object> responseMap = new HashMap<>();
+        responseMap.put("summaryFileURL", globalSummaryFileURL);
+        responseMap.put("messages", summaryPayloads);
 
-    {
-
-      "customerID": "C001",
-
-	  "accountNumber": "5898460773955802",
-
-      "pdfArchiveFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/archive/5898460773955802_CCEML805.pdf",
-
-      "pdfEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/email/5898460773955802_CCEML805.pdf",
-
-      "htmlEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/html/DM12_generic_RB.html",
-
-      "pdfMobstatFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/mobstat/DEBTMAN_5898460773906474_600006708419_0999392815_0801114949_30_CARD.pdf",
-
-	  "statusCode": "OK",
-
-	  "statusDescription": "Success"
-
-    },
-
-    {
-
-      "customerID": "C002",
-
-	  "accountNumber": "5898460773869078"
-
-      "pdfArchiveFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/archive/5898460773906474_CCMOB805.pdf",
-
-      "pdfEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/email/5898460773869078_CCEML805.pdf",
-
-      "htmlEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/html/DM12_generic_RB.html",
-
-      "pdfMobstatFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/mobstat/DEBTMAN_1165371100101_146311653711_0822559186_0861100033_30_RRB.pdf",
-
-	  "statusCode": "OK",
-
-	  "statusDescription": "Success"
-
+        return new ApiResponse("Processed " + summaryPayloads.size() + " message(s)", "success", responseMap);
     }
 
-  ],
+    private ApiResponse processSingleMessage(KafkaMessage message) {
+        if (message == null) return new ApiResponse("Empty message", "error", null);
 
-  "printFiles": [
+        logger.info("Handling batchId={}, sourceSystem={}", message.getBatchId(), message.getSourceSystem());
 
-	{
+        Header header = new Header();
+        header.setTenantCode(message.getTenantCode());
+        header.setChannelID(message.getChannelID());
+        header.setAudienceID(message.getAudienceID());
+        header.setTimestamp(instantToIsoString(message.getTimestamp()));
+        header.setSourceSystem(message.getSourceSystem());
+        header.setProduct(message.getProduct());
+        header.setJobName(message.getJobName());
 
-      "printFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/print/MOBSTAT_PRINT.ps"		
+        Payload payload = new Payload();
+        payload.setUniqueConsumerRef(message.getUniqueConsumerRef());
+        payload.setRunPriority(message.getRunPriority());
+        payload.setEventType(message.getEventType());
 
-	}
+        List<SummaryProcessedFile> processedFiles = new ArrayList<>();
+        List<PrintFile> printFiles = new ArrayList<>();
+        Metadata metadata = new Metadata();
+        int fileCount = 0;
+        String summaryFileUrl = null;
+        String lastCopiedFileUrl = null;
+        String extractedFileName = message.getBatchId() + ".json";
 
-  ]
+        for (BatchFile file : message.getBatchFiles()) {
+            try {
+                String sourceBlobUrl = file.getBlobUrl();
+                String fileName = file.getFilename();
+                if (fileName != null && !fileName.isBlank()) {
+                    extractedFileName = fileName;
+                }
 
+                String targetPath = buildTargetBlobPath(
+                        message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                        message.getUniqueConsumerRef(), message.getJobName(), fileName
+                );
+
+                logger.info("Copying blob from '{}' to '{}'", sourceBlobUrl, targetPath);
+                String copiedUrl = blobStorageService.copyFileFromUrlToBlob(sourceBlobUrl, targetPath);
+
+                lastCopiedFileUrl = copiedUrl;
+
+                SummaryProcessedFile processedFile = new SummaryProcessedFile();
+                processedFile.setCustomerID("C001");
+                processedFile.setAccountNumber("123456789012345");
+                processedFile.setPdfArchiveFileURL(generatePdfUrl("archive", "123456789012345", message.getBatchId()));
+                processedFile.setPdfEmailFileURL(generatePdfUrl("email", "123456789012345", message.getBatchId()));
+                processedFile.setHtmlEmailFileURL(generatePdfUrl("html", "123456789012345", message.getBatchId()));
+                processedFile.setTxtEmailFileURL(generatePdfUrl("txt", "123456789012345", message.getBatchId()));
+                processedFile.setPdfMobstatFileURL(generatePdfUrl("mobstat", "123456789012345", message.getBatchId()));
+                processedFile.setStatusCode("OK");
+                processedFile.setStatusDescription("Success");
+
+                processedFiles.add(processedFile);
+                fileCount++;
+
+            } catch (Exception ex) {
+                logger.warn("Failed to process file '{}': {}", file.getFilename(), ex.getMessage());
+            }
+        }
+
+        PrintFile printFile = new PrintFile();
+        printFile.setPrintFileURL("https://" + azureBlobStorageAccount + "/pdfs/mobstat/PrintFile_" + message.getBatchId() + ".ps");
+        printFiles.add(printFile);
+
+        metadata.setTotalFilesProcessed(fileCount);
+        metadata.setProcessingStatus("Completed");
+        metadata.setEventOutcomeCode("200");
+        metadata.setEventOutcomeDescription("Batch processed successfully");
+
+        SummaryPayload summary = new SummaryPayload();
+        summary.setBatchID(message.getBatchId());
+        summary.setFileName(extractedFileName);
+        summary.setHeader(header);
+        summary.setMetadata(metadata);
+        summary.setPayload(payload);
+        summary.setProcessedFiles(processedFiles);
+        summary.setPrintFiles(printFiles);
+
+        File localSummaryFile = new File(System.getProperty("java.io.tmpdir"), summary.getFileName());
+        try {
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(localSummaryFile, summary);
+            logger.info("Written summary.json locally at {}", localSummaryFile.getAbsolutePath());
+
+            String summaryBlobPath = String.format("%s/summary/%s/%s",
+                    message.getSourceSystem(), message.getBatchId(), summary.getFileName());
+
+            summaryFileUrl = blobStorageService.uploadFile(localSummaryFile.getAbsolutePath(), summaryBlobPath);
+
+        } catch (IOException ex) {
+            logger.error("Failed to write or upload summary.json", ex);
+        }
+
+        // Prepare final API response with reduced fields (excluding processedFiles, printFiles)
+        SummaryPayload responsePayload = new SummaryPayload();
+        responsePayload.setBatchID(summary.getBatchID());
+        responsePayload.setFileName(summary.getFileName());
+        responsePayload.setHeader(summary.getHeader());
+        responsePayload.setMetadata(summary.getMetadata());
+        responsePayload.setPayload(summary.getPayload());
+        responsePayload.setSummaryFileURL(summaryFileUrl);
+
+        Map<String, Object> apiData = new HashMap<>();
+        apiData.put("batchID", responsePayload.getBatchID());
+        apiData.put("fileName", responsePayload.getFileName());
+        apiData.put("header", responsePayload.getHeader());
+        apiData.put("metadata", responsePayload.getMetadata());
+        apiData.put("payload", responsePayload.getPayload());
+        apiData.put("summaryFileURL", responsePayload.getSummaryFileURL());
+        apiData.put("fileLocation", lastCopiedFileUrl);
+        apiData.put("timestamp", Instant.now().toString());
+
+        return new ApiResponse("Batch processed successfully", "success", apiData);
+    }
+
+    private String buildTargetBlobPath(String sourceSystem, Double timestamp, String batchId,
+                                       String consumerRef, String processRef, String fileName) {
+        String ts = instantToIsoString(timestamp).replace(":", "-");
+        return String.format("%s/input/%s/%s/%s_%s/%s",
+                sourceSystem.toUpperCase(), ts, batchId, consumerRef, processRef, fileName);
+    }
+
+    private String instantToIsoString(Double timestamp) {
+        long epochSeconds = timestamp.longValue();
+        return Instant.ofEpochSecond(epochSeconds).toString();
+    }
+
+    private String generatePdfUrl(String type, String accountNumber, String batchId) {
+        return String.format("https://%s/pdfs/%s/%s_%s.%s",
+                azureBlobStorageAccount, type, accountNumber, batchId,
+                type.equals("html") ? "html" : "pdf");
+    }
 }
- 
