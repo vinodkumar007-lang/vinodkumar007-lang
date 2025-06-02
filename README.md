@@ -1,55 +1,40 @@
-public ApiResponse listen() {
-    logger.info("Subscribing to Kafka topic '{}'", inputTopic);
-    kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
-
-    logger.info("Polling Kafka topic '{}'", inputTopic);
-    try {
-        ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(5));
-        if (records.isEmpty()) {
-            logger.info("No new messages in topic '{}'", inputTopic);
-            return new ApiResponse("No new messages", "info", Collections.emptyMap());
-        }
-
-        for (ConsumerRecord<String, String> record : records) {
-            try {
-                logger.info("Processing single message at offset {}", record.offset());
-                KafkaMessage kafkaMessage = objectMapper.readValue(record.value(), KafkaMessage.class);
-
-                // Process only one message per request
-                ApiResponse response = processSingleMessage(kafkaMessage);
-
-                // Send to Kafka output topic
-                String responseJson = objectMapper.writeValueAsString(response);
-                kafkaTemplate.send(outputTopic, responseJson);
-
-                // Commit offset after successful processing
-                kafkaConsumer.commitSync(Collections.singletonMap(
-                        new TopicPartition(record.topic(), record.partition()),
-                        new OffsetAndMetadata(record.offset() + 1)
-                ));
-
-                // Return response exactly as expected
-                Map<String, Object> data = (Map<String, Object>) response.getData();
-                Map<String, Object> summaryPayload = new HashMap<>();
-                summaryPayload.put("batchID", data.get("batchID"));
-                summaryPayload.put("header", data.get("header"));
-                summaryPayload.put("metadata", data.get("metadata"));
-                summaryPayload.put("payload", data.get("payload"));
-                summaryPayload.put("summaryFileURL", data.get("summaryFileURL"));
-                summaryPayload.put("timestamp", data.get("timestamp"));
-
-                return new ApiResponse("Batch processed successfully", "success", summaryPayload);
-
-            } catch (Exception ex) {
-                logger.error("Error processing message at offset {}", record.offset(), ex);
-                return new ApiResponse("Error processing message: " + ex.getMessage(), "error", null);
-            }
-        }
-
-    } catch (Exception ex) {
-        logger.error("Kafka polling failed", ex);
-        return new ApiResponse("Polling error: " + ex.getMessage(), "error", null);
+{
+  "batchID": "759af791-99fe-4a1b-a6de-ca06b2754c46",
+  "fileName": "DEBTMAN_20250505.csv",
+  "header": {
+    "tenantCode": "ZANBL",
+    "channelID": "100",
+    "audienceID": "f7359b3f-4d8f-41a5-8df5-84b115cd8a74",
+    "timestamp": "2025-02-06T12:34:56Z",
+    "sourceSystem": "CARD",
+    "product": "DEBTMANAGER",
+    "jobName": "DEBTMAN"
+  },
+  "processedFiles": [
+    {
+      "customerID": "C001",
+	  "accountNumber": "5898460773955802",
+      "pdfArchiveFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/archive/5898460773955802_CCEML805.pdf",
+      "pdfEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/email/5898460773955802_CCEML805.pdf",
+      "htmlEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/html/DM12_generic_RB.html",
+      "pdfMobstatFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/mobstat/DEBTMAN_5898460773906474_600006708419_0999392815_0801114949_30_CARD.pdf",
+	  "statusCode": "OK",
+	  "statusDescription": "Success"
+    },
+    {
+      "customerID": "C002",
+	  "accountNumber": "5898460773869078"
+      "pdfArchiveFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/archive/5898460773906474_CCMOB805.pdf",
+      "pdfEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/email/5898460773869078_CCEML805.pdf",
+      "htmlEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/html/DM12_generic_RB.html",
+      "pdfMobstatFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/mobstat/DEBTMAN_1165371100101_146311653711_0822559186_0861100033_30_RRB.pdf",
+	  "statusCode": "OK",
+	  "statusDescription": "Success"
     }
-
-    return new ApiResponse("Unexpected processing outcome", "error", null);
+  ],
+  "printFiles": [
+	{
+      "printFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/print/MOBSTAT_PRINT.ps"		
+	}
+  ]
 }
