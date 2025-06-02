@@ -10,10 +10,11 @@ import org.springframework.beans.factory.annotation.*;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
 import java.io.File;
 import java.io.IOException;
-import java.time.Duration;
 import java.time.Instant;
+import java.time.Duration;
 import java.util.*;
 
 @Service
@@ -35,8 +36,6 @@ public class KafkaListenerService {
     @Value("${azure.blob.storage.account}")
     private String azureBlobStorageAccount;
 
-    private boolean isSubscribed = false;
-
     @Autowired
     public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
                                 BlobStorageService blobStorageService,
@@ -46,36 +45,41 @@ public class KafkaListenerService {
         this.kafkaConsumer = kafkaConsumer;
     }
 
-    public synchronized ApiResponse listen() {
-        if (!isSubscribed) {
-            kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
-            isSubscribed = true;
-        }
+    // Subscribe once after bean creation
+    @PostConstruct
+    public void init() {
+        kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
+        logger.info("Kafka consumer subscribed to topic: {}", inputTopic);
+    }
 
-        ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(2));
+    /**
+     * Polls Kafka and processes one message per call.
+     * Commits offset manually after processing.
+     */
+    public ApiResponse listen() {
+        ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(5));
 
         if (records.isEmpty()) {
+            logger.info("No new messages available in Kafka at this time");
             return new ApiResponse("No new messages", "info", null);
         }
 
-        // Process only the first unprocessed message
         for (ConsumerRecord<String, String> record : records) {
             try {
                 KafkaMessage kafkaMessage = objectMapper.readValue(record.value(), KafkaMessage.class);
 
                 ApiResponse response = processSingleMessage(kafkaMessage);
 
-                // Send processed response to output topic
+                // Send the response to output Kafka topic
                 kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
 
-                // Commit offset ONLY after successful processing
+                // Commit offset manually after successful processing
                 kafkaConsumer.commitSync(Collections.singletonMap(
                         new TopicPartition(record.topic(), record.partition()),
                         new OffsetAndMetadata(record.offset() + 1)
                 ));
 
-                logger.info("Successfully processed offset {}", record.offset());
-                return response;
+                return response; // Process only one message per request
 
             } catch (Exception ex) {
                 logger.error("Error processing Kafka message", ex);
@@ -83,6 +87,7 @@ public class KafkaListenerService {
             }
         }
 
+        // No valid messages processed fallback
         return new ApiResponse("No valid Kafka messages processed", "info", null);
     }
 
@@ -91,7 +96,7 @@ public class KafkaListenerService {
             return new ApiResponse("Empty message", "error", null);
         }
 
-        // Header
+        // Prepare header
         Header header = new Header();
         header.setTenantCode(message.getTenantCode());
         header.setChannelID(message.getChannelID());
@@ -101,12 +106,13 @@ public class KafkaListenerService {
         header.setProduct(message.getProduct());
         header.setJobName(message.getJobName());
 
-        // Payload
+        // Prepare payload
         Payload payload = new Payload();
         payload.setUniqueConsumerRef(message.getUniqueConsumerRef());
         payload.setRunPriority(message.getRunPriority());
         payload.setEventType(message.getEventType());
 
+        // Process files
         List<SummaryProcessedFile> processedFiles = new ArrayList<>();
         List<PrintFile> printFiles = new ArrayList<>();
         Metadata metadata = new Metadata();
@@ -131,8 +137,8 @@ public class KafkaListenerService {
                 String newBlobUrl = blobStorageService.copyFileFromUrlToBlob(sourceBlobUrl, blobPath);
 
                 SummaryProcessedFile processedFile = new SummaryProcessedFile();
-                processedFile.setCustomerID("C001");
-                processedFile.setAccountNumber("123456789012345");
+                processedFile.setCustomerID("C001"); // Example placeholder
+                processedFile.setAccountNumber("123456789012345"); // Example placeholder
                 processedFile.setPdfArchiveFileURL(generatePdfUrl("archive", "123456789012345", message.getBatchId()));
                 processedFile.setPdfEmailFileURL(generatePdfUrl("email", "123456789012345", message.getBatchId()));
                 processedFile.setHtmlEmailFileURL(generatePdfUrl("html", "123456789012345", message.getBatchId()));
@@ -149,18 +155,18 @@ public class KafkaListenerService {
             }
         }
 
-        // Add dummy print file
+        // Add print file example
         PrintFile printFile = new PrintFile();
         printFile.setPrintFileURL("https://" + azureBlobStorageAccount + "/pdfs/mobstat/PrintFile_" + message.getBatchId() + ".ps");
         printFiles.add(printFile);
 
-        // Metadata
+        // Fill metadata
         metadata.setTotalFilesProcessed(fileCount);
         metadata.setProcessingStatus("Completed");
         metadata.setEventOutcomeCode("200");
         metadata.setEventOutcomeDescription("Batch processed successfully");
 
-        // SummaryPayload
+        // Create SummaryPayload
         SummaryPayload summaryPayload = new SummaryPayload();
         summaryPayload.setBatchID(message.getBatchId());
         summaryPayload.setFileName(fileName);
@@ -170,18 +176,21 @@ public class KafkaListenerService {
         summaryPayload.setProcessedFiles(processedFiles);
         summaryPayload.setPrintFiles(printFiles);
 
-        // Write to summary.json and upload
+        // Write summary JSON locally and upload to Azure Blob Storage
         File summaryJsonFile = new File(System.getProperty("java.io.tmpdir"), fileName);
         try {
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(summaryJsonFile, summaryPayload);
+
             String summaryBlobPath = String.format("%s/summary/%s/%s",
                     message.getSourceSystem(), message.getBatchId(), fileName);
+
             summaryFileUrl = blobStorageService.uploadFile(summaryJsonFile.getAbsolutePath(), summaryBlobPath);
+
         } catch (IOException e) {
             logger.error("Failed to write/upload summary.json", e);
         }
 
-        // Final API Response
+        // Prepare API response payload (excluding processedFiles and printFiles)
         SummaryPayload apiPayload = new SummaryPayload();
         apiPayload.setBatchID(summaryPayload.getBatchID());
         apiPayload.setFileName(summaryPayload.getFileName());
