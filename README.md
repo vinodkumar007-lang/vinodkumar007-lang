@@ -1,60 +1,162 @@
-public ApiResponse listen() {
-    logger.info("Subscribing to Kafka topic '{}'", inputTopic);
-    kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
+Each batchId should have its own Kafka message, and its own summary file
+ 
+{
 
-    logger.info("Polling Kafka topic '{}'", inputTopic);
-    List<Map<String, Object>> summaryPayloads = new ArrayList<>();
-    String globalSummaryFileURL = null;
+    "message": "Batch processed successfully",
 
-    try {
-        ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(5));
-        if (records.isEmpty()) {
-            logger.info("No new messages in topic '{}'", inputTopic);
-            return new ApiResponse("No new messages", "info", Collections.emptyList());
-        }
+    "status": "success",
 
-        for (ConsumerRecord<String, String> record : records) {
-            try {
-                logger.info("Processing message at offset {}", record.offset());
-                KafkaMessage kafkaMessage = objectMapper.readValue(record.value(), KafkaMessage.class);
-                ApiResponse response = processSingleMessage(kafkaMessage);
+    "summaryPayload": {
 
-                String responseJson = objectMapper.writeValueAsString(response);
-                kafkaTemplate.send(outputTopic, responseJson);
+        "batchID": "12345",
 
-                if (response.getData() instanceof Map) {
-                    Map<String, Object> data = (Map<String, Object>) response.getData();
+        "header": {
 
-                    // Capture summaryFileURL from the first message only
-                    if (globalSummaryFileURL == null && data.containsKey("summaryFileURL")) {
-                        globalSummaryFileURL = (String) data.get("summaryFileURL");
-                    }
+            "tenantCode": "ZANBL",
 
-                    // Remove summaryFileURL from individual message payloads
-                    data.remove("summaryFileURL");
+            "channelID": "100",
 
-                    summaryPayloads.add(data);
-                }
+            "audienceID": "",
 
-                kafkaConsumer.commitSync(Collections.singletonMap(
-                        new TopicPartition(record.topic(), record.partition()),
-                        new OffsetAndMetadata(record.offset() + 1)
-                ));
+            "timestamp": "Thu May 22 05:44:21 SAST 2025",
 
-            } catch (Exception ex) {
-                logger.error("Error processing message at offset {}", record.offset(), ex);
-                return new ApiResponse("Error processing message: " + ex.getMessage(), "error", null);
-            }
-        }
+            "sourceSystem": "DEBTMAN",
 
-    } catch (Exception ex) {
-        logger.error("Kafka polling failed", ex);
-        return new ApiResponse("Polling error: " + ex.getMessage(), "error", null);
+            "product": "DEBTMANAGER",
+
+            "jobName": "DEBTMAN"
+
+        },
+
+        "metadata": {
+
+            "totalFilesProcessed": 1,
+
+            "processingStatus": "200",
+
+            "eventOutcomeCode": "Sucess",
+
+            "eventOutcomeDescription": "Successful"
+
+        },
+
+        "payload": {
+
+            "uniqueConsumerRef": "",
+
+            "uniqueECPBatchRef": "",
+
+            "runPriority": "",
+
+            "eventID": "200",
+
+            "eventType": "Success",
+
+            "restartKey": ""
+
+        },
+
+        "summaryFileURL": "/main/nedcor/dia/ecm-batch/debtman/output/guid/exstreamsummaryfile/batchID_summary_sample.json",
+
+        "timestamp": ""
+
     }
 
-    Map<String, Object> responseMap = new HashMap<>();
-    responseMap.put("summaryFileURL", globalSummaryFileURL);
-    responseMap.put("messages", summaryPayloads);
-
-    return new ApiResponse("Processed " + summaryPayloads.size() + " message(s)", "success", responseMap);
 }
+ 
+van Zyl, Armand. (Armand)
+Each batchId should have its own Kafka message, and its own summary file
+ok
+ 
+Example of Kafka message, you can ignore the summaryFileURL, it is just for me to create a mock file
+ 
+And then only the customer information and file details inside the summary file for the specific 1 batchID
+ 
+Thanks 
+ 
+If you have any other questions or needs assistance please let me know
+ 
+Just a summary file example...
+ 
+That was wrong, here is the correct example, if you want to use it
+ 
+{
+
+  "batchID": "759af791-99fe-4a1b-a6de-ca06b2754c46",
+
+  "fileName": "DEBTMAN_20250505.csv",
+
+  "header": {
+
+    "tenantCode": "ZANBL",
+
+    "channelID": "100",
+
+    "audienceID": "f7359b3f-4d8f-41a5-8df5-84b115cd8a74",
+
+    "timestamp": "2025-02-06T12:34:56Z",
+
+    "sourceSystem": "CARD",
+
+    "product": "DEBTMANAGER",
+
+    "jobName": "DEBTMAN"
+
+  },
+
+  "processedFiles": [
+
+    {
+
+      "customerID": "C001",
+
+	  "accountNumber": "5898460773955802",
+
+      "pdfArchiveFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/archive/5898460773955802_CCEML805.pdf",
+
+      "pdfEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/email/5898460773955802_CCEML805.pdf",
+
+      "htmlEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/html/DM12_generic_RB.html",
+
+      "pdfMobstatFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/mobstat/DEBTMAN_5898460773906474_600006708419_0999392815_0801114949_30_CARD.pdf",
+
+	  "statusCode": "OK",
+
+	  "statusDescription": "Success"
+
+    },
+
+    {
+
+      "customerID": "C002",
+
+	  "accountNumber": "5898460773869078"
+
+      "pdfArchiveFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/archive/5898460773906474_CCMOB805.pdf",
+
+      "pdfEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/email/5898460773869078_CCEML805.pdf",
+
+      "htmlEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/html/DM12_generic_RB.html",
+
+      "pdfMobstatFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/mobstat/DEBTMAN_1165371100101_146311653711_0822559186_0861100033_30_RRB.pdf",
+
+	  "statusCode": "OK",
+
+	  "statusDescription": "Success"
+
+    }
+
+  ],
+
+  "printFiles": [
+
+	{
+
+      "printFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/print/MOBSTAT_PRINT.ps"		
+
+	}
+
+  ]
+
+}
+ 
