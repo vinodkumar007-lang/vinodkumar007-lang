@@ -23,8 +23,8 @@ public class KafkaListenerService {
 
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final BlobStorageService blobStorageService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
     private final KafkaConsumer<String, String> kafkaConsumer;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${kafka.topic.input}")
     private String inputTopic;
@@ -58,17 +58,19 @@ public class KafkaListenerService {
 
                 ApiResponse response = processSingleMessage(kafkaMessage);
 
+                // Produce response to output topic
                 kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
 
+                // Manually commit offset after successful processing
                 kafkaConsumer.commitSync(Collections.singletonMap(
                         new TopicPartition(record.topic(), record.partition()),
                         new OffsetAndMetadata(record.offset() + 1)
                 ));
 
-                return response;
+                return response; // Only one message processed per request
 
             } catch (Exception ex) {
-                logger.error("Error processing message", ex);
+                logger.error("Error processing message from Kafka", ex);
                 return new ApiResponse("Error processing message: " + ex.getMessage(), "error", null);
             }
         }
@@ -77,8 +79,11 @@ public class KafkaListenerService {
     }
 
     private ApiResponse processSingleMessage(KafkaMessage message) {
-        if (message == null) return new ApiResponse("Empty message", "error", null);
+        if (message == null) {
+            return new ApiResponse("Empty message", "error", null);
+        }
 
+        // Header
         Header header = new Header();
         header.setTenantCode(message.getTenantCode());
         header.setChannelID(message.getChannelID());
@@ -88,32 +93,35 @@ public class KafkaListenerService {
         header.setProduct(message.getProduct());
         header.setJobName(message.getJobName());
 
+        // Payload
         Payload payload = new Payload();
         payload.setUniqueConsumerRef(message.getUniqueConsumerRef());
         payload.setRunPriority(message.getRunPriority());
         payload.setEventType(message.getEventType());
 
+        // File metadata
         List<SummaryProcessedFile> processedFiles = new ArrayList<>();
         List<PrintFile> printFiles = new ArrayList<>();
         Metadata metadata = new Metadata();
-        int fileCount = 0;
         String summaryFileUrl = null;
-        String extractedFileName = message.getBatchId() + ".json";
+        int fileCount = 0;
+
+        String fileName = message.getBatchId() + ".json";
 
         for (BatchFile file : message.getBatchFiles()) {
             try {
                 String sourceBlobUrl = file.getBlobUrl();
-                String fileName = file.getFilename();
-                if (fileName != null && !fileName.isBlank()) {
-                    extractedFileName = fileName;
+                String inputFileName = file.getFilename();
+                if (inputFileName != null && !inputFileName.isBlank()) {
+                    fileName = inputFileName;
                 }
 
-                String targetPath = buildTargetBlobPath(
+                String blobPath = buildTargetBlobPath(
                         message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
-                        message.getUniqueConsumerRef(), message.getJobName(), fileName
+                        message.getUniqueConsumerRef(), message.getJobName(), inputFileName
                 );
 
-                String copiedUrl = blobStorageService.copyFileFromUrlToBlob(sourceBlobUrl, targetPath);
+                String newBlobUrl = blobStorageService.copyFileFromUrlToBlob(sourceBlobUrl, blobPath);
 
                 SummaryProcessedFile processedFile = new SummaryProcessedFile();
                 processedFile.setCustomerID("C001");
@@ -130,50 +138,53 @@ public class KafkaListenerService {
                 fileCount++;
 
             } catch (Exception ex) {
-                logger.warn("Failed to process file '{}': {}", file.getFilename(), ex.getMessage());
+                logger.warn("Error copying file '{}': {}", file.getFilename(), ex.getMessage());
             }
         }
 
+        // Add print file
         PrintFile printFile = new PrintFile();
         printFile.setPrintFileURL("https://" + azureBlobStorageAccount + "/pdfs/mobstat/PrintFile_" + message.getBatchId() + ".ps");
         printFiles.add(printFile);
 
+        // Metadata
         metadata.setTotalFilesProcessed(fileCount);
         metadata.setProcessingStatus("Completed");
         metadata.setEventOutcomeCode("200");
         metadata.setEventOutcomeDescription("Batch processed successfully");
 
-        SummaryPayload summaryForFile = new SummaryPayload();
-        summaryForFile.setBatchID(message.getBatchId());
-        summaryForFile.setFileName(extractedFileName);
-        summaryForFile.setHeader(header);
-        summaryForFile.setMetadata(metadata);
-        summaryForFile.setPayload(payload);
-        summaryForFile.setProcessedFiles(processedFiles);
-        summaryForFile.setPrintFiles(printFiles);
-        // summaryFileURL is not set here — not saved into summary.json
+        // Summary payload (to be written to summary.json)
+        SummaryPayload summaryPayload = new SummaryPayload();
+        summaryPayload.setBatchID(message.getBatchId());
+        summaryPayload.setFileName(fileName);
+        summaryPayload.setHeader(header);
+        summaryPayload.setMetadata(metadata);
+        summaryPayload.setPayload(payload);
+        summaryPayload.setProcessedFiles(processedFiles);
+        summaryPayload.setPrintFiles(printFiles);
 
-        File localSummaryFile = new File(System.getProperty("java.io.tmpdir"), extractedFileName);
+        // Write to summary.json and upload to Azure Blob
+        File summaryJsonFile = new File(System.getProperty("java.io.tmpdir"), fileName);
         try {
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(localSummaryFile, summaryForFile);
+            objectMapper.writerWithDefaultPrettyPrinter().writeValue(summaryJsonFile, summaryPayload);
             String summaryBlobPath = String.format("%s/summary/%s/%s",
-                    message.getSourceSystem(), message.getBatchId(), extractedFileName);
-            summaryFileUrl = blobStorageService.uploadFile(localSummaryFile.getAbsolutePath(), summaryBlobPath);
-        } catch (IOException ex) {
-            logger.error("Failed to write or upload summary.json", ex);
+                    message.getSourceSystem(), message.getBatchId(), fileName);
+            summaryFileUrl = blobStorageService.uploadFile(summaryJsonFile.getAbsolutePath(), summaryBlobPath);
+        } catch (IOException e) {
+            logger.error("Failed to write/upload summary.json", e);
         }
 
-        // For final response, build a clean object excluding printFiles & processedFiles
-        SummaryPayload responsePayload = new SummaryPayload();
-        responsePayload.setBatchID(summaryForFile.getBatchID());
-        responsePayload.setFileName(summaryForFile.getFileName());
-        responsePayload.setHeader(summaryForFile.getHeader());
-        responsePayload.setMetadata(summaryForFile.getMetadata());
-        responsePayload.setPayload(summaryForFile.getPayload());
-        responsePayload.setSummaryFileURL(summaryFileUrl); // ONLY in API response
-        responsePayload.setTimestamp(Instant.now().toString());
+        // Build API response (exclude processedFiles and printFiles)
+        SummaryPayload apiPayload = new SummaryPayload();
+        apiPayload.setBatchID(summaryPayload.getBatchID());
+        apiPayload.setFileName(summaryPayload.getFileName());
+        apiPayload.setHeader(summaryPayload.getHeader());
+        apiPayload.setMetadata(summaryPayload.getMetadata());
+        apiPayload.setPayload(summaryPayload.getPayload());
+        apiPayload.setSummaryFileURL(summaryFileUrl);
+        apiPayload.setTimestamp(Instant.now().toString());
 
-        return new ApiResponse("Batch processed successfully", "success", responsePayload);
+        return new ApiResponse("Batch processed successfully", "success", apiPayload);
     }
 
     private String buildTargetBlobPath(String sourceSystem, Double timestamp, String batchId,
@@ -184,128 +195,12 @@ public class KafkaListenerService {
     }
 
     private String instantToIsoString(Double timestamp) {
-        long epochSeconds = timestamp.longValue();
-        return Instant.ofEpochSecond(epochSeconds).toString();
+        return Instant.ofEpochSecond(timestamp.longValue()).toString();
     }
 
     private String generatePdfUrl(String type, String accountNumber, String batchId) {
         return String.format("https://%s/pdfs/%s/%s_%s.%s",
                 azureBlobStorageAccount, type, accountNumber, batchId,
                 type.equals("html") ? "html" : "pdf");
-    }
-}
-
-package com.nedbank.kafka.filemanage.config;
-
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.producer.ProducerConfig;
-import org.apache.kafka.common.serialization.StringDeserializer;
-import org.apache.kafka.common.serialization.StringSerializer;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.kafka.annotation.EnableKafka;
-import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
-import org.springframework.kafka.core.*;
-
-import java.util.HashMap;
-import java.util.Map;
-
-@Configuration
-@EnableKafka
-public class KafkaConfig {
-
-    @Value("${kafka.bootstrap.servers}")
-    private String bootstrapServers;
-
-    @Value("${kafka.consumer.group.id}")
-    private String groupId;
-
-    @Value("${kafka.consumer.ssl.keystore.location}")
-    private String keystoreLocation;
-
-    @Value("${kafka.consumer.ssl.keystore.password}")
-    private String keystorePassword;
-
-    @Value("${kafka.consumer.ssl.key.password}")
-    private String keyPassword;
-
-    @Value("${kafka.consumer.ssl.truststore.location}")
-    private String truststoreLocation;
-
-    @Value("${kafka.consumer.ssl.truststore.password}")
-    private String truststorePassword;
-
-    @Value("${kafka.consumer.ssl.protocol}")
-    private String sslProtocol;
-
-    @Bean
-    public ConsumerFactory<String, String> consumerFactory() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "latest");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "true");
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put("security.protocol", "SSL");
-        props.put("ssl.keystore.location", keystoreLocation);
-        props.put("ssl.keystore.password", keystorePassword);
-        props.put("ssl.key.password", keyPassword);
-        props.put("ssl.truststore.location", truststoreLocation);
-        props.put("ssl.truststore.password", truststorePassword);
-        props.put("ssl.protocol", sslProtocol);
-        return new DefaultKafkaConsumerFactory<>(props);
-    }
-
-    @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
-        ConcurrentKafkaListenerContainerFactory<String, String> factory =
-                new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(consumerFactory());
-        return factory;
-    }
-
-    @Bean
-    public ProducerFactory<String, String> producerFactory() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
-        props.put("security.protocol", "SSL");
-        props.put("ssl.keystore.location", keystoreLocation);
-        props.put("ssl.keystore.password", keystorePassword);
-        props.put("ssl.key.password", keyPassword);
-        props.put("ssl.truststore.location", truststoreLocation);
-        props.put("ssl.truststore.password", truststorePassword);
-        props.put("ssl.protocol", sslProtocol);
-        return new DefaultKafkaProducerFactory<>(props);
-    }
-
-    @Bean
-    public KafkaTemplate<String, String> kafkaTemplate() {
-        return new KafkaTemplate<>(producerFactory());
-    }
-
-    // 🔥 Add manual KafkaConsumer bean for use in KafkaListenerService
-    @Bean
-    public KafkaConsumer<String, String> manualKafkaConsumer() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
-        props.put("security.protocol", "SSL");
-        props.put("ssl.keystore.location", keystoreLocation);
-        props.put("ssl.keystore.password", keystorePassword);
-        props.put("ssl.key.password", keyPassword);
-        props.put("ssl.truststore.location", truststoreLocation);
-        props.put("ssl.truststore.password", truststorePassword);
-        props.put("ssl.protocol", sslProtocol);
-
-        return new KafkaConsumer<>(props);
     }
 }
