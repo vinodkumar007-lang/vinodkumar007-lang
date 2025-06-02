@@ -2,9 +2,9 @@ package com.nedbank.kafka.filemanage.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nedbank.kafka.filemanage.model.*;
-import jakarta.annotation.PostConstruct;
 import org.apache.kafka.clients.consumer.*;
 import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.*;
@@ -24,7 +24,6 @@ public class KafkaListenerService {
 
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final BlobStorageService blobStorageService;
-    private final KafkaConsumer<String, String> kafkaConsumer;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${kafka.topic.input}")
@@ -36,20 +35,44 @@ public class KafkaListenerService {
     @Value("${azure.blob.storage.account}")
     private String azureBlobStorageAccount;
 
+    @Value("${kafka.bootstrap.servers}")
+    private String kafkaBootstrapServers;
+
+    @Value("${kafka.consumer.group-id}")
+    private String consumerGroupId;
+
+    @Value("${kafka.security.protocol}")
+    private String securityProtocol;
+
+    @Value("${kafka.ssl.truststore.location}")
+    private String sslTruststoreLocation;
+
+    @Value("${kafka.ssl.truststore.password}")
+    private String sslTruststorePassword;
+
     @Autowired
     public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
-                                BlobStorageService blobStorageService,
-                                KafkaConsumer<String, String> kafkaConsumer) {
+                                BlobStorageService blobStorageService) {
         this.kafkaTemplate = kafkaTemplate;
         this.blobStorageService = blobStorageService;
-        this.kafkaConsumer = kafkaConsumer;
     }
 
-    // Subscribe once after bean creation
-    @PostConstruct
-    public void init() {
-        kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
-        logger.info("Kafka consumer subscribed to topic: {}", inputTopic);
+    /**
+     * Create a new KafkaConsumer per request to avoid stale internal state.
+     */
+    private KafkaConsumer<String, String> createKafkaConsumer() {
+        Properties props = new Properties();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaBootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, consumerGroupId);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        props.put("security.protocol", securityProtocol);
+        props.put("ssl.truststore.location", sslTruststoreLocation);
+        props.put("ssl.truststore.password", sslTruststorePassword);
+
+        return new KafkaConsumer<>(props);
     }
 
     /**
@@ -57,34 +80,42 @@ public class KafkaListenerService {
      * Commits offset manually after processing.
      */
     public ApiResponse listen() {
-        ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(5));
+        try (KafkaConsumer<String, String> kafkaConsumer = createKafkaConsumer()) {
+            kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
+            logger.info("Kafka consumer subscribed to topic: {}", inputTopic);
 
-        if (records.isEmpty()) {
-            logger.info("No new messages available in Kafka at this time");
-            return new ApiResponse("No new messages", "info", null);
-        }
+            ConsumerRecords<String, String> records = kafkaConsumer.poll(Duration.ofSeconds(5));
 
-        for (ConsumerRecord<String, String> record : records) {
-            try {
-                KafkaMessage kafkaMessage = objectMapper.readValue(record.value(), KafkaMessage.class);
-
-                ApiResponse response = processSingleMessage(kafkaMessage);
-
-                // Send the response to output Kafka topic
-                kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
-
-                // Commit offset manually after successful processing
-                kafkaConsumer.commitSync(Collections.singletonMap(
-                        new TopicPartition(record.topic(), record.partition()),
-                        new OffsetAndMetadata(record.offset() + 1)
-                ));
-
-                return response; // Process only one message per request
-
-            } catch (Exception ex) {
-                logger.error("Error processing Kafka message", ex);
-                return new ApiResponse("Error processing message: " + ex.getMessage(), "error", null);
+            if (records.isEmpty()) {
+                logger.info("No new messages available in Kafka at this time");
+                return new ApiResponse("No new messages", "info", null);
             }
+
+            for (ConsumerRecord<String, String> record : records) {
+                try {
+                    KafkaMessage kafkaMessage = objectMapper.readValue(record.value(), KafkaMessage.class);
+
+                    ApiResponse response = processSingleMessage(kafkaMessage);
+
+                    // Send the response to output Kafka topic
+                    kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
+
+                    // Commit offset manually after successful processing
+                    kafkaConsumer.commitSync(Collections.singletonMap(
+                            new TopicPartition(record.topic(), record.partition()),
+                            new OffsetAndMetadata(record.offset() + 1)
+                    ));
+
+                    return response; // Process only one message per request
+
+                } catch (Exception ex) {
+                    logger.error("Error processing Kafka message", ex);
+                    return new ApiResponse("Error processing message: " + ex.getMessage(), "error", null);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Kafka consumer error", e);
+            return new ApiResponse("Kafka consumer error: " + e.getMessage(), "error", null);
         }
 
         // No valid messages processed fallback
