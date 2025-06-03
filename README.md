@@ -1,14 +1,9 @@
-public static File writeSummaryJsonToFile(SummaryPayload payload, String filePath) {
-    try {
-        String jsonContent = writeSummaryJson(payload); // reuse the string method
-        Path path = Paths.get(filePath);
-        Files.writeString(path, jsonContent);
-        logger.info("📁 Summary JSON written to file: {}", path);
-        return path.toFile();
-    } catch (Exception e) {
-        logger.error("❌ Failed to write summary JSON to file: {}", e.getMessage(), e);
-        throw new RuntimeException("Failed to write summary JSON to file", e);
-    }
-}
+ String summaryFilePath = SummaryJsonWriter.writeSummaryJson(summaryPayload);
+        File summaryJsonFile = new File(summaryFilePath);
 
-File summaryFile = SummaryJsonWriter.writeSummaryJsonToFile(summaryPayload, "/tmp/summary.json");  
+        try {
+            String jsonContent = new String(java.nio.file.Files.readAllBytes(summaryJsonFile.toPath()));
+            logger.info("📄 Summary JSON content before upload:\n{}", jsonContent);
+        } catch (IOException e) {
+            logger.warn("⚠️ Could not read summary.json for logging", e);
+        }
