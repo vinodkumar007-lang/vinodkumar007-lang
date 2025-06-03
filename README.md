@@ -1,50 +1,32 @@
-package com.yourpackage.model;
+package com.nedbank.kafka.filemanage.controller;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
+import com.nedbank.kafka.filemanage.model.ApiResponse;
+import com.nedbank.kafka.filemanage.service.KafkaListenerService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.web.bind.annotation.*;
 
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class SummaryPayloadResponse {
-    private String message;
-    private String status;
-    private SummaryPayload summaryPayload;
+@RestController
+@RequestMapping("/api/file")
+public class FileProcessingController {
 
-    public SummaryPayloadResponse() {}
+    private static final Logger logger = LoggerFactory.getLogger(FileProcessingController.class);
+    private final KafkaListenerService kafkaListenerService;
 
-    public SummaryPayloadResponse(String message, String status, SummaryPayload summaryPayload) {
-        this.message = message;
-        this.status = status;
-        this.summaryPayload = summaryPayload;
+    public FileProcessingController(KafkaListenerService kafkaListenerService) {
+        this.kafkaListenerService = kafkaListenerService;
     }
 
-    public static SummaryPayloadResponse buildSuccess(SummaryPayload payload) {
-        return new SummaryPayloadResponse("Processed successfully", "SUCCESS", payload);
+    // Health check
+    @GetMapping("/health")
+    public String healthCheck() {
+        logger.info("Health check endpoint hit.");
+        return "File Processing Service is up and running.";
     }
 
-    public static SummaryPayloadResponse buildFailure(String errorMessage) {
-        return new SummaryPayloadResponse(errorMessage, "FAILED", null);
-    }
-
-    public String getMessage() {
-        return message;
-    }
-
-    public void setMessage(String message) {
-        this.message = message;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
-    public SummaryPayload getSummaryPayload() {
-        return summaryPayload;
-    }
-
-    public void setSummaryPayload(SummaryPayload summaryPayload) {
-        this.summaryPayload = summaryPayload;
+    @PostMapping("/process")
+    public ApiResponse triggerFileProcessing() {
+        logger.info("POST /process called to trigger Kafka message processing.");
+        return kafkaListenerService.listen();
     }
 }
