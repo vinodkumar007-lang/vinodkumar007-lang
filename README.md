@@ -42,51 +42,29 @@ public class KafkaListenerService {
         this.blobStorageService = blobStorageService;
     }
 
-    // Subscribe once after bean creation
-    /*@PostConstruct
-    public void init() {
-        kafkaConsumer.subscribe(Collections.singletonList(inputTopic));
-        logger.info("Kafka consumer subscribed to topic: {}", inputTopic);
-    }*/
-
-    /**
-     * Polls Kafka and processes one message per call.
-     * Commits offset manually after processing.
-     */
     public ApiResponse listen() {
         Properties props = new Properties();
 
-// Kafka broker addresses
+        // Kafka config (same as before)
         props.put("bootstrap.servers", "nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093");
-
-// Consumer group configuration
         props.put("group.id", "str-ecp-batch");
         props.put("enable.auto.commit", "false");
         props.put("auto.offset.reset", "earliest");
-
-// Deserialization
         props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
-
-// SSL configuration
         props.put("security.protocol", "SSL");
         props.put("ssl.truststore.location", "C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks");
         props.put("ssl.truststore.password", "nedbank1");
         props.put("ssl.keystore.location", "C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks");
         props.put("ssl.keystore.password", "3dX7y3Yz9Jv6L4F");
         props.put("ssl.key.password", "3dX7y3Yz9Jv6L4F");
-
-// Optional: disable hostname verification if you're using self-signed certs or IPs
         props.put("ssl.endpoint.identification.algorithm", "");
-
-// Optional: enforce specific protocol version if needed
         props.put("ssl.protocol", "TLSv1.2");
 
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
             TopicPartition partition = new TopicPartition(inputTopic, 0);
             consumer.assign(Collections.singletonList(partition));
 
-            // Get last committed offset
             OffsetAndMetadata committed = consumer.committed(partition);
             long nextOffset = committed != null ? committed.offset() : 0;
 
@@ -106,13 +84,12 @@ public class KafkaListenerService {
 
                     kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
 
-                    // Manually commit offset
                     consumer.commitSync(Collections.singletonMap(
                             partition,
                             new OffsetAndMetadata(record.offset() + 1)
                     ));
 
-                    return response; // One message per request
+                    return response;
 
                 } catch (Exception ex) {
                     logger.error("Error processing Kafka message", ex);
@@ -132,7 +109,6 @@ public class KafkaListenerService {
             return new ApiResponse("Empty message", "error", null);
         }
 
-        // Prepare header
         Header header = new Header();
         header.setTenantCode(message.getTenantCode());
         header.setChannelID(message.getChannelID());
@@ -142,13 +118,11 @@ public class KafkaListenerService {
         header.setProduct(message.getProduct());
         header.setJobName(message.getJobName());
 
-        // Prepare payload
         Payload payload = new Payload();
         payload.setUniqueConsumerRef(message.getUniqueConsumerRef());
         payload.setRunPriority(message.getRunPriority());
         payload.setEventType(message.getEventType());
 
-        // Process files
         List<SummaryProcessedFile> processedFiles = new ArrayList<>();
         List<PrintFile> printFiles = new ArrayList<>();
         Metadata metadata = new Metadata();
@@ -157,6 +131,7 @@ public class KafkaListenerService {
 
         String fileName = message.getBatchId() + ".json";
 
+        // Process each input file (BatchFile) in Kafka message
         for (BatchFile file : message.getBatchFiles()) {
             try {
                 String sourceBlobUrl = file.getBlobUrl();
@@ -165,134 +140,130 @@ public class KafkaListenerService {
                     fileName = inputFileName;
                 }
 
-                String blobPath = buildTargetBlobPath(
-                        message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
-                        message.getUniqueConsumerRef(), message.getJobName(), inputFileName
-                );
+                // 1. Download input file content from Blob Storage
+                String inputFileContent = blobStorageService.downloadFileContent(sourceBlobUrl);
 
-                String newBlobUrl = blobStorageService.copyFileFromUrlToBlob(sourceBlobUrl, blobPath);
+                // 2. Extract per-customer data list from the input file content
+                List<CustomerData> customers = DataParser.extractCustomerData(inputFileContent);
 
-                SummaryProcessedFile processedFile = new SummaryProcessedFile();
-                processedFile.setCustomerID("C001"); // Example placeholder
-                processedFile.setAccountNumber("123456789012345"); // Example placeholder
-                processedFile.setPdfArchiveFileURL(generatePdfUrl("archive", "123456789012345", message.getBatchId()));
-                processedFile.setPdfEmailFileURL(generatePdfUrl("email", "123456789012345", message.getBatchId()));
-                processedFile.setHtmlEmailFileURL(generatePdfUrl("html", "123456789012345", message.getBatchId()));
-                processedFile.setTxtEmailFileURL(generatePdfUrl("txt", "123456789012345", message.getBatchId()));
-                processedFile.setPdfMobstatFileURL(generatePdfUrl("mobstat", "123456789012345", message.getBatchId()));
-                processedFile.setStatusCode("OK");
-                processedFile.setStatusDescription("Success");
+                // 3. For each customer, generate and upload PDF, HTML, TXT, MOBSTAT files
+                for (CustomerData customer : customers) {
+                    // Generate files locally
+                    File pdfFile = FileGenerator.generatePdf(customer);
+                    File htmlFile = FileGenerator.generateHtml(customer);
+                    File txtFile = FileGenerator.generateTxt(customer);
+                    File mobstatFile = FileGenerator.generateMobstat(customer);
 
-                processedFiles.add(processedFile);
-                fileCount++;
+                    // Build blob paths for uploads (use customer info)
+                    String pdfArchiveBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "archive", customer.getAccountNumber(), pdfFile.getName());
 
+                    String pdfEmailBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "email", customer.getAccountNumber(), pdfFile.getName());
+
+                    String htmlEmailBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "html", customer.getAccountNumber(), htmlFile.getName());
+
+                    String txtEmailBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "txt", customer.getAccountNumber(), txtFile.getName());
+
+                    String mobstatBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "mobstat", customer.getAccountNumber(), mobstatFile.getName());
+
+                    // Upload files and get URLs
+                    String pdfArchiveUrl = blobStorageService.uploadFile(pdfFile.getAbsolutePath(), pdfArchiveBlobPath);
+                    String pdfEmailUrl = blobStorageService.uploadFile(pdfFile.getAbsolutePath(), pdfEmailBlobPath);
+                    String htmlEmailUrl = blobStorageService.uploadFile(htmlFile.getAbsolutePath(), htmlEmailBlobPath);
+                    String txtEmailUrl = blobStorageService.uploadFile(txtFile.getAbsolutePath(), txtEmailBlobPath);
+                    String mobstatUrl = blobStorageService.uploadFile(mobstatFile.getAbsolutePath(), mobstatBlobPath);
+
+                    // Build processed file record
+                    SummaryProcessedFile processedFile = new SummaryProcessedFile();
+                    processedFile.setCustomerID(customer.getCustomerID());
+                    processedFile.setAccountNumber(customer.getAccountNumber());
+                    processedFile.setPdfArchiveFileURL(pdfArchiveUrl);
+                    processedFile.setPdfEmailFileURL(pdfEmailUrl);
+                    processedFile.setHtmlEmailFileURL(htmlEmailUrl);
+                    processedFile.setTxtEmailFileURL(txtEmailUrl);
+                    processedFile.setPdfMobstatFileURL(mobstatUrl);
+                    processedFile.setStatusCode("OK");
+                    processedFile.setStatusDescription("Success");
+
+                    processedFiles.add(processedFile);
+                    fileCount++;
+                }
             } catch (Exception ex) {
-                logger.warn("Error copying file '{}': {}", file.getFilename(), ex.getMessage());
+                logger.warn("Error processing file '{}': {}", file.getFilename(), ex.getMessage());
             }
         }
 
-        // Add print file example
+        // Add print file example - build real print file URL (adjust path as needed)
         PrintFile printFile = new PrintFile();
-        printFile.setPrintFileURL("https://" + azureBlobStorageAccount + "/pdfs/mobstat/PrintFile_" + message.getBatchId() + ".ps");
+        printFile.setPrintFileURL(buildPrintFileUrl(message));
         printFiles.add(printFile);
 
-        // Fill metadata
-        metadata.setTotalFilesProcessed(fileCount);
-        metadata.setProcessingStatus("Completed");
-        metadata.setEventOutcomeCode("200");
-        metadata.setEventOutcomeDescription("Batch processed successfully");
+        metadata.setSummaryProcessedFiles(processedFiles);
+        metadata.setPrintFiles(printFiles);
 
-        // Create SummaryPayload
         SummaryPayload summaryPayload = new SummaryPayload();
         summaryPayload.setBatchID(message.getBatchId());
         summaryPayload.setFileName(fileName);
         summaryPayload.setHeader(header);
         summaryPayload.setMetadata(metadata);
         summaryPayload.setPayload(payload);
-        summaryPayload.setProcessedFiles(processedFiles);
-        summaryPayload.setPrintFiles(printFiles);
 
-        // Write summary JSON locally and upload to Azure Blob Storage
-        File summaryJsonFile = new File(System.getProperty("java.io.tmpdir"), fileName);
         try {
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(summaryJsonFile, summaryPayload);
+            // 4. Write summary.json locally
+            File summaryJsonFile = SummaryJsonWriter.writeSummaryJson(summaryPayload);
 
-            String summaryBlobPath = String.format("%s/summary/%s/%s",
-                    message.getSourceSystem(), message.getBatchId(), fileName);
+            // 5. Upload summary.json to Azure Blob Storage, get URL
+            summaryFileUrl = blobStorageService.uploadFile(summaryJsonFile.getAbsolutePath(),
+                    buildSummaryJsonBlobPath(message));
 
-            summaryFileUrl = blobStorageService.uploadFile(summaryJsonFile.getAbsolutePath(), summaryBlobPath);
+            summaryPayload.setSummaryFileURL(summaryFileUrl);
 
         } catch (IOException e) {
-            logger.error("Failed to write/upload summary.json", e);
+            logger.error("Failed to write or upload summary.json", e);
+            return new ApiResponse("Failed to write or upload summary.json: " + e.getMessage(), "error", null);
         }
 
-        // Prepare API response payload (excluding processedFiles and printFiles)
-        SummaryPayloadResponse apiPayload = new SummaryPayloadResponse();
-        apiPayload.setBatchID(summaryPayload.getBatchID());
-        apiPayload.setFileName(summaryPayload.getFileName());
-        apiPayload.setHeader(summaryPayload.getHeader());
-        apiPayload.setMetadata(summaryPayload.getMetadata());
-        apiPayload.setPayload(summaryPayload.getPayload());
-        apiPayload.setSummaryFileURL(summaryFileUrl);
-        apiPayload.setTimestamp(Instant.now().toString());
+        payload.setFileCount(fileCount);
 
-        return new ApiResponse("Batch processed successfully", "success", apiPayload);
+        ApiResponse response = new ApiResponse();
+        response.setMessage("Success");
+        response.setStatus("ok");
+        response.setSummaryPayload(summaryPayload);
+
+        return response;
     }
 
-    private String buildTargetBlobPath(String sourceSystem, Double timestamp, String batchId,
-                                       String consumerRef, String processRef, String fileName) {
-        String ts = instantToIsoString(timestamp).replace(":", "-");
-        return String.format("%s/input/%s/%s/%s_%s/%s",
-                sourceSystem.toUpperCase(), ts, batchId, consumerRef, processRef, fileName);
+    private String buildBlobPath(String sourceSystem, long timestamp, String batchId,
+                                 String uniqueConsumerRef, String jobName, String folder,
+                                 String customerAccountNumber, String fileName) {
+        // Example folder structure: /sourceSystem/YYYYMMDD/batchId/uniqueConsumerRef/jobName/folder/customerAccountNumber/fileName
+        String datePart = Instant.ofEpochMilli(timestamp).toString().substring(0, 10).replace("-", "");
+        return String.format("%s/%s/%s/%s/%s/%s/%s/%s",
+                sourceSystem, datePart, batchId, uniqueConsumerRef, jobName, folder, customerAccountNumber, fileName);
     }
 
-    private String instantToIsoString(Double timestamp) {
-        return Instant.ofEpochSecond(timestamp.longValue()).toString();
+    private String buildSummaryJsonBlobPath(KafkaMessage message) {
+        String datePart = Instant.ofEpochMilli(message.getTimestamp()).toString().substring(0, 10).replace("-", "");
+        return String.format("%s/%s/%s/%s/%s/summary.json",
+                message.getSourceSystem(),
+                datePart,
+                message.getBatchId(),
+                message.getUniqueConsumerRef(),
+                message.getJobName());
     }
 
-    private String generatePdfUrl(String type, String accountNumber, String batchId) {
-        return String.format("https://%s/pdfs/%s/%s_%s.%s",
-                azureBlobStorageAccount, type, accountNumber, batchId,
-                type.equals("html") ? "html" : "pdf");
+    private String buildPrintFileUrl(KafkaMessage message) {
+        // Build real print file URL based on your folder structure and file name conventions
+        String baseUrl = "https://" + azureBlobStorageAccount + ".blob.core.windows.net/print/";
+        String printFileName = message.getBatchId() + "_print.pdf";
+        return baseUrl + printFileName;
     }
-}
-{
-  "batchID": "759af791-99fe-4a1b-a6de-ca06b2754c46",
-  "fileName": "DEBTMAN_20250505.csv",
-  "header": {
-    "tenantCode": "ZANBL",
-    "channelID": "100",
-    "audienceID": "f7359b3f-4d8f-41a5-8df5-84b115cd8a74",
-    "timestamp": "2025-02-06T12:34:56Z",
-    "sourceSystem": "CARD",
-    "product": "DEBTMANAGER",
-    "jobName": "DEBTMAN"
-  },
-  "processedFiles": [
-    {
-      "customerID": "C001",
-	  "accountNumber": "5898460773955802",
-      "pdfArchiveFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/archive/5898460773955802_CCEML805.pdf",
-      "pdfEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/email/5898460773955802_CCEML805.pdf",
-      "htmlEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/html/DM12_generic_RB.html",
-      "pdfMobstatFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/mobstat/DEBTMAN_5898460773906474_600006708419_0999392815_0801114949_30_CARD.pdf",
-	  "statusCode": "OK",
-	  "statusDescription": "Success"
-    },
-    {
-      "customerID": "C002",
-	  "accountNumber": "5898460773869078"
-      "pdfArchiveFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/archive/5898460773906474_CCMOB805.pdf",
-      "pdfEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/email/5898460773869078_CCEML805.pdf",
-      "htmlEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/html/DM12_generic_RB.html",
-      "pdfMobstatFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/mobstat/DEBTMAN_1165371100101_146311653711_0822559186_0861100033_30_RRB.pdf",
-	  "statusCode": "OK",
-	  "statusDescription": "Success"
+
+    private String instantToIsoString(long epochMillis) {
+        return Instant.ofEpochMilli(epochMillis).toString();
     }
-  ],
-  "printFiles": [
-	{
-      "printFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/print/MOBSTAT_PRINT.ps"		
-	}
-  ]
 }
