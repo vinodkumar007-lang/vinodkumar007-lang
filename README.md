@@ -1,29 +1,25 @@
 package com.nedbank.kafka.filemanage.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 @Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class SummaryPayloadResponse {
-    private String batchID;
-    private String fileName;
-    private Header header;
-    private Metadata metadata;
-    private String summaryFileURL;
-    private String timestamp;
-    private Payload payload;
     private String message;
     private String status;
     private SummaryPayload summaryPayload;
-
 }
 
 package com.nedbank.kafka.filemanage.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 import java.util.List;
 
 @Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class SummaryPayload {
     private String batchID;
     private String fileName;
@@ -35,14 +31,29 @@ public class SummaryPayload {
     private String summaryFileURL;
     private String fileLocation;
     private String timestamp;
-
-    // Getters and Setters
 }
+
 package com.nedbank.kafka.filemanage.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 @Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class Metadata {
+    private int totalFilesProcessed;
+    private String processingStatus;
+    private String eventOutcomeCode;
+    private String eventOutcomeDescription;
+}
+
+package com.nedbank.kafka.filemanage.model;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.Data;
+
+@Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class SummaryProcessedFile {
     private String customerID;
     private String accountNumber;
@@ -53,34 +64,14 @@ public class SummaryProcessedFile {
     private String pdfMobstatFileURL;
     private String statusCode;
     private String statusDescription;
-
-    // Getters and Setters
 }
-
 package com.nedbank.kafka.filemanage.model;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 @Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class PrintFile {
     private String printFileURL;
-
-    // Getters and Setters
-}
-package com.nedbank.kafka.filemanage.model;
-
-import lombok.Data;
-
-import java.util.List;
-
-@Data
-public class Metadata {
-    private int totalFilesProcessed;
-    private String processingStatus;
-    private String eventOutcomeCode;
-    private String eventOutcomeDescription;
-    private List<SummaryProcessedFile> processedFileList;
-    private List<PrintFile> printFile;
-
-    // Getters and Setters
 }
