@@ -1,11 +1,14 @@
- File summaryFilePath = SummaryJsonWriter.writeSummaryJsonToFile(summaryPayload, "/temp/summary.json");
-        File summaryJsonFile = new File(summaryFilePath);
+// Get the JSON content string
+String jsonContent = SummaryJsonWriter.writeSummaryJson(summaryPayload);
 
-        try {
-            String jsonContent = new String(java.nio.file.Files.readAllBytes(summaryJsonFile.toPath()));
-            logger.info("📄 Summary JSON content before upload:\n{}", jsonContent);
-        } catch (IOException e) {
-            logger.warn("⚠️ Could not read summary.json for logging", e);
-        }
+logger.info("📄 Summary JSON content before upload:\n{}", jsonContent);
 
-        summaryFileUrl = blobStorageService.uploadFile(summaryFilePath, buildSummaryJsonBlobPath(message));
+// If you want to save it to a file, do this:
+String summaryFilePath = "summary.json"; // or a dynamic path you want
+
+try {
+    java.nio.file.Files.write(java.nio.file.Paths.get(summaryFilePath), jsonContent.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+    logger.info("✅ Summary JSON written to file: {}", summaryFilePath);
+} catch (IOException e) {
+    logger.warn("⚠️ Could not write summary.json file", e);
+}
