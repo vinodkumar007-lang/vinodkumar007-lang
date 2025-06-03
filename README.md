@@ -1,32 +1,37 @@
-public class CustomerData {
-    private String customerId;
-    private String name;
-    private String email;
-    private String deliveryChannel;
-    // add other fields as needed
+package com.nedbank.kafka.filemanage.util;
 
-    // Constructors
-    public CustomerData() {}
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.nedbank.kafka.filemanage.model.SummaryPayload;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
-    public CustomerData(String customerId, String name, String email, String deliveryChannel) {
-        this.customerId = customerId;
-        this.name = name;
-        this.email = email;
-        this.deliveryChannel = deliveryChannel;
+import java.io.StringWriter;
+
+@Component
+public class SummaryJsonWriter {
+
+    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
+    private final ObjectMapper objectMapper;
+
+    public SummaryJsonWriter() {
+        this.objectMapper = new ObjectMapper();
+        objectMapper.enable(SerializationFeature.INDENT_OUTPUT); // pretty print
     }
 
-    // Getters and setters
-    public String getCustomerId() { return customerId; }
-    public void setCustomerId(String customerId) { this.customerId = customerId; }
-
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
-
-    public String getDeliveryChannel() { return deliveryChannel; }
-    public void setDeliveryChannel(String deliveryChannel) { this.deliveryChannel = deliveryChannel; }
-
-    // Optionally override toString(), equals(), hashCode()
+    /**
+     * Serializes the given SummaryPayload to JSON string
+     */
+    public String writeSummaryJson(SummaryPayload payload) {
+        try {
+            StringWriter writer = new StringWriter();
+            objectMapper.writeValue(writer, payload);
+            logger.info("✅ Summary JSON successfully written.");
+            return writer.toString();
+        } catch (Exception e) {
+            logger.error("❌ Failed to write summary JSON: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to write summary JSON", e);
+        }
+    }
 }
