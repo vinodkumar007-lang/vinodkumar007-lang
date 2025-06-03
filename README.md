@@ -1,45 +1,29 @@
-public String downloadFileContent(String blobPathOrUrl) {
-    try {
-        initSecrets();
-
-        String extractedContainerName = containerName;  // default if container name is configured
-        String blobName = blobPathOrUrl;
-
-        // Handle full blob URL
-        if (blobPathOrUrl.startsWith("http")) {
-            URI uri = new URI(blobPathOrUrl);
-            String[] segments = uri.getPath().split("/");
-
-            if (segments.length < 3) {
-                throw new CustomAppException("Invalid blob URL format: " + blobPathOrUrl, 400, HttpStatus.BAD_REQUEST);
-            }
-
-            // Example: /container/blob => segments[1] = container, segments[2...] = blob path
-            extractedContainerName = segments[1];
-            blobName = String.join("/", Arrays.copyOfRange(segments, 2, segments.length));
-        }
-
-        logger.info("🔍 Downloading blob: container='{}', blob='{}'", extractedContainerName, blobName);
-
-        BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                .buildClient();
-
-        BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(extractedContainerName);
-        BlobClient blobClient = containerClient.getBlobClient(blobName);
-
-        if (!blobClient.exists()) {
-            throw new CustomAppException("Blob not found: " + blobName, 404, HttpStatus.NOT_FOUND);
-        }
-
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        blobClient.download(outputStream);
-
-        return outputStream.toString(StandardCharsets.UTF_8.name());
-
-    } catch (Exception e) {
-        logger.error("❌ Error downloading blob content for '{}': {}", blobPathOrUrl, e.getMessage(), e);
-        throw new CustomAppException("Error downloading blob content", 603, HttpStatus.INTERNAL_SERVER_ERROR, e);
-    }
-}
+at java.base/sun.nio.fs.WindowsPathParser.normalize(WindowsPathParser.java:182) ~[na:na]
+	at java.base/sun.nio.fs.WindowsPathParser.parse(WindowsPathParser.java:153) ~[na:na]
+	at java.base/sun.nio.fs.WindowsPathParser.parse(WindowsPathParser.java:77) ~[na:na]
+	at java.base/sun.nio.fs.WindowsPath.parse(WindowsPath.java:92) ~[na:na]
+	at java.base/sun.nio.fs.WindowsFileSystem.getPath(WindowsFileSystem.java:232) ~[na:na]
+	at java.base/java.io.File.toPath(File.java:2387) ~[na:na]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.processSingleMessage(KafkaListenerService.java:210) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.listen(KafkaListenerService.java:83) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.controller.FileProcessingController.triggerFileProcessing(FileProcessingController.java:30) ~[classes/:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:884) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:797) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1080) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:973) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1003) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:906) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:731) ~[tomcat-embed-core-10.1.1.jar:6.0]
+	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:880) ~[spring-webmvc-6.0.2.jar:6.0.2]
+	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:814) ~[tomcat-embed-core-10.1.1.jar:6.0]
+	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:223) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
+	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:53) ~[tomcat-embed-websocket-10.1.1.jar:10.1.1]
