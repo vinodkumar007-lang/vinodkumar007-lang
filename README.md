@@ -1,9 +1,13 @@
- String summaryFilePath = SummaryJsonWriter.writeSummaryJson(summaryPayload);
-        File summaryJsonFile = new File(summaryFilePath);
+String jsonContent = SummaryJsonWriter.writeSummaryJson(summaryPayload);
 
-        try {
-            String jsonContent = new String(java.nio.file.Files.readAllBytes(summaryJsonFile.toPath()));
-            logger.info("📄 Summary JSON content before upload:\n{}", jsonContent);
-        } catch (IOException e) {
-            logger.warn("⚠️ Could not read summary.json for logging", e);
-        }
+// Optional: log before saving
+logger.info("📄 Summary JSON content before upload:\n{}", jsonContent);
+
+// Save to a file
+String filePath = "summary.json"; // or dynamic name based on batchID
+try {
+    Files.write(Paths.get(filePath), jsonContent.getBytes(StandardCharsets.UTF_8));
+    logger.info("✅ Summary JSON written to file: {}", filePath);
+} catch (IOException e) {
+    logger.error("❌ Failed to write summary JSON to file", e);
+}
