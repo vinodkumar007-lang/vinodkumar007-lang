@@ -40,7 +40,7 @@ public class KafkaListenerService {
 
     @Autowired
     public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
-                                BlobStorageService blobStorageService, SummaryJsonWriter summaryJsonWriter) {
+                                BlobStorageService blobStorageService) {
         this.kafkaTemplate = kafkaTemplate;
         this.blobStorageService = blobStorageService;
     }
@@ -74,7 +74,12 @@ public class KafkaListenerService {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
             if (records.isEmpty()) {
                 logger.info("No new messages at offset {}", nextOffset);
-                return new ApiResponse("No new messages", "info", null);
+                // Return a non-null response with empty data objects
+                return new ApiResponse(
+                    "No new messages to process",
+                    "info",
+                    new SummaryPayloadResponse() // empty summary payload response to avoid nulls
+                );
             }
 
             for (ConsumerRecord<String, String> record : records) {
@@ -83,31 +88,49 @@ public class KafkaListenerService {
 
                     ApiResponse response = processSingleMessage(kafkaMessage);
 
+                    // Send response to output topic
                     kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
 
+                    // Commit offset after successful processing
                     consumer.commitSync(Collections.singletonMap(
                             partition,
                             new OffsetAndMetadata(record.offset() + 1)
                     ));
 
+                    // Return the successful response
                     return response;
 
                 } catch (Exception ex) {
                     logger.error("Error processing Kafka message", ex);
-                    return new ApiResponse("Error processing message: " + ex.getMessage(), "error", null);
+                    // Return error response with non-null fields
+                    return new ApiResponse(
+                        "Error processing message: " + ex.getMessage(),
+                        "error",
+                        new SummaryPayloadResponse() // empty object to avoid nulls
+                    );
                 }
             }
         } catch (Exception e) {
             logger.error("Kafka consumer failed", e);
-            return new ApiResponse("Kafka error: " + e.getMessage(), "error", null);
+            // Return error response with non-null fields
+            return new ApiResponse(
+                "Kafka error: " + e.getMessage(),
+                "error",
+                new SummaryPayloadResponse() // empty object to avoid nulls
+            );
         }
 
-        return new ApiResponse("No messages processed", "info", null);
+        // Should not reach here, but in case
+        return new ApiResponse(
+            "No messages processed",
+            "info",
+            new SummaryPayloadResponse() // empty object to avoid nulls
+        );
     }
 
     private ApiResponse processSingleMessage(KafkaMessage message) {
         if (message == null) {
-            return new ApiResponse("Empty message", "error", null);
+            return new ApiResponse("Empty message", "error", new SummaryPayloadResponse());
         }
 
         Header header = new Header();
@@ -140,10 +163,10 @@ public class KafkaListenerService {
                     fileName = inputFileName;
                 }
 
-                // ✅ Handle full URL or blob name safely
+                // Handle full URL or blob name safely
                 String resolvedBlobPath = extractBlobPath(sourceBlobUrl);
 
-                // ✅ Now safe to pass to blob service
+                // Download content from blob storage
                 String inputFileContent = blobStorageService.downloadFileContent(resolvedBlobPath);
 
                 List<CustomerData> customers = DataParser.extractCustomerData(inputFileContent);
@@ -198,100 +221,65 @@ public class KafkaListenerService {
         printFile.setPrintFileURL(buildPrintFileUrl(message));
         printFiles.add(printFile);
 
-        metadata.setProcessedFileList(processedFiles);
-        metadata.setPrintFile(printFiles);
+        metadata.setProcessedFiles(processedFiles);
+        metadata.setPrintFiles(printFiles);
 
         SummaryPayload summaryPayload = new SummaryPayload();
         summaryPayload.setBatchID(message.getBatchId());
         summaryPayload.setFileName(fileName);
         summaryPayload.setHeader(header);
         summaryPayload.setMetadata(metadata);
-        summaryPayload.setPayload(payload);
 
-        // Get the JSON content string
-        String jsonContent = SummaryJsonWriter.writeSummaryJson(summaryPayload);
-
-        logger.info("📄 Summary JSON content before upload:\n{}", jsonContent);
-
-        // If you want to save it to a file, do this:
-        String summaryFilePath = "summary.json"; // or a dynamic path you want
-
+        // Write summary JSON file and upload it
         try {
-            java.nio.file.Files.write(java.nio.file.Paths.get(summaryFilePath), jsonContent.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            logger.info("✅ Summary JSON written to file: {}", summaryFilePath);
+            String summaryJsonPath = SummaryJsonWriter.writeSummaryJson(summaryPayload);
+            summaryFileUrl = blobStorageService.uploadSummaryJson(summaryJsonPath, message);
+            summaryPayload.setSummaryFileURL(summaryFileUrl);
         } catch (IOException e) {
-            logger.warn("⚠️ Could not write summary.json file", e);
+            logger.error("Error writing/uploading summary JSON: {}", e.getMessage());
         }
 
-        summaryFileUrl = blobStorageService.uploadFile(summaryFilePath, buildSummaryJsonBlobPath(message));
-        summaryPayload.setSummaryFileURL(summaryFileUrl);
-        payload.setFileCount(fileCount);
-
+        // Build final response payload
         SummaryPayloadResponse apiPayload = new SummaryPayloadResponse();
-        apiPayload.setBatchID(summaryPayload.getBatchID());
-        apiPayload.setFileName(summaryPayload.getFileName());
-        apiPayload.setHeader(summaryPayload.getHeader());
-        apiPayload.setMetadata(summaryPayload.getMetadata());
-        apiPayload.setPayload(summaryPayload.getPayload());
-        apiPayload.setSummaryFileURL(summaryFileUrl);
-        apiPayload.setTimestamp(Instant.now().toString());
+        apiPayload.setMessage("Processed files: " + fileCount);
+        apiPayload.setStatus("success");
+        apiPayload.setData(summaryPayload);
+        apiPayload.setSummaryPayload(summaryPayload);
 
-        return new ApiResponse("Batch processed successfully", "success", apiPayload);
+        return new ApiResponse(
+                apiPayload.getMessage(),
+                apiPayload.getStatus(),
+                apiPayload // include full payload here for detailed data and summaryPayload fields
+        );
     }
 
-    private String buildBlobPath(String sourceSystem, Double timestamp, String batchId,
+    private String buildBlobPath(String sourceSystem, long timestamp, String batchId,
                                  String uniqueConsumerRef, String jobName, String folder,
-                                 String customerAccountNumber, String fileName) {
-        String datePart = instantToDateString(timestamp);
-        return String.format("%s/%s/%s/%s/%s/%s/%s/%s",
-                sourceSystem, datePart, batchId, uniqueConsumerRef, jobName, folder, customerAccountNumber, fileName);
+                                 String customerAccount, String fileName) {
+
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                .withZone(ZoneId.systemDefault());
+        String dateStr = dtf.format(Instant.ofEpochMilli(timestamp));
+
+        return String.format("%s/%s/%s/%s/%s/%s/%s",
+                sourceSystem, dateStr, batchId, uniqueConsumerRef, jobName, folder, fileName);
     }
 
-    private String buildSummaryJsonBlobPath(KafkaMessage message) {
-        String datePart = Instant.ofEpochMilli(Double.doubleToLongBits(message.getTimestamp()))
-                .toString().substring(0, 10).replace("-", "");
-        return String.format("%s/%s/%s/%s/%s/summary.json",
-                message.getSourceSystem(), datePart,
-                message.getBatchId(), message.getUniqueConsumerRef(), message.getJobName());
-    }
-
-    private String buildPrintFileUrl(KafkaMessage message) {
-        String datePart = Instant.ofEpochMilli(Double.doubleToLongBits(message.getTimestamp()))
-                .toString().substring(0, 10).replace("-", "");
-        String printFilePath = String.format("%s/%s/%s/%s/%s/print/%s_print.pdf",
-                message.getSourceSystem(),
-                datePart,
-                message.getBatchId(),
-                message.getUniqueConsumerRef(),
-                message.getJobName(),
-                message.getBatchId());
-        return String.format("https://%s.blob.core.windows.net/%s", azureBlobStorageAccount, printFilePath);
-    }
-
-    private String instantToIsoString(Double timestamp) {
-        return Instant.ofEpochMilli(timestamp.longValue()).toString();
-    }
-
-    private String instantToDateString(Double timestamp) {
-        return Instant.ofEpochMilli(timestamp.longValue())
-                .atZone(ZoneId.of("UTC"))
-                .format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-    }
-
-    private String extractBlobPath(String blobPathOrUrl) {
-        if (blobPathOrUrl.startsWith("https://")) {
-            try {
-                URI uri = new URI(blobPathOrUrl);
-                String path = uri.getPath(); // /container/blobname
-                // Strip leading slash and container name
-                int idx = path.indexOf('/', 1); // skip initial /
-                return (idx > 0) ? path.substring(idx + 1) : path.substring(1);
-            } catch (Exception e) {
-                logger.warn("⚠️ Failed to extract blob path from URL: {}", blobPathOrUrl, e);
-                return blobPathOrUrl; // Fallback to original
+    private String extractBlobPath(String fullUrl) {
+        if (fullUrl == null) return "";
+        try {
+            URI uri = URI.create(fullUrl);
+            String path = uri.getPath();
+            if (path.startsWith("/")) {
+                path = path.substring(1);
             }
+            return path;
+        } catch (Exception e) {
+            return fullUrl;
         }
-        return blobPathOrUrl; // Already a path
     }
 
+    private String instantToIsoString(long epochMillis) {
+        return Instant.ofEpochMilli(epochMillis).toString();
+    }
 }
