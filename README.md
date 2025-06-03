@@ -1,225 +1,36 @@
 {
-
     "message": "Batch processed successfully",
-
     "status": "success",
-
-    "summaryPayload": {
-
-        "batchID": "12345",
-
+    "data": {
+        "batchID": "1c93525b-42d1-410a-9e26-aa957f19861b",
+        "fileName": "DEBTMAN.csv",
         "header": {
-
             "tenantCode": "ZANBL",
-
-            "channelID": "100",
-
-            "audienceID": "",
-
-            "timestamp": "Thu May 22 05:44:21 SAST 2025",
-
+            "channelID": null,
+            "audienceID": null,
+            "timestamp": "2025-05-27T13:07:25Z",
             "sourceSystem": "DEBTMAN",
-
-            "product": "DEBTMANAGER",
-
+            "product": "DEBTMAN",
             "jobName": "DEBTMAN"
-
         },
-
         "metadata": {
-
             "totalFilesProcessed": 1,
-
-            "processingStatus": "200",
-
-            "eventOutcomeCode": "Sucess",
-
-            "eventOutcomeDescription": "Successful"
-
+            "processingStatus": "Completed",
+            "eventOutcomeCode": "200",
+            "eventOutcomeDescription": "Batch processed successfully"
         },
-
         "payload": {
-
-            "uniqueConsumerRef": "",
-
-            "uniqueECPBatchRef": "",
-
-            "runPriority": "",
-
-            "eventID": "200",
-
-            "eventType": "Success",
-
-            "restartKey": ""
-
+            "uniqueConsumerRef": "6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7g",
+            "uniqueECPBatchRef": null,
+            "runPriority": null,
+            "eventID": null,
+            "eventType": null,
+            "restartKey": null
         },
-
-        "summaryFileURL": "/main/nedcor/dia/ecm-batch/debtman/output/guid/exstreamsummaryfile/batchID_summary_sample.json",
-
-        "timestamp": ""
-
+        "processedFiles": null,
+        "printFiles": null,
+        "summaryFileURL": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2Fsummary%2F1c93525b-42d1-410a-9e26-aa957f19861b%2FDEBTMAN.csv",
+        "fileLocation": null,
+        "timestamp": "2025-06-02T12:16:05.960505900Z"
     }
-
 }
- 
-van Zyl, Armand. (Armand)
-Each batchId should have its own Kafka message, and its own summary file
-ok
- 
-Example of Kafka message, you can ignore the summaryFileURL, it is just for me to create a mock file
- 
-And then only the customer information and file details inside the summary file for the specific 1 batchID
- 
-Thanks 
- 
-If you have any other questions or needs assistance please let me know
- 
-Just a summary file example...
- 
-That was wrong, here is the correct example, if you want to use it
- 
-{
-
-  "batchID": "759af791-99fe-4a1b-a6de-ca06b2754c46",
-
-  "fileName": "DEBTMAN_20250505.csv",
-
-  "header": {
-
-    "tenantCode": "ZANBL",
-
-    "channelID": "100",
-
-    "audienceID": "f7359b3f-4d8f-41a5-8df5-84b115cd8a74",
-
-    "timestamp": "2025-02-06T12:34:56Z",
-
-    "sourceSystem": "CARD",
-
-    "product": "DEBTMANAGER",
-
-    "jobName": "DEBTMAN"
-
-  },
-
-  "processedFiles": [
-
-    {
-
-      "customerID": "C001",
-
-	  "accountNumber": "5898460773955802",
-
-      "pdfArchiveFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/archive/5898460773955802_CCEML805.pdf",
-
-      "pdfEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/email/5898460773955802_CCEML805.pdf",
-
-      "htmlEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/html/DM12_generic_RB.html",
-
-      "pdfMobstatFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/mobstat/DEBTMAN_5898460773906474_600006708419_0999392815_0801114949_30_CARD.pdf",
-
-	  "statusCode": "OK",
-
-	  "statusDescription": "Success"
-
-    },
-
-    {
-
-      "customerID": "C002",
-
-	  "accountNumber": "5898460773869078"
-
-      "pdfArchiveFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/archive/5898460773906474_CCMOB805.pdf",
-
-      "pdfEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/email/5898460773869078_CCEML805.pdf",
-
-      "htmlEmailFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/html/DM12_generic_RB.html",
-
-      "pdfMobstatFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/mobstat/DEBTMAN_1165371100101_146311653711_0822559186_0861100033_30_RRB.pdf",
-
-	  "statusCode": "OK",
-
-	  "statusDescription": "Success"
-
-    }
-
-  ],
-
-  "printFiles": [
-
-	{
-
-      "printFileURL": "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/print/MOBSTAT_PRINT.ps"		
-
-	}
-
-  ]
-
-}
-
-{
-
-    "message": "Batch processed successfully",
-
-    "status": "success",
-
-    "summaryPayload": {
-
-        "batchID": "12345",
-
-        "header": {
-
-            "tenantCode": "ZANBL",
-
-            "channelID": "100",
-
-            "audienceID": "",
-
-            "timestamp": "Thu May 22 05:44:21 SAST 2025",
-
-            "sourceSystem": "DEBTMAN",
-
-            "product": "DEBTMANAGER",
-
-            "jobName": "DEBTMAN"
-
-        },
-
-        "metadata": {
-
-            "totalFilesProcessed": 1,
-
-            "processingStatus": "200",
-
-            "eventOutcomeCode": "Sucess",
-
-            "eventOutcomeDescription": "Successful"
-
-        },
-
-        "payload": {
-
-            "uniqueConsumerRef": "",
-
-            "uniqueECPBatchRef": "",
-
-            "runPriority": "",
-
-            "eventID": "200",
-
-            "eventType": "Success",
-
-            "restartKey": ""
-
-        },
-
-        "summaryFileURL": "/main/nedcor/dia/ecm-batch/debtman/output/guid/exstreamsummaryfile/batchID_summary_sample.json",
-
-        "timestamp": ""
-
-    }
-
-}
- 
- 
