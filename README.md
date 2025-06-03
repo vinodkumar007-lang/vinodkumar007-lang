@@ -1,40 +1,10 @@
-2025-06-03T16:08:17.099+02:00 ERROR 1300 --- [nio-8080-exec-3] c.n.k.f.service.KafkaListenerService     : Error processing Kafka message
+2025-06-03T16:14:04.464+02:00  INFO 32 --- [nio-8080-exec-3] c.n.k.f.service.BlobStorageService       : 🔍 Downloading blob: container='nsnakscontregecm001', blob='nsnakscontregecm001/NDDSST_250508.DAT'
+2025-06-03T16:14:04.566+02:00 ERROR 32 --- [nio-8080-exec-3] c.n.k.f.service.BlobStorageService       : ❌ Error downloading blob content for 'nsnakscontregecm001/NDDSST_250508.DAT': Blob not found: nsnakscontregecm001/NDDSST_250508.DAT
 
-com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException: Unrecognized field "ValidationRequirement" (class com.nedbank.kafka.filemanage.model.BatchFile), not marked as ignorable (5 known properties: "ObjectId", "ValidationStatus", "RepositoryId", "Filename", "BlobUrl"])
- at [Source: (String)"{
-  "BatchId" : "24561850-97e9-413b-8769-f36a76e7726b",
-  "SourceSystem" : "DEBTMAN",
-  "TenantCode" : "ZANBL",
-  "ChannelID" : null,
-  "AudienceID" : null,
-  "Product" : "DEBTMAN",
-  "JobName" : "DEBTMAN",
-  "UniqueConsumerRef" : "0860831f-9658-4090-bf7a-dec436753bc6",
-  "Timestamp" : 1748947244.629696600,
-  "RunPriority" : null,
-  "EventType" : null,
-  "BatchFiles" : [ {
-    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C2}",
-    "RepositoryId" : "BATCH",
-    "BlobUrl" : "htt"[truncated 200 chars]; line: 19, column: 32] (through reference chain: com.nedbank.kafka.filemanage.model.KafkaMessage["BatchFiles"]->java.util.ArrayList[0]->com.nedbank.kafka.filemanage.model.BatchFile["ValidationRequirement"])
-	at com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException.from(UnrecognizedPropertyException.java:61) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.DeserializationContext.handleUnknownProperty(DeserializationContext.java:1132) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.std.StdDeserializer.handleUnknownProperty(StdDeserializer.java:2202) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.BeanDeserializerBase.handleUnknownProperty(BeanDeserializerBase.java:1705) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.BeanDeserializerBase.handleUnknownVanilla(BeanDeserializerBase.java:1683) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.BeanDeserializer.vanillaDeserialize(BeanDeserializer.java:320) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.BeanDeserializer.deserialize(BeanDeserializer.java:177) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.std.CollectionDeserializer._deserializeFromArray(CollectionDeserializer.java:359) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.std.CollectionDeserializer.deserialize(CollectionDeserializer.java:244) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.std.CollectionDeserializer.deserialize(CollectionDeserializer.java:28) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.impl.MethodProperty.deserializeAndSet(MethodProperty.java:129) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.BeanDeserializer.vanillaDeserialize(BeanDeserializer.java:314) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.BeanDeserializer.deserialize(BeanDeserializer.java:177) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.deser.DefaultDeserializationContext.readRootValue(DefaultDeserializationContext.java:323) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.ObjectMapper._readMapAndClose(ObjectMapper.java:4730) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.ObjectMapper.readValue(ObjectMapper.java:3677) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.fasterxml.jackson.databind.ObjectMapper.readValue(ObjectMapper.java:3645) ~[jackson-databind-2.14.1.jar:2.14.1]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.listen(KafkaListenerService.java:87) ~[classes/:na]
+com.nedbank.kafka.filemanage.exception.CustomAppException: Blob not found: nsnakscontregecm001/NDDSST_250508.DAT
+	at com.nedbank.kafka.filemanage.service.BlobStorageService.downloadFileContent(BlobStorageService.java:256) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.processSingleMessage(KafkaListenerService.java:170) ~[classes/:na]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.listen(KafkaListenerService.java:89) ~[classes/:na]
 	at com.nedbank.kafka.filemanage.controller.FileProcessingController.triggerFileProcessing(FileProcessingController.java:30) ~[classes/:na]
 	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
 	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
@@ -54,35 +24,49 @@ com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException: Unrecognized f
 	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:880) ~[spring-webmvc-6.0.2.jar:6.0.2]
 	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:814) ~[tomcat-embed-core-10.1.1.jar:6.0]
 	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:223) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:53) ~[tomcat-embed-websocket-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:197) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:97) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:542) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:119) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:92) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:78) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:357) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:400) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:65) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:861) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1739) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1191) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:61) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at java.base/java.lang.Thread.run(Thread.java:842) ~[na:na]
+
+public String downloadFileContent(String blobPathOrUrl) {
+        try {
+            initSecrets();
+
+            String extractedContainerName = containerName;  // default if container name is configured
+            String blobName = blobPathOrUrl;
+
+            // Handle full blob URL
+            if (blobPathOrUrl.startsWith("http")) {
+                URI uri = new URI(blobPathOrUrl);
+                String[] segments = uri.getPath().split("/");
+
+                if (segments.length < 3) {
+                    throw new CustomAppException("Invalid blob URL format: " + blobPathOrUrl, 400, HttpStatus.BAD_REQUEST);
+                }
+
+                // Example: /container/blob => segments[1] = container, segments[2...] = blob path
+                extractedContainerName = segments[1];
+                blobName = String.join("/", Arrays.copyOfRange(segments, 2, segments.length));
+            }
+
+            logger.info("🔍 Downloading blob: container='{}', blob='{}'", extractedContainerName, blobName);
+
+            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+                    .buildClient();
+
+            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(extractedContainerName);
+            BlobClient blobClient = containerClient.getBlobClient(blobName);
+
+            if (!blobClient.exists()) {
+                throw new CustomAppException("Blob not found: " + blobName, 404, HttpStatus.NOT_FOUND);
+            }
+
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            blobClient.download(outputStream);
+
+            return outputStream.toString(StandardCharsets.UTF_8.name());
+
+        } catch (Exception e) {
+            logger.error("❌ Error downloading blob content for '{}': {}", blobPathOrUrl, e.getMessage(), e);
+            throw new CustomAppException("Error downloading blob content", 603, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
