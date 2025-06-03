@@ -1,6 +1,16 @@
- // 4. Write summary.json locally
-        File summaryJsonFile = new File(SummaryJsonWriter.writeSummaryJson(summaryPayload));
+// 4. Write summary.json locally and get the file path
+String summaryFilePath = SummaryJsonWriter.writeSummaryJson(summaryPayload);
+File summaryJsonFile = new File(summaryFilePath);
 
-        // 5. Upload summary.json to Azure Blob Storage, get URL
-        summaryFileUrl = blobStorageService.uploadFile(summaryJsonFile.getAbsolutePath(),
-                buildSummaryJsonBlobPath(message));
+// ✅ Print the contents of the summary.json file
+try {
+    String jsonContent = new String(java.nio.file.Files.readAllBytes(summaryJsonFile.toPath()));
+    logger.info("📄 Summary JSON content before upload:\n{}", jsonContent);
+} catch (IOException e) {
+    logger.warn("⚠️ Could not read summary.json for logging", e);
+}
+
+// 5. Upload summary.json to Azure Blob Storage
+summaryFileUrl = blobStorageService.uploadFile(
+        summaryFilePath,
+        buildSummaryJsonBlobPath(message));
