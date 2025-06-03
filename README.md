@@ -1,1 +1,1 @@
-Is the realtime composition environment running in Cloud? we are not able to test since yesterday
+As confirmed by Varun, the team is working on it and it will be back up in a couple of hours
