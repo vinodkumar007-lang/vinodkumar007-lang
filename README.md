@@ -1,158 +1,307 @@
-2025-06-03T09:35:53.424+02:00 ERROR 18164 --- [nio-8080-exec-1] c.n.k.f.service.BlobStorageService       : ❌ Error downloading blob content for 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv': Blob not found: https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv
+package com.nedbank.kafka.filemanage.service;
 
-com.nedbank.kafka.filemanage.exception.CustomAppException: Blob not found: https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv
-	at com.nedbank.kafka.filemanage.service.BlobStorageService.downloadFileContent(BlobStorageService.java:227) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.processSingleMessage(KafkaListenerService.java:144) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.listen(KafkaListenerService.java:83) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.controller.FileProcessingController.triggerFileProcessing(FileProcessingController.java:30) ~[classes/:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
-	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:884) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:797) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1080) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:973) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1003) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:906) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:731) ~[tomcat-embed-core-10.1.1.jar:6.0]
-	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:880) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:814) ~[tomcat-embed-core-10.1.1.jar:6.0]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:223) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:53) ~[tomcat-embed-websocket-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:197) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:97) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:542) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:119) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:92) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:78) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:357) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:400) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:65) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:861) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1739) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1191) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:61) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at java.base/java.lang.Thread.run(Thread.java:842) ~[na:na]
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.*;
+import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.*;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
 
-2025-06-03T09:35:53.435+02:00  WARN 18164 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Error processing file 'DEBTMAN.csv': Error downloading blob content
-2025-06-03T09:35:53.512+02:00  INFO 18164 --- [nio-8080-exec-1] c.n.k.f.utils.SummaryJsonWriter          : ✅ Summary JSON successfully written.
-2025-06-03T09:35:53.513+02:00 ERROR 18164 --- [nio-8080-exec-1] c.n.k.f.service.KafkaListenerService     : Error processing Kafka message
+import java.io.File;
+import java.io.IOException;
+import java.time.Instant;
+import java.time.Duration;
+import java.util.*;
 
-> at index 1: {
-  "batchID" : "1c93525b-42d1-410a-9e26-aa957f19861c",
-  "fileName" : "DEBTMAN.csv",
-  "header" : {
-    "tenantCode" : "ZANBL",
-    "channelID" : null,
-    "audienceID" : null,
-    "timestamp" : "1970-01-21T05:39:11.245Z",
-    "sourceSystem" : "DEBTMAN",
-    "product" : "DEBTMAN",
-    "jobName" : "DEBTMAN"
-  },
-  "metadata" : {
-    "totalFilesProcessed" : 0,
-    "processingStatus" : null,
-    "eventOutcomeCode" : null,
-    "eventOutcomeDescription" : null,
-    "processedFileList" : [ ],
-    "printFile" : [ {
-      "printFileURL" : "https:\https:\nsndvextr01.blob.core.windows.net\nsnakscontregecm001.blob.core.windows.net\print\1c93525b-42d1-410a-9e26-aa957f19861c_print.pdf"
-    } ]
-  },
-  "payload" : {
-    "uniqueConsumerRef" : "6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f",
-    "uniqueECPBatchRef" : null,
-    "runPriority" : null,
-    "eventID" : null,
-    "eventType" : null,
-    "restartKey" : null,
-    "fileCount" : 0
-  },
-  "processedFiles" : null,
-  "printFiles" : null,
-  "summaryFileURL" : null,
-  "fileLocation" : null,
-  "timestamp" : null
+@Service
+public class KafkaListenerService {
+
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final BlobStorageService blobStorageService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Value("${kafka.topic.input}")
+    private String inputTopic;
+
+    @Value("${kafka.topic.output}")
+    private String outputTopic;
+
+    @Value("${azure.blob.storage.account}")
+    private String azureBlobStorageAccount;
+
+    @Autowired
+    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
+                                BlobStorageService blobStorageService, SummaryJsonWriter summaryJsonWriter) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.blobStorageService = blobStorageService;
+    }
+
+    public ApiResponse listen() {
+        Properties props = new Properties();
+
+        // Kafka config (same as before)
+        props.put("bootstrap.servers", "nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093");
+        props.put("group.id", "str-ecp-batch");
+        props.put("enable.auto.commit", "false");
+        props.put("auto.offset.reset", "earliest");
+        props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put("security.protocol", "SSL");
+        props.put("ssl.truststore.location", "C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks");
+        props.put("ssl.truststore.password", "nedbank1");
+        props.put("ssl.keystore.location", "C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks");
+        props.put("ssl.keystore.password", "3dX7y3Yz9Jv6L4F");
+        props.put("ssl.key.password", "3dX7y3Yz9Jv6L4F");
+        props.put("ssl.endpoint.identification.algorithm", "");
+        props.put("ssl.protocol", "TLSv1.2");
+
+        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            TopicPartition partition = new TopicPartition(inputTopic, 0);
+            consumer.assign(Collections.singletonList(partition));
+
+            OffsetAndMetadata committed = consumer.committed(partition);
+            long nextOffset = committed != null ? committed.offset() : 0;
+
+            consumer.seek(partition, nextOffset);
+
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
+            if (records.isEmpty()) {
+                logger.info("No new messages at offset {}", nextOffset);
+                return new ApiResponse("No new messages", "info", null);
+            }
+
+            for (ConsumerRecord<String, String> record : records) {
+                try {
+                    KafkaMessage kafkaMessage = objectMapper.readValue(record.value(), KafkaMessage.class);
+
+                    ApiResponse response = processSingleMessage(kafkaMessage);
+
+                    kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
+
+                    consumer.commitSync(Collections.singletonMap(
+                            partition,
+                            new OffsetAndMetadata(record.offset() + 1)
+                    ));
+
+                    return response;
+
+                } catch (Exception ex) {
+                    logger.error("Error processing Kafka message", ex);
+                    return new ApiResponse("Error processing message: " + ex.getMessage(), "error", null);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Kafka consumer failed", e);
+            return new ApiResponse("Kafka error: " + e.getMessage(), "error", null);
+        }
+
+        return new ApiResponse("No messages processed", "info", null);
+    }
+
+    private ApiResponse processSingleMessage(KafkaMessage message) {
+        if (message == null) {
+            return new ApiResponse("Empty message", "error", null);
+        }
+
+        Header header = new Header();
+        header.setTenantCode(message.getTenantCode());
+        header.setChannelID(message.getChannelID());
+        header.setAudienceID(message.getAudienceID());
+        header.setTimestamp(instantToIsoString(message.getTimestamp()));
+        header.setSourceSystem(message.getSourceSystem());
+        header.setProduct(message.getProduct());
+        header.setJobName(message.getJobName());
+
+        Payload payload = new Payload();
+        payload.setUniqueConsumerRef(message.getUniqueConsumerRef());
+        payload.setRunPriority(message.getRunPriority());
+        payload.setEventType(message.getEventType());
+
+        List<SummaryProcessedFile> processedFiles = new ArrayList<>();
+        List<PrintFile> printFiles = new ArrayList<>();
+        Metadata metadata = new Metadata();
+        String summaryFileUrl = null;
+        int fileCount = 0;
+
+        String fileName = message.getBatchId() + ".json";
+
+        // Process each input file (BatchFile) in Kafka message
+        for (BatchFile file : message.getBatchFiles()) {
+            try {
+                String sourceBlobUrl = file.getBlobUrl();
+                String inputFileName = file.getFilename();
+                if (inputFileName != null && !inputFileName.isBlank()) {
+                    fileName = inputFileName;
+                }
+
+                // 1. Download input file content from Blob Storage
+                String inputFileContent = blobStorageService.downloadFileContent(sourceBlobUrl);
+
+                // 2. Extract per-customer data list from the input file content
+                List<CustomerData> customers = DataParser.extractCustomerData(inputFileContent);
+
+                // 3. For each customer, generate and upload PDF, HTML, TXT, MOBSTAT files
+                for (CustomerData customer : customers) {
+                    // Generate files locally
+                    File pdfFile = FileGenerator.generatePdf(customer);
+                    File htmlFile = FileGenerator.generateHtml(customer);
+                    File txtFile = FileGenerator.generateTxt(customer);
+                    File mobstatFile = FileGenerator.generateMobstat(customer);
+
+                    // Build blob paths for uploads (use customer info)
+                    String pdfArchiveBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "archive", customer.getAccountNumber(), pdfFile.getName());
+
+                    String pdfEmailBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "email", customer.getAccountNumber(), pdfFile.getName());
+
+                    String htmlEmailBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "html", customer.getAccountNumber(), htmlFile.getName());
+
+                    String txtEmailBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "txt", customer.getAccountNumber(), txtFile.getName());
+
+                    String mobstatBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "mobstat", customer.getAccountNumber(), mobstatFile.getName());
+
+                    // Upload files and get URLs
+                    String pdfArchiveUrl = blobStorageService.uploadFile(pdfFile.getAbsolutePath(), pdfArchiveBlobPath);
+                    String pdfEmailUrl = blobStorageService.uploadFile(pdfFile.getAbsolutePath(), pdfEmailBlobPath);
+                    String htmlEmailUrl = blobStorageService.uploadFile(htmlFile.getAbsolutePath(), htmlEmailBlobPath);
+                    String txtEmailUrl = blobStorageService.uploadFile(txtFile.getAbsolutePath(), txtEmailBlobPath);
+                    String mobstatUrl = blobStorageService.uploadFile(mobstatFile.getAbsolutePath(), mobstatBlobPath);
+
+                    // Build processed file record
+                    SummaryProcessedFile processedFile = new SummaryProcessedFile();
+                    processedFile.setCustomerID(customer.getCustomerId());
+                    processedFile.setAccountNumber(customer.getAccountNumber());
+                    processedFile.setPdfArchiveFileURL(pdfArchiveUrl);
+                    processedFile.setPdfEmailFileURL(pdfEmailUrl);
+                    processedFile.setHtmlEmailFileURL(htmlEmailUrl);
+                    processedFile.setTxtEmailFileURL(txtEmailUrl);
+                    processedFile.setPdfMobstatFileURL(mobstatUrl);
+                    processedFile.setStatusCode("OK");
+                    processedFile.setStatusDescription("Success");
+
+                    processedFiles.add(processedFile);
+                    fileCount++;
+                }
+            } catch (Exception ex) {
+                logger.warn("Error processing file '{}': {}", file.getFilename(), ex.getMessage());
+            }
+        }
+
+        // Add print file example - build real print file URL (adjust path as needed)
+        PrintFile printFile = new PrintFile();
+        printFile.setPrintFileURL(buildPrintFileUrl(message));
+        printFiles.add(printFile);
+
+        metadata.setProcessedFileList(processedFiles);
+        metadata.setPrintFile(printFiles);
+
+        SummaryPayload summaryPayload = new SummaryPayload();
+        summaryPayload.setBatchID(message.getBatchId());
+        summaryPayload.setFileName(fileName);
+        summaryPayload.setHeader(header);
+        summaryPayload.setMetadata(metadata);
+        summaryPayload.setPayload(payload);
+
+        // 4. Write summary.json locally and get the file path
+        String summaryFilePath = SummaryJsonWriter.writeSummaryJson(summaryPayload);
+        File summaryJsonFile = new File(summaryFilePath);
+
+// ✅ Print the contents of the summary.json file
+        try {
+            String jsonContent = new String(java.nio.file.Files.readAllBytes(summaryJsonFile.toPath()));
+            logger.info("📄 Summary JSON content before upload:\n{}", jsonContent);
+        } catch (IOException e) {
+            logger.warn("⚠️ Could not read summary.json for logging", e);
+        }
+
+// 5. Upload summary.json to Azure Blob Storage
+        summaryFileUrl = blobStorageService.uploadFile(
+                summaryFilePath,
+                buildSummaryJsonBlobPath(message));
+
+        summaryPayload.setSummaryFileURL(summaryFileUrl);
+
+        payload.setFileCount(fileCount);
+
+        // Prepare API response payload (excluding processedFiles and printFiles)
+        SummaryPayloadResponse apiPayload = new SummaryPayloadResponse();
+        apiPayload.setBatchID(summaryPayload.getBatchID());
+        apiPayload.setFileName(summaryPayload.getFileName());
+        apiPayload.setHeader(summaryPayload.getHeader());
+        apiPayload.setMetadata(summaryPayload.getMetadata());
+        apiPayload.setPayload(summaryPayload.getPayload());
+        apiPayload.setSummaryFileURL(summaryFileUrl);
+        apiPayload.setTimestamp(Instant.now().toString());
+
+        return new ApiResponse("Batch processed successfully", "success", apiPayload);
+    }
+
+    private String buildBlobPath(String sourceSystem, Double timestamp, String batchId,
+                                 String uniqueConsumerRef, String jobName, String folder,
+                                 String customerAccountNumber, String fileName) {
+        // Fix timestamp parsing here as well
+        String datePart = instantToDateString(timestamp);
+        return String.format("%s/%s/%s/%s/%s/%s/%s/%s",
+                sourceSystem, datePart, batchId, uniqueConsumerRef, jobName, folder, customerAccountNumber, fileName);
+    }
+
+    private String buildSummaryJsonBlobPath(KafkaMessage message) {
+        String datePart = Instant.ofEpochMilli(Long.parseLong(String.valueOf(message.getTimestamp()))).toString().substring(0, 10).replace("-", "");
+        return String.format("%s/%s/%s/%s/%s/summary.json",
+                message.getSourceSystem(),
+                datePart,
+                message.getBatchId(),
+                message.getUniqueConsumerRef(),
+                message.getJobName());
+    }
+
+    private String buildPrintFileUrl(KafkaMessage message) {
+        // Build real print file URL based on your folder structure and file name conventions
+        String baseUrl = "https://" + azureBlobStorageAccount + ".blob.core.windows.net/print/";
+        String printFileName = message.getBatchId() + "_print.pdf";
+        return baseUrl + printFileName;
+    }
+
+    private String instantToIsoString(Double epochMillis) {
+        // Handle scientific notation and decimals safely:
+        long millis;
+        try {
+            millis = doubleToLongEpochMillis(epochMillis);
+        } catch (Exception e) {
+            logger.warn("Invalid timestamp value: {}. Defaulting to epoch=0", epochMillis);
+            millis = 0L;
+        }
+        return Instant.ofEpochMilli(millis).toString();
+    }
+
+    private String instantToDateString(Double epochMillis) {
+        // Extract date in YYYYMMDD format safely from epoch millis
+        long millis;
+        try {
+            millis = doubleToLongEpochMillis(epochMillis);
+        } catch (Exception e) {
+            logger.warn("Invalid timestamp value: {}. Defaulting to epoch=0", epochMillis);
+            millis = 0L;
+        }
+        return Instant.ofEpochMilli(millis).toString().substring(0, 10).replace("-", "");
+    }
+
+    private long doubleToLongEpochMillis(Double epochMillis) {
+        // Convert Double epoch millis safely:
+        // Handles scientific notation and decimals by flooring the value
+        if (epochMillis == null) {
+            throw new IllegalArgumentException("epochMillis is null");
+        }
+        return (long) Math.floor(epochMillis);
+    }
 }
-	at java.base/sun.nio.fs.WindowsPathParser.normalize(WindowsPathParser.java:182) ~[na:na]
-	at java.base/sun.nio.fs.WindowsPathParser.parse(WindowsPathParser.java:153) ~[na:na]
-	at java.base/sun.nio.fs.WindowsPathParser.parse(WindowsPathParser.java:77) ~[na:na]
-	at java.base/sun.nio.fs.WindowsPath.parse(WindowsPath.java:92) ~[na:na]
-	at java.base/sun.nio.fs.WindowsFileSystem.getPath(WindowsFileSystem.java:232) ~[na:na]
-	at java.base/java.io.File.toPath(File.java:2387) ~[na:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.processSingleMessage(KafkaListenerService.java:221) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.listen(KafkaListenerService.java:83) ~[classes/:na]
-	at com.nedbank.kafka.filemanage.controller.FileProcessingController.triggerFileProcessing(FileProcessingController.java:30) ~[classes/:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
-	at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:884) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:797) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1080) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:973) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1003) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:906) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:731) ~[tomcat-embed-core-10.1.1.jar:6.0]
-	at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:880) ~[spring-webmvc-6.0.2.jar:6.0.2]
-	at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:814) ~[tomcat-embed-core-10.1.1.jar:6.0]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:223) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:53) ~[tomcat-embed-websocket-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar:6.0.2]
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:197) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:97) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:542) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:119) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:92) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:78) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:357) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:400) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:65) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:861) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1739) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1191) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:61) ~[tomcat-embed-core-10.1.1.jar:10.1.1]
-	at java.base/java.lang.Thread.run(Thread.java:842) ~[na:na]
