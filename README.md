@@ -74,63 +74,51 @@ public class KafkaListenerService {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
             if (records.isEmpty()) {
                 logger.info("No new messages at offset {}", nextOffset);
-                // Return a non-null response with empty data objects
                 return new ApiResponse(
                         "No new messages to process",
                         "info",
-                        new SummaryPayloadResponse() // empty summary payload response to avoid nulls
+                        new SummaryPayloadResponse("No new messages to process", "info", new SummaryPayload())
                 );
             }
 
             for (ConsumerRecord<String, String> record : records) {
                 try {
                     KafkaMessage kafkaMessage = objectMapper.readValue(record.value(), KafkaMessage.class);
-
                     ApiResponse response = processSingleMessage(kafkaMessage);
-
-                    // Send response to output topic
                     kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
-
-                    // Commit offset after successful processing
                     consumer.commitSync(Collections.singletonMap(
                             partition,
                             new OffsetAndMetadata(record.offset() + 1)
                     ));
-
-                    // Return the successful response
                     return response;
-
                 } catch (Exception ex) {
                     logger.error("Error processing Kafka message", ex);
-                    // Return error response with non-null fields
                     return new ApiResponse(
                             "Error processing message: " + ex.getMessage(),
                             "error",
-                            new SummaryPayloadResponse() // empty object to avoid nulls
+                            new SummaryPayloadResponse("Error processing message", "error", new SummaryPayload())
                     );
                 }
             }
         } catch (Exception e) {
             logger.error("Kafka consumer failed", e);
-            // Return error response with non-null fields
             return new ApiResponse(
                     "Kafka error: " + e.getMessage(),
                     "error",
-                    new SummaryPayloadResponse() // empty object to avoid nulls
+                    new SummaryPayloadResponse("Kafka error", "error", new SummaryPayload())
             );
         }
 
-        // Should not reach here, but in case
         return new ApiResponse(
                 "No messages processed",
                 "info",
-                new SummaryPayloadResponse() // empty object to avoid nulls
+                new SummaryPayloadResponse("No messages processed", "info", new SummaryPayload())
         );
     }
 
     private ApiResponse processSingleMessage(KafkaMessage message) {
         if (message == null) {
-            return new ApiResponse("Empty message", "error", new SummaryPayloadResponse());
+            return new ApiResponse("Empty message", "error", new SummaryPayloadResponse("Empty message", "error", new SummaryPayload()));
         }
 
         Header header = new Header();
@@ -150,7 +138,7 @@ public class KafkaListenerService {
         List<SummaryProcessedFile> processedFiles = new ArrayList<>();
         List<PrintFile> printFiles = new ArrayList<>();
         Metadata metadata = new Metadata();
-        String summaryFileUrl = null;
+        String summaryFileUrl;
         int fileCount = 0;
 
         String fileName = message.getBatchId() + ".json";
@@ -163,13 +151,9 @@ public class KafkaListenerService {
                     fileName = inputFileName;
                 }
 
-                // Handle full URL or blob name safely
                 String resolvedBlobPath = extractBlobPath(sourceBlobUrl);
-
-                // Download content from blob storage
                 String sanitizedBlobName = extractFileName(resolvedBlobPath);
                 String inputFileContent = blobStorageService.downloadFileContent(sanitizedBlobName);
-                //String inputFileContent = blobStorageService.downloadFileContent(resolvedBlobPath);
 
                 List<CustomerData> customers = DataParser.extractCustomerData(inputFileContent);
 
@@ -232,33 +216,25 @@ public class KafkaListenerService {
         summaryPayload.setHeader(header);
         summaryPayload.setMetadata(metadata);
 
-        // Write summary JSON file and upload it
         String summaryJsonPath = SummaryJsonWriter.writeSummaryJsonToFile(summaryPayload);
         summaryFileUrl = blobStorageService.uploadSummaryJson(summaryJsonPath, message);
         summaryPayload.setSummaryFileURL(summaryFileUrl);
 
-        // Build final response payload
-        SummaryPayloadResponse apiPayload = new SummaryPayloadResponse();
-        apiPayload.setMessage("Processed files: " + fileCount);
-        apiPayload.setStatus("success");
-        //apiPayload.setData(summaryPayload);
-        apiPayload.setSummaryPayload(summaryPayload);
+        SummaryPayloadResponse apiPayload = new SummaryPayloadResponse("Processed files: " + fileCount, "success", summaryPayload);
 
         return new ApiResponse(
                 apiPayload.getMessage(),
                 apiPayload.getStatus(),
-                apiPayload // include full payload here for detailed data and summaryPayload fields
+                apiPayload
         );
     }
 
     private String buildBlobPath(String sourceSystem, long timestamp, String batchId,
                                  String uniqueConsumerRef, String jobName, String folder,
                                  String customerAccount, String fileName) {
-
         DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd")
                 .withZone(ZoneId.systemDefault());
         String dateStr = dtf.format(Instant.ofEpochMilli(timestamp));
-
         return String.format("%s/%s/%s/%s/%s/%s/%s",
                 sourceSystem, dateStr, batchId, uniqueConsumerRef, jobName, folder, fileName);
     }
@@ -277,22 +253,16 @@ public class KafkaListenerService {
         }
     }
 
-    private String instantToIsoString(long epochMillis) {
-        return Instant.ofEpochMilli(epochMillis).toString();
-    }
-
     public String extractFileName(String fullPathOrUrl) {
         if (fullPathOrUrl == null || fullPathOrUrl.isEmpty()) {
             return fullPathOrUrl;
         }
-        // Remove trailing slashes if any
-        String trimmed = fullPathOrUrl.replaceAll("/+$", "");
-        // Get the substring after last slash
+        String trimmed = fullPathOrUrl.replaceAll("/+", "/");
         int lastSlashIndex = trimmed.lastIndexOf('/');
-        if (lastSlashIndex >= 0 && lastSlashIndex < trimmed.length() - 1) {
-            return trimmed.substring(lastSlashIndex + 1);
-        } else {
-            return trimmed; // no slashes found, return as is
-        }
+        return lastSlashIndex >= 0 ? trimmed.substring(lastSlashIndex + 1) : trimmed;
+    }
+
+    private String instantToIsoString(long epochMillis) {
+        return Instant.ofEpochMilli(epochMillis).toString();
     }
 }
