@@ -1,23 +1,22 @@
 package com.nedbank.kafka.filemanage.model;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
 @Data
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class SummaryProcessedFile {
-    private String customerID;
+public class CustomerData {
+    private String customerId;
     private String accountNumber;
-    private String firstName;
-    private String lastName;
+    private String name;
     private String email;
     private String mobileNumber;
+    private String deliveryChannel;
     private String addressLine1;
     private String addressLine2;
     private String addressLine3;
     private String postalCode;
     private String contactNumber;
     private String product;
+    private String branchCode;
     private String templateCode;
     private String templateName;
     private String balance;
@@ -28,12 +27,16 @@ public class SummaryProcessedFile {
     private String dueDate;
     private String idNumber;
     private String accountReference;
-    private String pdfArchiveFileURL;
-    private String pdfEmailFileURL;
-    private String htmlEmailFileURL;
-    private String txtEmailFileURL;
-    private String pdfMobstatFileURL;
-    private String statusCode;
-    private String statusDescription;
+    private String contactEmail;
+    private String contactDepartment;
+    private String firstName;
+    private String lastName;
+    private String tags;
+    private String printIndicator;
+    private String tenantCode;
+    private String channel;
+    private String language;
+    private String currency;
+    private String productCode;
     private String fullName;
 }
