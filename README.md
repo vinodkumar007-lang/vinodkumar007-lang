@@ -6,7 +6,7 @@ import lombok.Data;
 @Data
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class SummaryProcessedFile {
-    private String customerID;
+    private String customerId;            // changed from customerID
     private String accountNumber;
     private String firstName;
     private String lastName;
@@ -28,11 +28,11 @@ public class SummaryProcessedFile {
     private String dueDate;
     private String idNumber;
     private String accountReference;
-    private String pdfArchiveFileURL;
-    private String pdfEmailFileURL;
-    private String htmlEmailFileURL;
-    private String txtEmailFileURL;
-    private String pdfMobstatFileURL;
+    private String pdfArchiveFileUrl;    // changed URL casing for consistency
+    private String pdfEmailFileUrl;
+    private String htmlEmailFileUrl;
+    private String txtEmailFileUrl;
+    private String pdfMobstatFileUrl;
     private String statusCode;
     private String statusDescription;
     private String fullName;
