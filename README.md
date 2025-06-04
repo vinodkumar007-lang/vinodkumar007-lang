@@ -1,75 +1,89 @@
-package com.nedbank.kafka.filemanage.service;
+@Service
+public class KafkaListenerService {
 
-import com.nedbank.kafka.filemanage.model.CustomerData;
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final BlobStorageService blobStorageService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-public class FileGenerator {
+    @Value("${kafka.topic.input}")
+    private String inputTopic;
 
-    public static File generatePdf(CustomerData customer) throws IOException {
-        File pdfFile = File.createTempFile(customer.getCustomerId() + "_", ".pdf");
+    @Value("${kafka.topic.output}")
+    private String outputTopic;
 
-        try (FileWriter writer = new FileWriter(pdfFile)) {
-            writer.write("PDF content for customer:\n");
-            writer.write(buildCustomerContent(customer));
-        }
+    @Value("${azure.blob.storage.account}")
+    private String azureBlobStorageAccount;
 
-        return pdfFile;
+    @Autowired
+    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
+                                BlobStorageService blobStorageService) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.blobStorageService = blobStorageService;
     }
 
-    public static File generateHtml(CustomerData customer) throws IOException {
-        File htmlFile = File.createTempFile(customer.getCustomerId() + "_", ".html");
+    public ApiResponse listen() {
+        Properties props = new Properties();
+        props.put("bootstrap.servers", "nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093");
+        props.put("group.id", "str-ecp-batch");
+        props.put("enable.auto.commit", "false");
+        props.put("auto.offset.reset", "earliest");
+        props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put("security.protocol", "SSL");
+        props.put("ssl.truststore.location", "C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks");
+        props.put("ssl.truststore.password", "nedbank1");
+        props.put("ssl.keystore.location", "C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks");
+        props.put("ssl.keystore.password", "3dX7y3Yz9Jv6L4F");
+        props.put("ssl.key.password", "3dX7y3Yz9Jv6L4F");
+        props.put("ssl.endpoint.identification.algorithm", "");
+        props.put("ssl.protocol", "TLSv1.2");
 
-        try (FileWriter writer = new FileWriter(htmlFile)) {
-            writer.write("<html><body>");
-            writer.write("<h1>Customer Report</h1>");
-            writer.write("<p><strong>Customer ID:</strong> " + customer.getCustomerId() + "</p>");
-            writer.write("<p><strong>Account Number:</strong> " + customer.getAccountNumber() + "</p>");
-            writer.write("<p><strong>Name:</strong> " + customer.getFullName() + "</p>");
-            writer.write("<p><strong>Email:</strong> " + customer.getEmail() + "</p>");
-            writer.write("<p><strong>Mobile:</strong> " + customer.getMobileNumber() + "</p>");
-            writer.write("<p><strong>Due Amount:</strong> " + customer.getDueAmount() + "</p>");
-            writer.write("<p><strong>Address:</strong> " + customer.getAddressLine1() + "</p>");
-            writer.write("</body></html>");
-        }
+        # Kafka Consumer Configuration
+kafka.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
+kafka.consumer.group.id=str-ecp-batch
+kafka.consumer.auto.offset.reset=earliest
+kafka.consumer.enable.auto.commit=false
 
-        return htmlFile;
-    }
+# SSL Configuration
+kafka.consumer.security.protocol=SSL
+kafka.consumer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
+kafka.consumer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
+kafka.consumer.ssl.key.password=3dX7y3Yz9Jv6L4F
+kafka.consumer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
+kafka.consumer.ssl.truststore.password=nedbank1
+kafka.consumer.ssl.protocol=TLSv1.2
 
-    public static File generateTxt(CustomerData customer) throws IOException {
-        File txtFile = File.createTempFile(customer.getCustomerId() + "_", ".txt");
+# Kafka Consumer Deserialization
+kafka.consumer.key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+kafka.consumer.value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
 
-        try (FileWriter writer = new FileWriter(txtFile)) {
-            writer.write("Customer Report\n");
-            writer.write(buildCustomerContent(customer));
-        }
+# Kafka Producer Configuration (to send Summary File URL)
+kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
+kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
+kafka.producer.security.protocol=SSL
+kafka.producer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
+kafka.producer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
+kafka.producer.ssl.key.password=3dX7y3Yz9Jv6L4F
+kafka.producer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
+kafka.producer.ssl.truststore.password=nedbank1
+kafka.producer.ssl.protocol=TLSv1.2
+kafka.producer.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
 
-        return txtFile;
-    }
+azure.keyvault.uri=https://nsn-dev-ecm-kva-001.vault.azure.net/secrets
 
-    public static File generateMobstat(CustomerData customer) throws IOException {
-        File mobstatFile = File.createTempFile(customer.getCustomerId() + "_", ".mobstat");
+logging.level.org.springframework.kafka=DEBUG
 
-        try (FileWriter writer = new FileWriter(mobstatFile)) {
-            writer.write("MOBSTAT Report\n");
-            writer.write(buildCustomerContent(customer));
-        }
+kafka.topic.input=str-ecp-batch-composition
+kafka.topic.output=str-ecp-batch-composition-complete
 
-        return mobstatFile;
-    }
+vault.hashicorp.url=https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200
+vault.hashicorp.namespace =admin/espire
 
-    // Common content builder used by multiple formats
-    private static String buildCustomerContent(CustomerData customer) {
-        StringBuilder sb = new StringBuilder();
-        sb.append("Customer ID: ").append(customer.getCustomerId()).append("\n");
-        sb.append("Account Number: ").append(customer.getAccountNumber()).append("\n");
-        sb.append("Name: ").append(customer.getFullName()).append("\n");
-        sb.append("Email: ").append(customer.getEmail()).append("\n");
-        sb.append("Mobile: ").append(customer.getMobileNumber()).append("\n");
-        sb.append("Due Amount: ").append(customer.getDueAmount()).append("\n");
-        sb.append("Address Line 1: ").append(customer.getAddressLine1()).append("\n");
-        return sb.toString();
-    }
-}
+vault.hashicorp.passwordDev=Dev+Cred4#
+vault.hashicorp.passwordNbhDev=nbh_dev1
+
+azure.blob.storage.account =https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001
+
+
