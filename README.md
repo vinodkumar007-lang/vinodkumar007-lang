@@ -1,76 +1,56 @@
-package com.nedbank.kafka.filemanage.service;
+public static List<CustomerData> extractCustomerData(String content, String deliveryType) {
+    List<CustomerData> customers = new ArrayList<>();
+    String[] lines = content.split("\n");
 
-import com.nedbank.kafka.filemanage.model.CustomerData;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+    for (String line : lines) {
+        line = line.trim();
+        if (line.isEmpty()) continue;
 
-import java.util.ArrayList;
-import java.util.List;
+        // Only process lines starting with "05|"
+        if (line.startsWith("05|")) {
+            String[] fields = line.split("\\|", -1); // -1 keeps trailing empty fields
 
-public class DataParser {
-    private static final Logger logger = LoggerFactory.getLogger(DataParser.class);
-
-    /**
-     * Parses raw input file content to extract a list of CustomerData objects.
-     * Assumes each line is formatted as:
-     * customerId,accountNumber,name,email,deliveryChannel,mobileNumber,printIndicator,<optional extra fields>
-     */
-    public static List<CustomerData> extractCustomerData(String content, String deliveryType) {
-        List<CustomerData> customers = new ArrayList<>();
-        String[] lines = content.split("\n");
-
-        for (String line : lines) {
-            line = line.trim();
-            if (line.isEmpty()) continue;
-
-            String[] field = line.split("\\|", -1);  // Use -1 to preserve trailing empty fields
-            if (field.length < 5) {
-                logger.warn("Skipping line due to insufficient fields: {}", line);
-                continue;
+            if (deliveryType != null && !deliveryType.equalsIgnoreCase(fields[4])) {
+                continue; // Skip if delivery type doesn't match
             }
 
-            // Only process lines starting with "05"
-            /*if ("05".equals(fields[0])) {
-                // Check delivery type is in 5th field (index 4)
-                if (deliveryType.equalsIgnoreCase(fields[4])) {
-                    CustomerData customer = new CustomerData();
-                    // Example mappings - adjust as per your Customer class
-                    customer.setCustomerId(fields[1]);
-                    customer.setAccountNumber(fields[2]);
-                    customer.setTenantCode(fields[3]);
-                    customer.setDeliveryChannel(fields[4]);
-                    // Add more fields as needed
-
-                    customers.add(customer);
-                    logger.info("Extracted customer: {}", customer);
-                }
-            }*/
-            if (line.startsWith("05|")) {
-                String[] fields = line.split("\\|", -1); // -1 keeps trailing empty fields
-
+            try {
                 CustomerData customer = new CustomerData();
-                customer.setAccountNumber(fields[1]);
-                customer.setCustomerId(fields[2]);
-                customer.setChannel(fields[4]);
-                customer.setLanguage(fields[5]);
-                customer.setCurrency(fields[6]);
-                customer.setProductCode(fields[11]);
-                customer.setFullName(fields[21] + " " + fields[22]);
-                customer.setAddressLine1(fields[23]);
-                customer.setAddressLine2(fields[24]);
-                customer.setAddressLine3(fields[25]);
-                customer.setPostalCode(fields[29]);
-                customer.setEmail(fields[30]);
-                customer.setMobile(fields[31]);
-                customer.setBalance(fields[32]);
-                customer.setIdNumber(fields[40]);
+
+                customer.setAccountNumber(getField(fields, 1));
+                customer.setCustomerId(getField(fields, 2));
+                customer.setChannel(getField(fields, 4));
+                customer.setLanguage(getField(fields, 5));
+                customer.setCurrency(getField(fields, 6));
+                customer.setProductCode(getField(fields, 11));
+                customer.setFirstName(getField(fields, 21));
+                customer.setLastName(getField(fields, 22));
+                customer.setFullName(getField(fields, 21) + " " + getField(fields, 22));
+                customer.setAddressLine1(getField(fields, 23));
+                customer.setAddressLine2(getField(fields, 24));
+                customer.setAddressLine3(getField(fields, 25));
+                customer.setPostalCode(getField(fields, 29));
+                customer.setEmail(getField(fields, 30));
+                customer.setMobileNumber(getField(fields, 31));
+                customer.setBalance(getField(fields, 32));
+                customer.setDueAmount(getField(fields, 34));
+                customer.setIdNumber(getField(fields, 40));
+                customer.setDeliveryChannel(deliveryType);
 
                 customers.add(customer);
+                logger.info("Extracted customer: {}", customer);
+            } catch (Exception e) {
+                logger.warn("Failed to parse line: {} due to {}", line, e.getMessage());
             }
         }
-        return customers;
     }
 
+    return customers;
+}
+
+// Helper to safely get field by index
+private static String getField(String[] fields, int index) {
+    return (fields.length > index) ? fields[index].trim() : "";
 }
 
 package com.nedbank.kafka.filemanage.service;
@@ -100,13 +80,13 @@ public class FileGenerator {
         try (FileWriter writer = new FileWriter(htmlFile)) {
             writer.write("<html><body>");
             writer.write("<h1>Customer Report</h1>");
-            writer.write("<p><strong>Customer ID:</strong> " + customer.getCustomerId() + "</p>");
-            writer.write("<p><strong>Account Number:</strong> " + customer.getAccountNumber() + "</p>");
-            writer.write("<p><strong>Name:</strong> " + customer.getFullName() + "</p>");
-            writer.write("<p><strong>Email:</strong> " + customer.getEmail() + "</p>");
-            writer.write("<p><strong>Mobile:</strong> " + customer.getMobileNumber() + "</p>");
-            writer.write("<p><strong>Due Amount:</strong> " + customer.getDueAmount() + "</p>");
-            writer.write("<p><strong>Address:</strong> " + customer.getAddressLine1() + "</p>");
+            writer.write("<p><strong>Customer ID:</strong> " + defaultIfNull(customer.getCustomerId()) + "</p>");
+            writer.write("<p><strong>Account Number:</strong> " + defaultIfNull(customer.getAccountNumber()) + "</p>");
+            writer.write("<p><strong>Name:</strong> " + getDisplayName(customer) + "</p>");
+            writer.write("<p><strong>Email:</strong> " + defaultIfNull(customer.getEmail()) + "</p>");
+            writer.write("<p><strong>Mobile:</strong> " + defaultIfNull(customer.getMobileNumber()) + "</p>");
+            writer.write("<p><strong>Due Amount:</strong> " + defaultIfNull(customer.getDueAmount()) + "</p>");
+            writer.write("<p><strong>Address:</strong> " + defaultIfNull(customer.getAddressLine1()) + "</p>");
             writer.write("</body></html>");
         }
 
@@ -138,14 +118,28 @@ public class FileGenerator {
     // Common content builder used by multiple formats
     private static String buildCustomerContent(CustomerData customer) {
         StringBuilder sb = new StringBuilder();
-        sb.append("Customer ID: ").append(customer.getCustomerId()).append("\n");
-        sb.append("Account Number: ").append(customer.getAccountNumber()).append("\n");
-        sb.append("Name: ").append(customer.getFullName()).append("\n");
-        sb.append("Email: ").append(customer.getEmail()).append("\n");
-        sb.append("Mobile: ").append(customer.getMobileNumber()).append("\n");
-        sb.append("Due Amount: ").append(customer.getDueAmount()).append("\n");
-        sb.append("Address Line 1: ").append(customer.getAddressLine1()).append("\n");
+        sb.append("Customer ID: ").append(defaultIfNull(customer.getCustomerId())).append("\n");
+        sb.append("Account Number: ").append(defaultIfNull(customer.getAccountNumber())).append("\n");
+        sb.append("Name: ").append(getDisplayName(customer)).append("\n");
+        sb.append("Email: ").append(defaultIfNull(customer.getEmail())).append("\n");
+        sb.append("Mobile: ").append(defaultIfNull(customer.getMobileNumber())).append("\n");
+        sb.append("Due Amount: ").append(defaultIfNull(customer.getDueAmount())).append("\n");
+        sb.append("Address Line 1: ").append(defaultIfNull(customer.getAddressLine1())).append("\n");
         return sb.toString();
     }
-}
 
+    private static String getDisplayName(CustomerData customer) {
+        if (customer.getFullName() != null && !customer.getFullName().isEmpty()) {
+            return customer.getFullName();
+        } else {
+            String first = defaultIfNull(customer.getFirstName());
+            String last = defaultIfNull(customer.getLastName());
+            String fullName = (first + " " + last).trim();
+            return fullName.isEmpty() ? "" : fullName;
+        }
+    }
+
+    private static String defaultIfNull(String value) {
+        return value != null ? value : "";
+    }
+}
