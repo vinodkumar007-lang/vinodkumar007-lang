@@ -1,139 +1,283 @@
 package com.nedbank.kafka.filemanage.service;
 
-import com.nedbank.kafka.filemanage.model.CustomerData;
-
-import java.util.ArrayList;
-import java.util.List;
-
-public class DataParser {
-
-    /**
-     * Parses raw input file content to extract a list of CustomerData objects.
-     * Assumes each line is formatted as:
-     * customerId,accountNumber,name,email,deliveryChannel,mobileNumber,printIndicator,<optional extra fields>
-     */
-    public static List<CustomerData> extractCustomerData(String inputFileContent) {
-        List<CustomerData> customers = new ArrayList<>();
-
-        if (inputFileContent == null || inputFileContent.isEmpty()) {
-            return customers;
-        }
-
-        String[] lines = inputFileContent.split("\\r?\\n");
-
-        for (String line : lines) {
-            if (line.trim().isEmpty() || line.startsWith("HEADER")) {
-                continue;
-            }
-
-            String[] fields = line.split(",");
-
-            if (fields.length >= 7) {
-                CustomerData customer = new CustomerData();
-                customer.setCustomerId(fields[0].trim());
-                customer.setAccountNumber(fields[1].trim());
-                customer.setName(fields[2].trim());
-                customer.setEmail(fields[3].trim());
-                customer.setDeliveryChannel(fields[4].trim().toUpperCase());
-                customer.setMobileNumber(fields[5].trim());
-                customer.setPrintIndicator(fields[6].trim());
-
-                // If there are extra tags or custom fields
-                if (fields.length > 7) {
-                    StringBuilder tagBuilder = new StringBuilder();
-                    for (int i = 7; i < fields.length; i++) {
-                        tagBuilder.append(fields[i].trim());
-                        if (i < fields.length - 1) {
-                            tagBuilder.append(",");
-                        }
-                    }
-                    customer.setTags(tagBuilder.toString());
-                }
-
-                customers.add(customer);
-            }
-        }
-
-        return customers;
-    }
-}
-
-package com.nedbank.kafka.filemanage.service;
-
-import com.nedbank.kafka.filemanage.model.CustomerData;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.*;
+import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
+import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.common.TopicPartition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.*;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
 
 import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
+import java.net.URI;
+import java.time.Instant;
+import java.time.Duration;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
 
-public class FileGenerator {
+@Service
+public class KafkaListenerService {
 
-    /**
-     * Generates a simple PDF file for a customer (dummy placeholder).
-     * You might want to replace this with actual PDF library usage (e.g., iText or Apache PDFBox).
-     */
-    public static File generatePdf(CustomerData customer) throws IOException {
-        File pdfFile = File.createTempFile(customer.getCustomerId() + "_", ".pdf");
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
-        try (FileWriter writer = new FileWriter(pdfFile)) {
-            writer.write("PDF content for customer:\n");
-            writer.write("Customer ID: " + customer.getCustomerId() + "\n");
-            writer.write("Account Number: " + customer.getAccountNumber() + "\n");
-            writer.write("Name: " + customer.getName() + "\n");
-        }
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final BlobStorageService blobStorageService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-        return pdfFile;
+    @Value("${kafka.topic.input}")
+    private String inputTopic;
+
+    @Value("${kafka.topic.output}")
+    private String outputTopic;
+
+    @Value("${azure.blob.storage.account}")
+    private String azureBlobStorageAccount;
+
+    @Autowired
+    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
+                                BlobStorageService blobStorageService) {
+        this.kafkaTemplate = kafkaTemplate;
+        this.blobStorageService = blobStorageService;
     }
 
-    /**
-     * Generates a simple HTML file for a customer.
-     */
-    public static File generateHtml(CustomerData customer) throws IOException {
-        File htmlFile = File.createTempFile(customer.getCustomerId() + "_", ".html");
+    public ApiResponse listen() {
+        Properties props = new Properties();
+        props.put("bootstrap.servers", "nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093");
+        props.put("group.id", "str-ecp-batch");
+        props.put("enable.auto.commit", "false");
+        props.put("auto.offset.reset", "earliest");
+        props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        props.put("security.protocol", "SSL");
+        props.put("ssl.truststore.location", "C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks");
+        props.put("ssl.truststore.password", "nedbank1");
+        props.put("ssl.keystore.location", "C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks");
+        props.put("ssl.keystore.password", "3dX7y3Yz9Jv6L4F");
+        props.put("ssl.key.password", "3dX7y3Yz9Jv6L4F");
+        props.put("ssl.endpoint.identification.algorithm", "");
+        props.put("ssl.protocol", "TLSv1.2");
 
-        try (FileWriter writer = new FileWriter(htmlFile)) {
-            writer.write("<html><body>");
-            writer.write("<h1>Customer Report</h1>");
-            writer.write("<p><strong>Customer ID:</strong> " + customer.getCustomerId() + "</p>");
-            writer.write("<p><strong>Account Number:</strong> " + customer.getAccountNumber() + "</p>");
-            writer.write("<p><strong>Name:</strong> " + customer.getName() + "</p>");
-            writer.write("</body></html>");
+        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            TopicPartition partition = new TopicPartition(inputTopic, 0);
+            consumer.assign(Collections.singletonList(partition));
+
+            OffsetAndMetadata committed = consumer.committed(partition);
+            long nextOffset = committed != null ? committed.offset() : 0;
+
+            consumer.seek(partition, nextOffset);
+
+            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
+            if (records.isEmpty()) {
+                logger.info("No new messages at offset {}", nextOffset);
+                return new ApiResponse(
+                        "No new messages to process",
+                        "info",
+                        new SummaryPayloadResponse("No new messages to process", "info", new SummaryResponse()).getSummaryResponse()
+                );
+            }
+
+            for (ConsumerRecord<String, String> record : records) {
+                try {
+                    KafkaMessage kafkaMessage = objectMapper.readValue(record.value(), KafkaMessage.class);
+                    ApiResponse response = processSingleMessage(kafkaMessage);
+                    kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
+                    consumer.commitSync(Collections.singletonMap(
+                            partition,
+                            new OffsetAndMetadata(record.offset() + 1)
+                    ));
+                    return response;
+                } catch (Exception ex) {
+                    logger.error("Error processing Kafka message", ex);
+                    return new ApiResponse(
+                            "Error processing message: " + ex.getMessage(),
+                            "error",
+                            new SummaryPayloadResponse("Error processing message", "error", new SummaryResponse()).getSummaryResponse()
+                    );
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Kafka consumer failed", e);
+            return new ApiResponse(
+                    "Kafka error: " + e.getMessage(),
+                    "error",
+                    new SummaryPayloadResponse("Kafka error", "error", new SummaryResponse()).getSummaryResponse()
+            );
         }
 
-        return htmlFile;
+        return new ApiResponse(
+                "No messages processed",
+                "info",
+                new SummaryPayloadResponse("No messages processed", "info", new SummaryResponse()).getSummaryResponse()
+        );
     }
 
-    /**
-     * Generates a simple TXT file for a customer.
-     */
-    public static File generateTxt(CustomerData customer) throws IOException {
-        File txtFile = File.createTempFile(customer.getCustomerId() + "_", ".txt");
-
-        try (FileWriter writer = new FileWriter(txtFile)) {
-            writer.write("Customer Report\n");
-            writer.write("Customer ID: " + customer.getCustomerId() + "\n");
-            writer.write("Account Number: " + customer.getAccountNumber() + "\n");
-            writer.write("Name: " + customer.getName() + "\n");
+    private ApiResponse processSingleMessage(KafkaMessage message) {
+        if (message == null) {
+            return new ApiResponse("Empty message", "error", new SummaryPayloadResponse("Empty message", "error", new SummaryResponse()).getSummaryResponse());
         }
 
-        return txtFile;
+        Header header = new Header();
+        header.setTenantCode(message.getTenantCode());
+        header.setChannelID(message.getChannelID());
+        header.setAudienceID(message.getAudienceID());
+        header.setTimestamp(instantToIsoString(message.getTimestamp()));
+        header.setSourceSystem(message.getSourceSystem());
+        header.setProduct(message.getProduct());
+        header.setJobName(message.getJobName());
+
+        Payload payload = new Payload();
+        payload.setUniqueConsumerRef(message.getUniqueConsumerRef());
+        payload.setRunPriority(message.getRunPriority());
+        payload.setEventType(message.getEventType());
+
+        List<SummaryProcessedFile> processedFiles = new ArrayList<>();
+        List<PrintFile> printFiles = new ArrayList<>();
+        Metadata metadata = new Metadata();
+        String summaryFileUrl;
+        int fileCount = 0;
+
+        String fileName = message.getBatchId() + ".json";
+
+        for (BatchFile file : message.getBatchFiles()) {
+            try {
+                String sourceBlobUrl = file.getBlobUrl();
+                String inputFileName = file.getFilename();
+                if (inputFileName != null && !inputFileName.isBlank()) {
+                    fileName = inputFileName;
+                }
+
+                String resolvedBlobPath = extractBlobPath(sourceBlobUrl);
+                String sanitizedBlobName = extractFileName(resolvedBlobPath);
+                String inputFileContent = blobStorageService.downloadFileContent(sanitizedBlobName);
+
+                List<CustomerData> customers = DataParser.extractCustomerData(inputFileContent);
+
+                for (CustomerData customer : customers) {
+                    File pdfFile = FileGenerator.generatePdf(customer);
+                    File htmlFile = FileGenerator.generateHtml(customer);
+                    File txtFile = FileGenerator.generateTxt(customer);
+                    File mobstatFile = FileGenerator.generateMobstat(customer);
+
+                    String pdfArchiveBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "archive", customer.getAccountNumber(), pdfFile.getName());
+
+                    String pdfEmailBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "email", customer.getAccountNumber(), pdfFile.getName());
+
+                    String htmlEmailBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "html", customer.getAccountNumber(), htmlFile.getName());
+
+                    String txtEmailBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "txt", customer.getAccountNumber(), txtFile.getName());
+
+                    String mobstatBlobPath = buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                            message.getUniqueConsumerRef(), message.getJobName(), "mobstat", customer.getAccountNumber(), mobstatFile.getName());
+
+                    String pdfArchiveUrl = blobStorageService.uploadFile(pdfFile.getAbsolutePath(), pdfArchiveBlobPath);
+                    String pdfEmailUrl = blobStorageService.uploadFile(pdfFile.getAbsolutePath(), pdfEmailBlobPath);
+                    String htmlEmailUrl = blobStorageService.uploadFile(htmlFile.getAbsolutePath(), htmlEmailBlobPath);
+                    String txtEmailUrl = blobStorageService.uploadFile(txtFile.getAbsolutePath(), txtEmailBlobPath);
+                    String mobstatUrl = blobStorageService.uploadFile(mobstatFile.getAbsolutePath(), mobstatBlobPath);
+
+                    SummaryProcessedFile processedFile = new SummaryProcessedFile();
+                    processedFile.setCustomerID(customer.getCustomerId());
+                    processedFile.setAccountNumber(customer.getAccountNumber());
+                    processedFile.setPdfArchiveFileURL(pdfArchiveUrl);
+                    processedFile.setPdfEmailFileURL(pdfEmailUrl);
+                    processedFile.setHtmlEmailFileURL(htmlEmailUrl);
+                    processedFile.setTxtEmailFileURL(txtEmailUrl);
+                    processedFile.setPdfMobstatFileURL(mobstatUrl);
+                    processedFile.setStatusCode("OK");
+                    processedFile.setStatusDescription("Success");
+
+                    processedFiles.add(processedFile);
+                    fileCount++;
+                }
+            } catch (Exception ex) {
+                logger.warn("Error processing file '{}': {}", file.getFilename(), ex.getMessage());
+            }
+        }
+
+        PrintFile printFile = new PrintFile();
+        printFile.setPrintFileURL(blobStorageService.buildPrintFileUrl(message));
+        printFiles.add(printFile);
+
+        metadata.setProcessingStatus("Completed");
+        metadata.setTotalFilesProcessed(processedFiles.size());
+        metadata.setEventOutcomeCode("0");
+        metadata.setEventOutcomeDescription("Success");
+
+        SummaryPayload summaryPayload = new SummaryPayload();
+        summaryPayload.setBatchID(message.getBatchId());
+        summaryPayload.setFileName(fileName);
+        summaryPayload.setHeader(header);
+        summaryPayload.setMetadata(metadata);
+        summaryPayload.setPayload(payload);
+        summaryPayload.setProcessedFiles(processedFiles);
+        summaryPayload.setPrintFiles(printFiles);
+
+        String summaryJsonPath = SummaryJsonWriter.writeSummaryJsonToFile(summaryPayload);
+        logger.debug("Summary file path:  {}", summaryJsonPath);
+        summaryFileUrl = blobStorageService.uploadSummaryJson(summaryJsonPath, message);
+        summaryPayload.setSummaryFileURL(summaryFileUrl);
+
+        SummaryResponse summaryResponse = new SummaryResponse();
+        summaryResponse.setBatchID(summaryPayload.getBatchID());
+        summaryResponse.setFileName(summaryPayload.getFileName());
+        summaryResponse.setHeader(summaryPayload.getHeader());
+        summaryResponse.setMetadata(summaryPayload.getMetadata());
+        summaryResponse.setPayload(summaryPayload.getPayload());
+        summaryResponse.setSummaryFileURL(summaryPayload.getSummaryFileURL());
+        summaryResponse.setTimestamp(summaryPayload.getTimestamp());
+
+        SummaryPayloadResponse apiPayload = new SummaryPayloadResponse("Batch processed successfully", "success", summaryResponse);
+
+        return new ApiResponse(
+                apiPayload.getMessage(),
+                apiPayload.getStatus(),
+                apiPayload.getSummaryResponse()
+        );
     }
 
-    /**
-     * Generates a simple MOBSTAT file for a customer.
-     * (Format as needed for MOBSTAT system)
-     */
-    public static File generateMobstat(CustomerData customer) throws IOException {
-        File mobstatFile = File.createTempFile(customer.getCustomerId() + "_", ".mobstat");
+    private String buildBlobPath(String sourceSystem, long timestamp, String batchId,
+                                 String uniqueConsumerRef, String jobName, String folder,
+                                 String customerAccount, String fileName) {
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+                .withZone(ZoneId.systemDefault());
+        String dateStr = dtf.format(Instant.ofEpochMilli(timestamp));
+        return String.format("%s/%s/%s/%s/%s/%s/%s",
+                sourceSystem, dateStr, batchId, uniqueConsumerRef, jobName, folder, fileName);
+    }
 
-        try (FileWriter writer = new FileWriter(mobstatFile)) {
-            // Example mobstat content format
-            writer.write("MOBSTAT Report\n");
-            writer.write("ID:" + customer.getCustomerId() + "\n");
-            writer.write("ACC:" + customer.getAccountNumber() + "\n");
-            writer.write("NAME:" + customer.getName() + "\n");
+    private String extractBlobPath(String fullUrl) {
+        if (fullUrl == null) return "";
+        try {
+            URI uri = URI.create(fullUrl);
+            String path = uri.getPath();
+            if (path.startsWith("/")) {
+                path = path.substring(1);
+            }
+            return path;
+        } catch (Exception e) {
+            return fullUrl;
         }
+    }
 
-        return mobstatFile;
+    public String extractFileName(String fullPathOrUrl) {
+        if (fullPathOrUrl == null || fullPathOrUrl.isEmpty()) {
+            return fullPathOrUrl;
+        }
+        String trimmed = fullPathOrUrl.replaceAll("/+", "/");
+        int lastSlashIndex = trimmed.lastIndexOf('/');
+        return lastSlashIndex >= 0 ? trimmed.substring(lastSlashIndex + 1) : trimmed;
+    }
+
+    private String instantToIsoString(long epochMillis) {
+        return Instant.ofEpochMilli(epochMillis).toString();
     }
 }
