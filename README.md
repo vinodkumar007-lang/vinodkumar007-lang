@@ -1,1 +1,8 @@
-azure.keyvault.url=https://nsn-dev-ecm-kva-001.vault.azure.net
+To https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Filemanager
+ ! [rejected]        devops -> devops (non-fast-forward)
+error: failed to push some refs to 'https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Filemanager'
+hint: Updates were rejected because the tip of your current branch is behind
+hint: its remote counterpart. If you want to integrate the remote changes,
+hint: use 'git pull' before pushing again.
+hint: See the 'Note about fast-forwards' in 'git push --help' for details.
+
