@@ -1,105 +1,277 @@
-025-06-05T17:54:02.009+02:00  WARN 1 --- [       Thread-7] c.a.s.k.secrets.SecretAsyncClient        : Failed to get secret - account-key
+package com.nedbank.kafka.filemanage.service;
 
-Max retries 3 times exceeded. Error Details: EnvironmentCredential authentication unavailable. Environment variables are not fully configured.
+import com.azure.identity.DefaultAzureCredentialBuilder;
+import com.azure.security.keyvault.secrets.SecretClient;
+import com.azure.security.keyvault.secrets.SecretClientBuilder;
+import com.azure.security.keyvault.secrets.models.KeyVaultSecret;
+import com.azure.storage.blob.*;
+import com.azure.storage.blob.models.BlobItem;
+import com.azure.storage.common.StorageSharedKeyCredential;
+import com.nedbank.kafka.filemanage.exception.CustomAppException;
+import com.nedbank.kafka.filemanage.model.KafkaMessage;
+import org.json.JSONObject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
 
-ManagedIdentityCredential authentication unavailable. Connection to IMDS endpoint cannot be established.
+import java.io.*;
+import java.net.URI;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.Objects;
 
-SharedTokenCacheCredential authentication unavailable. No accounts were found in the cache.
+@Service
+public class BlobStorageService {
 
-IntelliJ Authentication not available. Please log in with Azure Tools for IntelliJ plugin in the IDE.
+    private static final Logger logger = LoggerFactory.getLogger(BlobStorageService.class);
 
-Failed to read Vs Code credentials from Linux Key Ring.
+    private final RestTemplate restTemplate;
 
-AzureCliCredential authentication unavailable. Azure CLI not installed
+    @Value("${azure.keyvault.url}")
+    private String keyVaultUrl;
 
-2025-06-05T17:54:02.010+02:00 ERROR 1 --- [nio-9091-exec-5] c.n.k.f.service.BlobStorageService       : ❌ Failed to fetch secret 'account-key': Max retries 3 times exceeded. Error Details: EnvironmentCredential authentication unavailable. Environment variables are not fully configured.
+    private String accountKey;
+    private String accountName;
+    private String containerName;
 
-ManagedIdentityCredential authentication unavailable. Connection to IMDS endpoint cannot be established.
+    public BlobStorageService(RestTemplate restTemplate) {
+        this.restTemplate = restTemplate;
+    }
 
-SharedTokenCacheCredential authentication unavailable. No accounts were found in the cache.
+    private void initSecrets() {
+        if (accountKey != null && accountName != null && containerName != null) {
+            return;
+        }
 
-IntelliJ Authentication not available. Please log in with Azure Tools for IntelliJ plugin in the IDE.
+        try {
+            logger.info("🔐 Fetching secrets from Azure Key Vault...");
+            SecretClient secretClient = new SecretClientBuilder()
+                    .vaultUrl(keyVaultUrl)
+                    .credential(new DefaultAzureCredentialBuilder().build())
+                    .buildClient();
 
-Failed to read Vs Code credentials from Linux Key Ring.
+            accountKey = getSecret(secretClient, "account-key");
+            accountName = getSecret(secretClient, "account-name");
+            containerName = getSecret(secretClient, "container-name");
 
-AzureCliCredential authentication unavailable. Azure CLI not installed
+            if (accountKey == null || accountKey.isBlank() ||
+                    accountName == null || accountName.isBlank() ||
+                    containerName == null || containerName.isBlank()) {
+                throw new CustomAppException("One or more secrets are null/empty from Key Vault", 400, HttpStatus.BAD_REQUEST);
+            }
 
- 
-What are you doing with Azure CLI?
- 
- 
-Caused by: com.azure.identity.CredentialUnavailableException: EnvironmentCredential authentication unavailable. Environment variables are not fully configured.
+            logger.info("✅ Secrets fetched successfully from Azure Key Vault.");
+        } catch (Exception e) {
+            logger.error("❌ Failed to initialize secrets from Key Vault: {}", e.getMessage(), e);
+            throw new CustomAppException("Key Vault integration failure", 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
 
-ManagedIdentityCredential authentication unavailable. Connection to IMDS endpoint cannot be established.
+    private String getSecret(SecretClient client, String secretName) {
+        try {
+            KeyVaultSecret secret = client.getSecret(secretName);
+            return secret.getValue();
+        } catch (Exception e) {
+            logger.error("❌ Failed to fetch secret '{}': {}", secretName, e.getMessage(), e);
+            throw new CustomAppException("Failed to fetch secret: " + secretName, 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
 
-SharedTokenCacheCredential authentication unavailable. No accounts were found in the cache.
+    public String copyFileFromUrlToBlob(String sourceUrl, String targetBlobPath) {
+        try {
+            initSecrets();
 
-IntelliJ Authentication not available. Please log in with Azure Tools for IntelliJ plugin in the IDE.
+            URI sourceUri = new URI(sourceUrl);
+            String host = sourceUri.getHost();
+            String[] hostParts = host.split("\\.");
+            String sourceAccountName = hostParts[0];
 
-Failed to read Vs Code credentials from Linux Key Ring.
+            String path = sourceUri.getPath();
+            String[] pathParts = path.split("/", 3);
+            if (pathParts.length < 3) {
+                throw new CustomAppException("Invalid source URL path: " + path, 400, HttpStatus.BAD_REQUEST);
+            }
 
-AzureCliCredential authentication unavailable. Azure CLI not installed
+            String sourceContainerName = pathParts[1];
+            String sourceBlobPath = pathParts[2];
 
-        at com.azure.identity.ChainedTokenCredential.lambda$getToken$3(ChainedTokenCredential.java:77) ~[azure-identity-1.2.5.jar!/:na]
+            BlobServiceClient sourceBlobServiceClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format("https://%s.blob.core.windows.net", sourceAccountName))
+                    .credential(new StorageSharedKeyCredential(sourceAccountName, accountKey))
+                    .buildClient();
 
-        at reactor.core.publisher.MonoDefer.subscribe(MonoDefer.java:44) ~[reactor-core-3.4.25.jar!/:3.4.25]
+            BlobContainerClient sourceContainerClient = sourceBlobServiceClient.getBlobContainerClient(sourceContainerName);
+            BlobClient sourceBlobClient = sourceContainerClient.getBlobClient(sourceBlobPath);
 
-        ... 28 common frames omitted
- 
-2025-06-05T17:54:02.117+02:00 ERROR 1 --- [nio-9091-exec-5] c.n.k.f.service.BlobStorageService       : ❌ Failed to initialize secrets from Key Vault: Failed to fetch secret: account-key
- 
-com.nedbank.kafka.filemanage.exception.CustomAppException: Failed to fetch secret: account-key
+            long blobSize = -1;
+            for (BlobItem item : sourceContainerClient.listBlobs()) {
+                if (item.getName().equals(sourceBlobPath)) {
+                    blobSize = item.getProperties().getContentLength();
+                    break;
+                }
+            }
 
-        at com.nedbank.kafka.filemanage.service.BlobStorageService.getSecret(BlobStorageService.java:85) ~[classes!/:na]
+            if (blobSize <= 0) {
+                throw new CustomAppException("Source blob is empty or not found: " + sourceUrl, 404, HttpStatus.NOT_FOUND);
+            }
 
-        at com.nedbank.kafka.filemanage.service.BlobStorageService.initSecrets(BlobStorageService.java:62) ~[classes!/:na]
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            sourceBlobClient.download(outputStream);
+            byte[] sourceBlobBytes = outputStream.toByteArray();
 
-        at com.nedbank.kafka.filemanage.service.BlobStorageService.buildPrintFileUrl(BlobStorageService.java:219) ~[classes!/:na]
+            BlobServiceClient targetBlobServiceClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+                    .buildClient();
 
-        at com.nedbank.kafka.filemanage.service.KafkaListenerService.processSingleMessage(KafkaListenerService.java:328) ~[classes!/:na]
+            BlobContainerClient targetContainerClient = targetBlobServiceClient.getBlobContainerClient(containerName);
+            BlobClient targetBlobClient = targetContainerClient.getBlobClient(targetBlobPath);
 
-        at com.nedbank.kafka.filemanage.service.KafkaListenerService.listen(KafkaListenerService.java:127) ~[classes!/:na]
+            targetBlobClient.upload(new ByteArrayInputStream(sourceBlobBytes), sourceBlobBytes.length, true);
 
-        at com.nedbank.kafka.filemanage.controller.FileProcessingController.triggerFileProcessing(FileProcessingController.java:33) ~[classes!/:na]
+            logger.info("✅ Copied '{}' to '{}'", sourceUrl, targetBlobClient.getBlobUrl());
 
-        at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+            return targetBlobClient.getBlobUrl();
 
-        at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+        } catch (Exception e) {
+            logger.error("❌ Error copying file from URL: {}", e.getMessage(), e);
+            throw new CustomAppException("Error copying file from URL", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
 
-        at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+    public String uploadFile(String content, String targetBlobPath) {
+        try {
+            initSecrets();
 
-        at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+                    .buildClient();
 
-        at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.2.jar!/:6.0.2]
+            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
+            BlobClient blobClient = containerClient.getBlobClient(targetBlobPath);
 
-        at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.2.jar!/:6.0.2]
+            byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
+            blobClient.upload(new ByteArrayInputStream(bytes), bytes.length, true);
 
-        at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117) ~[spring-webmvc-6.0.2.jar!/:6.0.2]
+            logger.info("✅ Uploaded file to '{}'", blobClient.getBlobUrl());
 
-        at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:884) ~[spring-webmvc-6.0.2.jar!/:6.0.2]
+            return blobClient.getBlobUrl();
 
-        at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:797) ~[spring-webmvc-6.0.2.jar!/:6.0.2]
+        } catch (Exception e) {
+            logger.error("❌ Error uploading file: {}", e.getMessage(), e);
+            throw new CustomAppException("Error uploading file", 602, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
 
-        at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.0.2.j
- 
-I am trying to fetch secrets from keyvalult by azure SDK.
- 
-Was this discussed with securit? is a credential used for this?
- 
-My main problem is , when you hit , logs getting generated, but when i am trying getting 404.
- 
- 
-It was already discussed with Wayne, 
-Mashaba, M. (Mfumo)
-Was this discussed with securit? is a credential used for this?
-It was already discussed with Wayne , Philip and Security team in past to use Azure Key Vault for the account key credentials, 
- 
-which credential is used to fetch this?
- 
-we are not using any credentials , we are passing keyvault url to get SecretClient, from SecretClient object trying to get secrets.
-SecretClient secretClient = new SecretClientBuilder()        .vaultUrl(keyVaultUrl)        .credential(new DefaultAzureCredentialBuilder().build())        .buildClient();
- 
-Mashaba, M. (Mfumo)
-Caused by: com.azure.identity.CredentialUnavailableException: EnvironmentCredential authentication unavailable. Environment variables are not fully configured.  ManagedIdentityCredential authentication unavailable. Connection to IMDS endpoint cannot be established.  SharedTokenCacheCredential authe…
-If you can look at the logs you will see it's failing to fetch the secrets 
- 
+    public String downloadFileContent(String blobPathOrUrl) {
+        try {
+            initSecrets();
+
+            String extractedContainerName = containerName;
+            String blobName = blobPathOrUrl;
+
+            if (blobPathOrUrl.startsWith("http")) {
+                URI uri = new URI(blobPathOrUrl);
+                String[] segments = uri.getPath().split("/");
+
+                if (segments == null || segments.length < 3) {
+                    throw new CustomAppException("Invalid blob URL format: " + blobPathOrUrl, 400, HttpStatus.BAD_REQUEST);
+                }
+
+                extractedContainerName = segments[1];
+                blobName = String.join("/", Arrays.copyOfRange(segments, 2, segments.length));
+            }
+
+            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+                    .buildClient();
+
+            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(extractedContainerName);
+            BlobClient blobClient = containerClient.getBlobClient(blobName);
+
+            if (!blobClient.exists()) {
+                throw new CustomAppException("Blob not found: " + blobName, 404, HttpStatus.NOT_FOUND);
+            }
+
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            blobClient.download(outputStream);
+
+            return outputStream.toString(StandardCharsets.UTF_8.name());
+
+        } catch (Exception e) {
+            logger.error("❌ Error downloading blob content for '{}': {}", blobPathOrUrl, e.getMessage(), e);
+            throw new CustomAppException("Error downloading blob content", 603, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
+
+    public String buildPrintFileUrl(KafkaMessage message) {
+        initSecrets();
+
+        if (message == null || message.getBatchId() == null || message.getSourceSystem() == null ||
+                message.getUniqueConsumerRef() == null || message.getJobName() == null) {
+            throw new CustomAppException("Invalid Kafka message data for building print file URL", 400, HttpStatus.BAD_REQUEST);
+        }
+
+        String baseUrl = String.format("https://%s.blob.core.windows.net/%s", accountName, containerName);
+
+        String dateFolder = Instant.ofEpochMilli(message.getTimestamp())
+                .atZone(ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+
+        String printFileName = message.getBatchId() + "_printfile.pdf";
+
+        return String.format("%s/%s/%s/%s/%s/%s/print/%s",
+                baseUrl,
+                message.getSourceSystem(),
+                dateFolder,
+                message.getBatchId(),
+                message.getUniqueConsumerRef(),
+                message.getJobName(),
+                printFileName);
+    }
+
+    public String uploadSummaryJson(String localFilePathOrUrl, KafkaMessage message) {
+        initSecrets();
+
+        if (message == null || message.getBatchId() == null ||
+                message.getSourceSystem() == null || message.getUniqueConsumerRef() == null) {
+            throw new CustomAppException("Missing Kafka message metadata for uploading summary JSON", 400, HttpStatus.BAD_REQUEST);
+        }
+
+        String remoteBlobPath = String.format("%s/%s/%s/summary.json",
+                message.getSourceSystem(),
+                message.getBatchId(),
+                message.getUniqueConsumerRef());
+
+        String jsonContent;
+        try {
+            if (localFilePathOrUrl.startsWith("http://") || localFilePathOrUrl.startsWith("https://")) {
+                jsonContent = downloadContentFromUrl(localFilePathOrUrl);
+            } else {
+                jsonContent = Files.readString(Paths.get(localFilePathOrUrl));
+            }
+        } catch (Exception e) {
+            logger.error("❌ Error reading summary JSON content: {}", e.getMessage(), e);
+            throw new CustomAppException("Error reading summary JSON content", 604, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+
+        return uploadFile(jsonContent, remoteBlobPath);
+    }
+
+    private String downloadContentFromUrl(String urlString) throws IOException {
+        try (InputStream in = new URL(urlString).openStream()) {
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        }
+    }
+}
