@@ -1,8 +1,4 @@
-To https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Filemanager
- ! [rejected]        devops -> devops (non-fast-forward)
-error: failed to push some refs to 'https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Filemanager'
-hint: Updates were rejected because the tip of your current branch is behind
-hint: its remote counterpart. If you want to integrate the remote changes,
-hint: use 'git pull' before pushing again.
-hint: See the 'Note about fast-forwards' in 'git push --help' for details.
-
+CC437236@V105P10PRA0496 MINGW64 ~/dev/ECM_comp_Filemanager (devops)
+$ git pull origin devops --rebase
+error: cannot pull with rebase: You have unstaged changes.
+error: Please commit or stash them.
