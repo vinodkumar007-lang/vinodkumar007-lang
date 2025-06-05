@@ -1,25 +1,41 @@
-Hi Mfoo,
+package com.nedbank.kafka.filemanage.controller;
 
-We’ve completed the changes to switch from HashiCorp Vault to Azure Key Vault for securely retrieving the storage account name, key, and container. The updated build has been successfully deployed to the cluster.
+import com.nedbank.kafka.filemanage.model.ApiResponse;
+import com.nedbank.kafka.filemanage.model.SummaryPayloadResponse;
+import com.nedbank.kafka.filemanage.service.KafkaListenerService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
 
-However, we’re currently facing an issue:
+@RestController
+@RequestMapping("/api/file")
+public class FileProcessingController {
 
-🔍 Issue Observed:
-We’re getting a 404 Not Found response when accessing the following URLs:
+    private static final Logger logger = LoggerFactory.getLogger(FileProcessingController.class);
+    private final KafkaListenerService kafkaListenerService;
 
-https://dev-exstream.nednet.co.za/api/file/process
+    public FileProcessingController(KafkaListenerService kafkaListenerService) {
+        this.kafkaListenerService = kafkaListenerService;
+    }
 
-https://dev-exstream.nednet.co.za/file-manager/api/file/process
+    // Health check
+    @GetMapping("/health")
+    public String healthCheck() {
+        logger.info("Health check endpoint hit.");
+        return "File Processing Service is up and running.";
+    }
 
-https://dev-exstream.nednet.co.za/api/file/health
-
-✅ What We’ve Verified:
-Locally, the endpoints are accessible and working fine via:
-http://localhost:8080/api/file/health
-
-As you confirmed, the application is also responding properly on your Linux machine using:
-curl -i localhost:9091/api/file/health
-
-No context-path has been configured in the application properties.
-
-Kindly help us resolve this and ensure the API is accessible through the expected URL.
+    @PostMapping("/process")
+    public ResponseEntity<ApiResponse> triggerFileProcessing() {
+        logger.info("POST /process called to trigger Kafka message processing.");
+        try {
+            return ResponseEntity.ok(kafkaListenerService.listen()); // returns SummaryPayloadResponse
+        } catch (Exception e) {
+            logger.error("Error during processing: ", e);
+            return ResponseEntity.internalServerError().body(
+                    ApiResponse.buildFailure("Processing failed: " + e.getMessage())
+            );
+        }
+    }
+}
