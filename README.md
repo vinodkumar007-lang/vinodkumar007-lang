@@ -1,29 +1,23 @@
-private void initSecrets() {
-    if (accountKey != null && accountName != null && containerName != null) {
-        return;
-    }
+Kubernetes Ingress Solution
+Do we need to configure Ingress to:
+Match /file-manager/... in the external URL
+Rewrite it before forwarding to the app (so the app still receives /api/file/process)
 
-    try {
-        logger.info("🔐 Fetching secrets from Azure Key Vault...");
-        SecretClient secretClient = new SecretClientBuilder()
-                .vaultUrl(keyVaultUrl)
-                .credential(new DefaultAzureCredentialBuilder().build())
-                .buildClient();
-
-        // ✅ Updated secret names from your provided URLs
-        accountKey = getSecret(secretClient, "ecm-fm-account-key");
-        accountName = getSecret(secretClient, "ecm-fm-account-name");
-        containerName = getSecret(secretClient, "ecm-fm-container-name");
-
-        if (accountKey == null || accountKey.isBlank() ||
-                accountName == null || accountName.isBlank() ||
-                containerName == null || containerName.isBlank()) {
-            throw new CustomAppException("One or more secrets are null/empty from Key Vault", 400, HttpStatus.BAD_REQUEST);
-        }
-
-        logger.info("✅ Secrets fetched successfully from Azure Key Vault.");
-    } catch (Exception e) {
-        logger.error("❌ Failed to initialize secrets from Key Vault: {}", e.getMessage(), e);
-        throw new CustomAppException("Key Vault integration failure", 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
-    }
-}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: file-manager-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+    - host: <env-url>  # Replace with your environment-specific domain
+      http:
+        paths:
+          - path: /file-manager(/|$)(.*)
+            pathType: Prefix
+            backend:
+              service:
+                name: file-manager
+                port:
+                  number: 9091
