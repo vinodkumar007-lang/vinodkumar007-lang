@@ -1,9 +1,5 @@
-We’ve already made the required code changes using the following secret names:
-
-account-key
-
-account-name
-
-container-name
-
-Requesting you to kindly add these secrets in Azure Key Vault using the same names. If there’s any recommended naming format, please let us know so we can update accordingly on our side.
+As part of local  development we have used Hasicorp used authentication url and token to get authenticate then fetching these bwlow keys from hasicorp valult accountKey = "";
+        accountName = "nsndvextr01";
+        containerName = "nsnakscontregecm001"; we are conenctinb blob storage by using these credentials, now we changed hasicorp to azure keyvault , there fore required these AZURE_CLIENT_ID
+AZURE_TENANT_ID
+AZURE_CLIENT_SECRET to authenticate and fetch required keys
