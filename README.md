@@ -1,3 +1,9 @@
+https://nsn-dev-ecm-kva-001.vault.azure.net/secrets/ecm-fm-container-name/eb955b99fef74ff8aa3df92b17a485c3
+  
+https://nsn-dev-ecm-kva-001.vault.azure.net/secrets/ecm-fm-account-name/4198fa7a0aee4396979d37696e767d68
+ 
+https://nsn-dev-ecm-kva-001.vault.azure.net/secrets/ecm-fm-account-key/f697f105313d4ac3b0ef791867f90224
+
 package com.nedbank.kafka.filemanage.service;
 
 import com.azure.identity.DefaultAzureCredentialBuilder;
