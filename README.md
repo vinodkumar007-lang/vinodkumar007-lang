@@ -1,4 +1,12 @@
-1c93525b-42d1-410a-9e26-aa957f19861c_summary_1c93525b-42d1-410a-9e26-aa957f19861c13463985623812160460.json
-
-"summaryFileURL": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F1c93525b-42d1-410a-9e26-aa957f19861c%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2Fsummary_1c93525b-42d1-410a-9e26-aa957f19861c.json"
-
+public static String writeSummaryJsonToFile(SummaryPayload payload) {
+        try {
+            String fileName = "summary_" + payload.getBatchID() + ".json";
+            Path tempFile = Files.createTempFile(payload.getBatchID() + "_" + fileName.replace(".json", ""), ".json");
+            objectMapper.writeValue(tempFile.toFile(), payload);
+            logger.info("✅ Summary JSON successfully written to file: {}", tempFile);
+            return tempFile.toString();
+        } catch (Exception e) {
+            logger.error("❌ Failed to write summary JSON to file: {}", e.getMessage(), e);
+            throw new RuntimeException("Failed to write summary JSON to file", e);
+        }
+    }
