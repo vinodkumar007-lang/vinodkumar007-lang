@@ -1,21 +1,8 @@
-public static String writeSummaryJsonToFile(SummaryPayload payload) {
-    try {
-        // Prepare clean filename
-        String fileName = "summary_" + payload.getBatchID() + ".json";
-        
-        // Create a temp directory to store summary files (optional, you can change folder)
-        Path tempDir = Files.createTempDirectory("summaryFiles");
-        
-        // Full path with clean filename
-        Path filePath = tempDir.resolve(fileName);
-        
-        // Write JSON to file
-        objectMapper.writeValue(filePath.toFile(), payload);
-        
-        logger.info("✅ Summary JSON successfully written to file: {}", filePath);
-        return filePath.toString();
-    } catch (Exception e) {
-        logger.error("❌ Failed to write summary JSON to file: {}", e.getMessage(), e);
-        throw new RuntimeException("Failed to write summary JSON to file", e);
-    }
-}
+// Write the summary JSON file
+String summaryJsonPath = SummaryJsonWriter.writeSummaryJsonToFile(summaryPayload);
+
+// Extract just the file name (not full path) to keep blob name clean
+String summaryFileName = new File(summaryJsonPath).getName();
+
+// Upload using the clean file name
+String summaryFileUrl = blobStorageService.uploadSummaryJson(summaryJsonPath, message, summaryFileName);
