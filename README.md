@@ -29,55 +29,55 @@ public class KafkaListenerService {
     private final BlobStorageService blobStorageService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-        @Value("${kafka.topic.input}")
-        private String inputTopic;
+    @Value("${kafka.topic.input}")
+    private String inputTopic;
 
-        @Value("${kafka.topic.output}")
-        private String outputTopic;
+    @Value("${kafka.topic.output}")
+    private String outputTopic;
 
-        @Value("${azure.blob.storage.account}")
-        private String azureBlobStorageAccount;
+    @Value("${azure.blob.storage.account}")
+    private String azureBlobStorageAccount;
 
-        @Value("${kafka.bootstrap.servers}")
-        private String bootstrapServers;
+    @Value("${kafka.bootstrap.servers}")
+    private String bootstrapServers;
 
-        @Value("${kafka.consumer.group.id}")
-        private String consumerGroupId;
+    @Value("${kafka.consumer.group.id}")
+    private String consumerGroupId;
 
-        @Value("${kafka.consumer.auto.offset.reset}")
-        private String autoOffsetReset;
+    @Value("${kafka.consumer.auto.offset.reset}")
+    private String autoOffsetReset;
 
-        @Value("${kafka.consumer.enable.auto.commit}")
-        private String enableAutoCommit;
+    @Value("${kafka.consumer.enable.auto.commit}")
+    private String enableAutoCommit;
 
-        @Value("${kafka.consumer.key.deserializer}")
-        private String keyDeserializer;
+    @Value("${kafka.consumer.key.deserializer}")
+    private String keyDeserializer;
 
-        @Value("${kafka.consumer.value.deserializer}")
-        private String valueDeserializer;
+    @Value("${kafka.consumer.value.deserializer}")
+    private String valueDeserializer;
 
-        @Value("${kafka.consumer.security.protocol}")
-        private String securityProtocol;
+    @Value("${kafka.consumer.security.protocol}")
+    private String securityProtocol;
 
-        @Value("${kafka.consumer.ssl.truststore.location}")
-        private String truststoreLocation;
+    @Value("${kafka.consumer.ssl.truststore.location}")
+    private String truststoreLocation;
 
-        @Value("${kafka.consumer.ssl.truststore.password}")
-        private String truststorePassword;
+    @Value("${kafka.consumer.ssl.truststore.password}")
+    private String truststorePassword;
 
-        @Value("${kafka.consumer.ssl.keystore.location}")
-        private String keystoreLocation;
+    @Value("${kafka.consumer.ssl.keystore.location}")
+    private String keystoreLocation;
 
-        @Value("${kafka.consumer.ssl.keystore.password}")
-        private String keystorePassword;
+    @Value("${kafka.consumer.ssl.keystore.password}")
+    private String keystorePassword;
 
-        @Value("${kafka.consumer.ssl.key.password}")
-        private String keyPassword;
+    @Value("${kafka.consumer.ssl.key.password}")
+    private String keyPassword;
 
-        @Value("${kafka.consumer.ssl.protocol}")
-        private String sslProtocol;
+    @Value("${kafka.consumer.ssl.protocol}")
+    private String sslProtocol;
 
-        @Autowired
+    @Autowired
     public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
                                 BlobStorageService blobStorageService) {
         this.kafkaTemplate = kafkaTemplate;
@@ -85,7 +85,6 @@ public class KafkaListenerService {
     }
 
     public ApiResponse listen() {
-
         Properties props = new Properties();
         props.put("bootstrap.servers", bootstrapServers);
         props.put("group.id", consumerGroupId);
@@ -182,7 +181,6 @@ public class KafkaListenerService {
         String summaryFileUrl;
         int fileCount = 0;
 
-        // <-- HERE is the updated fileName extraction:
         String fileName = null;
         if (message.getBatchFiles() != null && !message.getBatchFiles().isEmpty()) {
             String firstBlobUrl = message.getBatchFiles().get(0).getBlobUrl();
@@ -190,110 +188,45 @@ public class KafkaListenerService {
             fileName = extractFileName(blobPath);
         }
         if (fileName == null || fileName.isEmpty()) {
-            fileName = message.getBatchId() + ".json";  // fallback if no file name found
+            fileName = message.getBatchId() + "_summary.json";
         }
 
         for (BatchFile file : message.getBatchFiles()) {
             try {
-                logger.debug("Processing batch file: {}", file.getFilename());
-
-                String sourceBlobUrl = file.getBlobUrl();
-                String resolvedBlobPath = extractBlobPath(sourceBlobUrl);
-                String sanitizedBlobName = extractFileName(resolvedBlobPath);
-                String inputFileContent = blobStorageService.downloadFileContent(sanitizedBlobName);
-
-                logger.debug("Downloaded file content length for {}: {}", sanitizedBlobName,
-                        inputFileContent != null ? inputFileContent.length() : "null");
-
-                assert inputFileContent != null;
+                String inputFileContent = blobStorageService.downloadFileContent(extractFileName(extractBlobPath(file.getBlobUrl())));
                 List<CustomerData> customers = DataParser.extractCustomerData(inputFileContent);
-
-                if (customers.isEmpty()) {
-                    logger.warn("No customers extracted from file {}", file.getFilename());
-                    continue;
-                }
-
-                logger.debug("Extracted {} customers from file {}", customers.size(), file.getFilename());
+                if (customers.isEmpty()) continue;
 
                 for (CustomerData customer : customers) {
-                    logger.debug("Processing customer ID: {}", customer.getCustomerId());
-
                     File pdfFile = FileGenerator.generatePdf(customer);
                     File htmlFile = FileGenerator.generateHtml(customer);
                     File txtFile = FileGenerator.generateTxt(customer);
                     File mobstatFile = FileGenerator.generateMobstat(customer);
 
-                    String pdfArchiveBlobPath = buildBlobPath(
-                            message.getSourceSystem(),
-                            message.getTimestamp(),
-                            message.getBatchId(),
-                            message.getUniqueConsumerRef(),
-                            message.getJobName(),
-                            "archive",
-                            customer.getAccountNumber(),
-                            pdfFile.getName());
+                    String pdfArchiveUrl = blobStorageService.uploadFile(pdfFile.getAbsolutePath(),
+                            buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                                    message.getUniqueConsumerRef(), message.getJobName(), "archive",
+                                    customer.getAccountNumber(), pdfFile.getName())).split("\\?")[0];
 
-                    String pdfEmailBlobPath = buildBlobPath(
-                            message.getSourceSystem(),
-                            message.getTimestamp(),
-                            message.getBatchId(),
-                            message.getUniqueConsumerRef(),
-                            message.getJobName(),
-                            "email",
-                            customer.getAccountNumber(),
-                            pdfFile.getName());
+                    String pdfEmailUrl = blobStorageService.uploadFile(pdfFile.getAbsolutePath(),
+                            buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                                    message.getUniqueConsumerRef(), message.getJobName(), "email",
+                                    customer.getAccountNumber(), pdfFile.getName())).split("\\?")[0];
 
-                    String htmlEmailBlobPath = buildBlobPath(
-                            message.getSourceSystem(),
-                            message.getTimestamp(),
-                            message.getBatchId(),
-                            message.getUniqueConsumerRef(),
-                            message.getJobName(),
-                            "html",
-                            customer.getAccountNumber(),
-                            htmlFile.getName());
+                    String htmlEmailUrl = blobStorageService.uploadFile(htmlFile.getAbsolutePath(),
+                            buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                                    message.getUniqueConsumerRef(), message.getJobName(), "html",
+                                    customer.getAccountNumber(), htmlFile.getName())).split("\\?")[0];
 
-                    String txtEmailBlobPath = buildBlobPath(
-                            message.getSourceSystem(),
-                            message.getTimestamp(),
-                            message.getBatchId(),
-                            message.getUniqueConsumerRef(),
-                            message.getJobName(),
-                            "txt",
-                            customer.getAccountNumber(),
-                            txtFile.getName());
+                    String txtEmailUrl = blobStorageService.uploadFile(txtFile.getAbsolutePath(),
+                            buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                                    message.getUniqueConsumerRef(), message.getJobName(), "txt",
+                                    customer.getAccountNumber(), txtFile.getName())).split("\\?")[0];
 
-                    String mobstatBlobPath = buildBlobPath(
-                            message.getSourceSystem(),
-                            message.getTimestamp(),
-                            message.getBatchId(),
-                            message.getUniqueConsumerRef(),
-                            message.getJobName(),
-                            "mobstat",
-                            customer.getAccountNumber(),
-                            mobstatFile.getName());
-
-                    String pdfArchiveUrl = blobStorageService.uploadFile(pdfFile.getAbsolutePath(), pdfArchiveBlobPath);
-                    String pdfEmailUrl = blobStorageService.uploadFile(pdfFile.getAbsolutePath(), pdfEmailBlobPath);
-                    String htmlEmailUrl = blobStorageService.uploadFile(htmlFile.getAbsolutePath(), htmlEmailBlobPath);
-                    String txtEmailUrl = blobStorageService.uploadFile(txtFile.getAbsolutePath(), txtEmailBlobPath);
-                    String mobstatUrl = blobStorageService.uploadFile(mobstatFile.getAbsolutePath(), mobstatBlobPath);
-
-                    if (pdfArchiveUrl == null || pdfArchiveUrl.isBlank()) {
-                        logger.warn("pdfArchiveUrl is empty for customerId: {}", customer.getCustomerId());
-                    }
-                    if (pdfEmailUrl == null || pdfEmailUrl.isBlank()) {
-                        logger.warn("pdfEmailUrl is empty for customerId: {}", customer.getCustomerId());
-                    }
-                    if (htmlEmailUrl == null || htmlEmailUrl.isBlank()) {
-                        logger.warn("htmlEmailUrl is empty for customerId: {}", customer.getCustomerId());
-                    }
-                    if (txtEmailUrl == null || txtEmailUrl.isBlank()) {
-                        logger.warn("txtEmailUrl is empty for customerId: {}", customer.getCustomerId());
-                    }
-                    if (mobstatUrl == null || mobstatUrl.isBlank()) {
-                        logger.warn("mobstatUrl is empty for customerId: {}", customer.getCustomerId());
-                    }
+                    String mobstatUrl = blobStorageService.uploadFile(mobstatFile.getAbsolutePath(),
+                            buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
+                                    message.getUniqueConsumerRef(), message.getJobName(), "mobstat",
+                                    customer.getAccountNumber(), mobstatFile.getName())).split("\\?")[0];
 
                     SummaryProcessedFile processedFile = new SummaryProcessedFile();
                     processedFile.setBlobURL(file.getBlobUrl());
@@ -304,25 +237,20 @@ public class KafkaListenerService {
                     processedFile.setMobileNumber(customer.getMobileNumber());
                     processedFile.setDueAmount(customer.getDueAmount());
                     processedFile.setAddressLine1(customer.getAddressLine1());
-
                     processedFile.setPdfArchiveFileUrl(pdfArchiveUrl);
                     processedFile.setPdfEmailFileUrl(pdfEmailUrl);
                     processedFile.setHtmlEmailFileUrl(htmlEmailUrl);
                     processedFile.setTxtEmailFileUrl(txtEmailUrl);
                     processedFile.setPdfMobstatFileUrl(mobstatUrl);
-
                     processedFile.setStatusCode("OK");
                     processedFile.setStatusDescription("Success");
                     processedFiles.add(processedFile);
                     fileCount++;
-                    logger.debug("Added processed file for customer ID: {}", customer.getCustomerId());
                 }
             } catch (Exception ex) {
                 logger.error("Error processing file '{}': {}", file.getFilename(), ex.getMessage(), ex);
             }
         }
-
-        logger.info("Total processed files count: {}", processedFiles.size());
 
         PrintFile printFile = new PrintFile();
         printFile.setPrintFileURL(blobStorageService.buildPrintFileUrl(message));
@@ -345,8 +273,7 @@ public class KafkaListenerService {
         summaryPayload.setPrintFiles(printFiles);
 
         String summaryJsonPath = SummaryJsonWriter.writeSummaryJsonToFile(summaryPayload);
-        logger.debug("Summary JSON file path: {}", summaryJsonPath);
-        summaryFileUrl = blobStorageService.uploadSummaryJson(summaryJsonPath, message);
+        summaryFileUrl = blobStorageService.uploadSummaryJson(summaryJsonPath, message).split("\\?")[0];
         summaryPayload.setSummaryFileURL(summaryFileUrl);
 
         SummaryResponse summaryResponse = new SummaryResponse();
@@ -359,7 +286,6 @@ public class KafkaListenerService {
         summaryResponse.setTimestamp(String.valueOf(Instant.now()));
 
         SummaryPayloadResponse apiPayload = new SummaryPayloadResponse("Batch processed successfully", "success", summaryResponse);
-
         return new ApiResponse(apiPayload.getMessage(), apiPayload.getStatus(), apiPayload.getSummaryResponse());
     }
 
@@ -378,19 +304,14 @@ public class KafkaListenerService {
         try {
             URI uri = URI.create(fullUrl);
             String path = uri.getPath();
-            if (path.startsWith("/")) {
-                path = path.substring(1);
-            }
-            return path;
+            return path.startsWith("/") ? path.substring(1) : path;
         } catch (Exception e) {
             return fullUrl;
         }
     }
 
     public String extractFileName(String fullPathOrUrl) {
-        if (fullPathOrUrl == null || fullPathOrUrl.isEmpty()) {
-            return fullPathOrUrl;
-        }
+        if (fullPathOrUrl == null || fullPathOrUrl.isEmpty()) return fullPathOrUrl;
         String trimmed = fullPathOrUrl.replaceAll("/+", "/");
         int lastSlashIndex = trimmed.lastIndexOf('/');
         return lastSlashIndex >= 0 ? trimmed.substring(lastSlashIndex + 1) : trimmed;
