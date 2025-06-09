@@ -1,12 +1,6 @@
-public static String writeSummaryJsonToFile(SummaryPayload payload) {
-        try {
-            String fileName = "summary_" + payload.getBatchID() + ".json";
-            Path tempFile = Files.createTempFile(payload.getBatchID() + "_" + fileName.replace(".json", ""), ".json");
-            objectMapper.writeValue(tempFile.toFile(), payload);
-            logger.info("✅ Summary JSON successfully written to file: {}", tempFile);
-            return tempFile.toString();
-        } catch (Exception e) {
-            logger.error("❌ Failed to write summary JSON to file: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to write summary JSON to file", e);
-        }
-    }
+AZURE-CLIENT-ID: f8b3e641-5baa-4a97-b58d-a7deecc0f5c2
+AZURE_CLIENT_SECRET: X1dF4fX3mH5vP1oW1pD4kP3mR7sY0mC1uV7nW7vR3rR1wK1jJ5
+AZURE_TENANT_ID: 
+ecm-fm-account-name: nsndvextr01
+ecm-fm-container-name: nsnakscontregecm001
+ecm-fm-account-key:
