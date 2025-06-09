@@ -1,2 +1,5 @@
-String summaryFileName = "summary_" + message.getBatchId() + ".json";
-String summaryFileUrl = blobStorageService.uploadSummaryJson(summaryJsonPath, message, summaryFileName);
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+
+String decodedUrl = URLDecoder.decode(summaryFileUrl, StandardCharsets.UTF_8.name());
+summaryPayload.setSummaryFileURL(decodedUrl);
