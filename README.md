@@ -1,280 +1,161 @@
-package com.nedbank.kafka.filemanage.service;
+com.microsoft.aad.msal4j.MsalServiceException: AADSTS700016: Application with identifier 'f8b3e641-5baa-4a97-b58d-a7deecc0f5c2' was not found in the directory 'Nedbank'. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. You may have sent your authentication request to the wrong tenant. Trace ID: fcc21c3b-2872-4107-9a3e-df18d7770201 Correlation ID: 0502d954-6843-4c67-a945-c78dda9f83fd Timestamp: 2025-06-10 14:36:42Z
+	at com.microsoft.aad.msal4j.MsalServiceExceptionFactory.fromHttpResponse(MsalServiceExceptionFactory.java:43) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.TokenRequestExecutor.createAuthenticationResultFromOauthHttpResponse(TokenRequestExecutor.java:96) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.TokenRequestExecutor.executeTokenRequest(TokenRequestExecutor.java:37) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AbstractClientApplicationBase.acquireTokenCommon(AbstractClientApplicationBase.java:120) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AcquireTokenByAuthorizationGrantSupplier.execute(AcquireTokenByAuthorizationGrantSupplier.java:63) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AuthenticationResultSupplier.get(AuthenticationResultSupplier.java:59) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AuthenticationResultSupplier.get(AuthenticationResultSupplier.java:17) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
 
-import com.azure.identity.DefaultAzureCredentialBuilder;
-import com.azure.security.keyvault.secrets.SecretClient;
-import com.azure.security.keyvault.secrets.SecretClientBuilder;
-import com.azure.security.keyvault.secrets.models.KeyVaultSecret;
-import com.azure.storage.blob.*;
-import com.azure.storage.blob.models.BlobItem;
-import com.azure.storage.common.StorageSharedKeyCredential;
-import com.nedbank.kafka.filemanage.exception.CustomAppException;
-import com.nedbank.kafka.filemanage.model.KafkaMessage;
-import org.json.JSONObject;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
-import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+2025-06-10T16:36:42.606+02:00 ERROR 1 --- [       Thread-1] c.azure.identity.ClientSecretCredential  : Azure Identity => ERROR in getToken() call for scopes [https://vault.azure.net/.default]: AADSTS700016: Application with identifier 'f8b3e641-5baa-4a97-b58d-a7deecc0f5c2' was not found in the directory 'Nedbank'. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. You may have sent your authentication request to the wrong tenant. Trace ID: fcc21c3b-2872-4107-9a3e-df18d7770201 Correlation ID: 0502d954-6843-4c67-a945-c78dda9f83fd Timestamp: 2025-06-10 14:36:42Z
+2025-06-10T16:36:43.750+02:00 ERROR 1 --- [       Thread-3] c.m.a.m.ConfidentialClientApplication    : [Correlation ID: f4187e0a-31ea-4be0-9c97-be6e924f6f02] Execution of class com.microsoft.aad.msal4j.AcquireTokenByAuthorizationGrantSupplier failed.
 
-import java.io.*;
-import java.net.URI;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.Arrays;
-import java.util.Objects;
+com.microsoft.aad.msal4j.MsalServiceException: AADSTS700016: Application with identifier 'f8b3e641-5baa-4a97-b58d-a7deecc0f5c2' was not found in the directory 'Nedbank'. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. You may have sent your authentication request to the wrong tenant. Trace ID: f7c35f17-114b-4a26-af17-ca4a02881600 Correlation ID: f4187e0a-31ea-4be0-9c97-be6e924f6f02 Timestamp: 2025-06-10 14:36:43Z
+	at com.microsoft.aad.msal4j.MsalServiceExceptionFactory.fromHttpResponse(MsalServiceExceptionFactory.java:43) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.TokenRequestExecutor.createAuthenticationResultFromOauthHttpResponse(TokenRequestExecutor.java:96) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.TokenRequestExecutor.executeTokenRequest(TokenRequestExecutor.java:37) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AbstractClientApplicationBase.acquireTokenCommon(AbstractClientApplicationBase.java:120) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AcquireTokenByAuthorizationGrantSupplier.execute(AcquireTokenByAuthorizationGrantSupplier.java:63) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AuthenticationResultSupplier.get(AuthenticationResultSupplier.java:59) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AuthenticationResultSupplier.get(AuthenticationResultSupplier.java:17) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
 
-@Service
-public class BlobStorageService {
+2025-06-10T16:36:43.751+02:00 ERROR 1 --- [       Thread-3] c.azure.identity.ClientSecretCredential  : Azure Identity => ERROR in getToken() call for scopes [https://vault.azure.net/.default]: AADSTS700016: Application with identifier 'f8b3e641-5baa-4a97-b58d-a7deecc0f5c2' was not found in the directory 'Nedbank'. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. You may have sent your authentication request to the wrong tenant. Trace ID: f7c35f17-114b-4a26-af17-ca4a02881600 Correlation ID: f4187e0a-31ea-4be0-9c97-be6e924f6f02 Timestamp: 2025-06-10 14:36:43Z
+2025-06-10T16:36:45.629+02:00 ERROR 1 --- [       Thread-5] c.m.a.m.ConfidentialClientApplication    : [Correlation ID: a9f8bea7-e331-49f2-8762-e812340bab3c] Execution of class com.microsoft.aad.msal4j.AcquireTokenByAuthorizationGrantSupplier failed.
 
-    private static final Logger logger = LoggerFactory.getLogger(BlobStorageService.class);
+com.microsoft.aad.msal4j.MsalServiceException: AADSTS700016: Application with identifier 'f8b3e641-5baa-4a97-b58d-a7deecc0f5c2' was not found in the directory 'Nedbank'. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. You may have sent your authentication request to the wrong tenant. Trace ID: 649ac84a-2df2-4685-979f-bf3712430c00 Correlation ID: a9f8bea7-e331-49f2-8762-e812340bab3c Timestamp: 2025-06-10 14:36:45Z
+	at com.microsoft.aad.msal4j.MsalServiceExceptionFactory.fromHttpResponse(MsalServiceExceptionFactory.java:43) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.TokenRequestExecutor.createAuthenticationResultFromOauthHttpResponse(TokenRequestExecutor.java:96) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.TokenRequestExecutor.executeTokenRequest(TokenRequestExecutor.java:37) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AbstractClientApplicationBase.acquireTokenCommon(AbstractClientApplicationBase.java:120) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AcquireTokenByAuthorizationGrantSupplier.execute(AcquireTokenByAuthorizationGrantSupplier.java:63) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AuthenticationResultSupplier.get(AuthenticationResultSupplier.java:59) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AuthenticationResultSupplier.get(AuthenticationResultSupplier.java:17) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
 
-    private final RestTemplate restTemplate;
+2025-06-10T16:36:45.630+02:00 ERROR 1 --- [       Thread-5] c.azure.identity.ClientSecretCredential  : Azure Identity => ERROR in getToken() call for scopes [https://vault.azure.net/.default]: AADSTS700016: Application with identifier 'f8b3e641-5baa-4a97-b58d-a7deecc0f5c2' was not found in the directory 'Nedbank'. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. You may have sent your authentication request to the wrong tenant. Trace ID: 649ac84a-2df2-4685-979f-bf3712430c00 Correlation ID: a9f8bea7-e331-49f2-8762-e812340bab3c Timestamp: 2025-06-10 14:36:45Z
+2025-06-10T16:36:49.035+02:00 ERROR 1 --- [       Thread-7] c.m.a.m.ConfidentialClientApplication    : [Correlation ID: 2830ca98-6ba9-4221-a76e-00bee11f3fd8] Execution of class com.microsoft.aad.msal4j.AcquireTokenByAuthorizationGrantSupplier failed.
 
-    @Value("${azure.keyvault.url}")
-    private String keyVaultUrl;
+com.microsoft.aad.msal4j.MsalServiceException: AADSTS700016: Application with identifier 'f8b3e641-5baa-4a97-b58d-a7deecc0f5c2' was not found in the directory 'Nedbank'. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. You may have sent your authentication request to the wrong tenant. Trace ID: 8c5daf43-d7bc-4f8a-9c70-cd2ae225f100 Correlation ID: 2830ca98-6ba9-4221-a76e-00bee11f3fd8 Timestamp: 2025-06-10 14:36:48Z
+	at com.microsoft.aad.msal4j.MsalServiceExceptionFactory.fromHttpResponse(MsalServiceExceptionFactory.java:43) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.TokenRequestExecutor.createAuthenticationResultFromOauthHttpResponse(TokenRequestExecutor.java:96) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.TokenRequestExecutor.executeTokenRequest(TokenRequestExecutor.java:37) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AbstractClientApplicationBase.acquireTokenCommon(AbstractClientApplicationBase.java:120) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AcquireTokenByAuthorizationGrantSupplier.execute(AcquireTokenByAuthorizationGrantSupplier.java:63) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AuthenticationResultSupplier.get(AuthenticationResultSupplier.java:59) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at com.microsoft.aad.msal4j.AuthenticationResultSupplier.get(AuthenticationResultSupplier.java:17) ~[msal4j-1.9.1.jar!/:1.9.1]
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1768) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
 
-    private String accountKey;
-    private String accountName;
-    private String containerName;
+2025-06-10T16:36:49.036+02:00 ERROR 1 --- [       Thread-7] c.azure.identity.ClientSecretCredential  : Azure Identity => ERROR in getToken() call for scopes [https://vault.azure.net/.default]: AADSTS700016: Application with identifier 'f8b3e641-5baa-4a97-b58d-a7deecc0f5c2' was not found in the directory 'Nedbank'. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. You may have sent your authentication request to the wrong tenant. Trace ID: 8c5daf43-d7bc-4f8a-9c70-cd2ae225f100 Correlation ID: 2830ca98-6ba9-4221-a76e-00bee11f3fd8 Timestamp: 2025-06-10 14:36:48Z
+2025-06-10T16:36:49.040+02:00  WARN 1 --- [       Thread-7] c.a.s.k.secrets.SecretAsyncClient        : Failed to get secret - ecm-fm-account-key
+Max retries 3 times exceeded. Error Details: DefaultAzureCredential authentication failed. ---> EnvironmentCredential authentication failed. Error Details: AADSTS700016: Application with identifier 'f8b3e641-5baa-4a97-b58d-a7deecc0f5c2' was not found in the directory 'Nedbank'. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. You may have sent your authentication request to the wrong tenant. Trace ID: 8c5daf43-d7bc-4f8a-9c70-cd2ae225f100 Correlation ID: 2830ca98-6ba9-4221-a76e-00bee11f3fd8 Timestamp: 2025-06-10 14:36:48Z
+2025-06-10T16:36:49.040+02:00 ERROR 1 --- [nio-9091-exec-9] c.n.k.f.service.BlobStorageService       : ❌ Failed to fetch secret 'ecm-fm-account-key': Max retries 3 times exceeded. Error Details: DefaultAzureCredential authentication failed. ---> EnvironmentCredential authentication failed. Error Details: AADSTS700016: Application with identifier 'f8b3e641-5baa-4a97-b58d-a7deecc0f5c2' was not found in the directory 'Nedbank'. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. You may have sent your authentication request to the wrong tenant. Trace ID: 8c5daf43-d7bc-4f8a-9c70-cd2ae225f100 Correlation ID: 2830ca98-6ba9-4221-a76e-00bee11f3fd8 Timestamp: 2025-06-10 14:36:48Z
 
-    public BlobStorageService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
-    }
-
-    private void initSecrets() {
-        if (accountKey != null && accountName != null && containerName != null) {
-            return;
-        }
-
-        try {
-            logger.info("🔐 Fetching secrets from Azure Key Vault...");
-            SecretClient secretClient = new SecretClientBuilder()
-                    .vaultUrl(keyVaultUrl)
-                    .credential(new DefaultAzureCredentialBuilder().build())
-                    .buildClient();
-
-            // ✅ Updated secret names from your provided URLs
-            accountKey = getSecret(secretClient, "ecm-fm-account-key");
-            accountName = getSecret(secretClient, "ecm-fm-account-name");
-            containerName = getSecret(secretClient, "ecm-fm-container-name");
-
-            if (accountKey == null || accountKey.isBlank() ||
-                    accountName == null || accountName.isBlank() ||
-                    containerName == null || containerName.isBlank()) {
-                throw new CustomAppException("One or more secrets are null/empty from Key Vault", 400, HttpStatus.BAD_REQUEST);
-            }
-
-            logger.info("✅ Secrets fetched successfully from Azure Key Vault.");
-        } catch (Exception e) {
-            logger.error("❌ Failed to initialize secrets from Key Vault: {}", e.getMessage(), e);
-            throw new CustomAppException("Key Vault integration failure", 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
-    }
-
-    private String getSecret(SecretClient client, String secretName) {
-        try {
-            KeyVaultSecret secret = client.getSecret(secretName);
-            return secret.getValue();
-        } catch (Exception e) {
-            logger.error("❌ Failed to fetch secret '{}': {}", secretName, e.getMessage(), e);
-            throw new CustomAppException("Failed to fetch secret: " + secretName, 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
-    }
-
-    public String copyFileFromUrlToBlob(String sourceUrl, String targetBlobPath) {
-        try {
-            initSecrets();
-
-            URI sourceUri = new URI(sourceUrl);
-            String host = sourceUri.getHost();
-            String[] hostParts = host.split("\\.");
-            String sourceAccountName = hostParts[0];
-
-            String path = sourceUri.getPath();
-            String[] pathParts = path.split("/", 3);
-            if (pathParts.length < 3) {
-                throw new CustomAppException("Invalid source URL path: " + path, 400, HttpStatus.BAD_REQUEST);
-            }
-
-            String sourceContainerName = pathParts[1];
-            String sourceBlobPath = pathParts[2];
-
-            BlobServiceClient sourceBlobServiceClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format("https://%s.blob.core.windows.net", sourceAccountName))
-                    .credential(new StorageSharedKeyCredential(sourceAccountName, accountKey))
-                    .buildClient();
-
-            BlobContainerClient sourceContainerClient = sourceBlobServiceClient.getBlobContainerClient(sourceContainerName);
-            BlobClient sourceBlobClient = sourceContainerClient.getBlobClient(sourceBlobPath);
-
-            long blobSize = -1;
-            for (BlobItem item : sourceContainerClient.listBlobs()) {
-                if (item.getName().equals(sourceBlobPath)) {
-                    blobSize = item.getProperties().getContentLength();
-                    break;
-                }
-            }
-
-            if (blobSize <= 0) {
-                throw new CustomAppException("Source blob is empty or not found: " + sourceUrl, 404, HttpStatus.NOT_FOUND);
-            }
-
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            sourceBlobClient.download(outputStream);
-            byte[] sourceBlobBytes = outputStream.toByteArray();
-
-            BlobServiceClient targetBlobServiceClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobContainerClient targetContainerClient = targetBlobServiceClient.getBlobContainerClient(containerName);
-            BlobClient targetBlobClient = targetContainerClient.getBlobClient(targetBlobPath);
-
-            targetBlobClient.upload(new ByteArrayInputStream(sourceBlobBytes), sourceBlobBytes.length, true);
-
-            logger.info("✅ Copied '{}' to '{}'", sourceUrl, targetBlobClient.getBlobUrl());
-
-            return targetBlobClient.getBlobUrl();
-
-        } catch (Exception e) {
-            logger.error("❌ Error copying file from URL: {}", e.getMessage(), e);
-            throw new CustomAppException("Error copying file from URL", 601, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
-    }
-
-    public String uploadFile(String content, String targetBlobPath) {
-        try {
-            initSecrets();
-
-            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
-            BlobClient blobClient = containerClient.getBlobClient(targetBlobPath);
-
-            byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
-            blobClient.upload(new ByteArrayInputStream(bytes), bytes.length, true);
-
-            logger.info("✅ Uploaded file to '{}'", blobClient.getBlobUrl());
-
-            return blobClient.getBlobUrl();
-
-        } catch (Exception e) {
-            logger.error("❌ Error uploading file: {}", e.getMessage(), e);
-            throw new CustomAppException("Error uploading file", 602, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
-    }
-
-    public String downloadFileContent(String blobPathOrUrl) {
-        try {
-            initSecrets();
-
-            String extractedContainerName = containerName;
-            String blobName = blobPathOrUrl;
-
-            if (blobPathOrUrl.startsWith("http")) {
-                URI uri = new URI(blobPathOrUrl);
-                String[] segments = uri.getPath().split("/");
-
-                if (segments == null || segments.length < 3) {
-                    throw new CustomAppException("Invalid blob URL format: " + blobPathOrUrl, 400, HttpStatus.BAD_REQUEST);
-                }
-
-                extractedContainerName = segments[1];
-                blobName = String.join("/", Arrays.copyOfRange(segments, 2, segments.length));
-            }
-
-            BlobServiceClient blobServiceClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(extractedContainerName);
-            BlobClient blobClient = containerClient.getBlobClient(blobName);
-
-            if (!blobClient.exists()) {
-                throw new CustomAppException("Blob not found: " + blobName, 404, HttpStatus.NOT_FOUND);
-            }
-
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            blobClient.download(outputStream);
-
-            return outputStream.toString(StandardCharsets.UTF_8.name());
-
-        } catch (Exception e) {
-            logger.error("❌ Error downloading blob content for '{}': {}", blobPathOrUrl, e.getMessage(), e);
-            throw new CustomAppException("Error downloading blob content", 603, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
-    }
-
-    public String buildPrintFileUrl(KafkaMessage message) {
-        initSecrets();
-
-        if (message == null || message.getBatchId() == null || message.getSourceSystem() == null ||
-                message.getUniqueConsumerRef() == null || message.getJobName() == null) {
-            throw new CustomAppException("Invalid Kafka message data for building print file URL", 400, HttpStatus.BAD_REQUEST);
-        }
-
-        String baseUrl = String.format("https://%s.blob.core.windows.net/%s", accountName, containerName);
-
-        String dateFolder = Instant.ofEpochMilli(message.getTimestamp())
-                .atZone(ZoneId.systemDefault())
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
-
-        String printFileName = message.getBatchId() + "_printfile.pdf";
-
-        return String.format("%s/%s/%s/%s/%s/%s/print/%s",
-                baseUrl,
-                message.getSourceSystem(),
-                dateFolder,
-                message.getBatchId(),
-                message.getUniqueConsumerRef(),
-                message.getJobName(),
-                printFileName);
-    }
-
-    public String uploadSummaryJson(String localFilePathOrUrl, KafkaMessage message, String summaryFileName) {
-        initSecrets();
-
-        if (message == null || message.getBatchId() == null ||
-                message.getSourceSystem() == null || message.getUniqueConsumerRef() == null) {
-            throw new CustomAppException("Missing Kafka message metadata for uploading summary JSON", 400, HttpStatus.BAD_REQUEST);
-        }
-
-        // Use the provided summaryFileName directly (e.g. "summary_<batchId>.json")
-        String remoteBlobPath = String.format("%s/%s/%s/%s",
-                message.getSourceSystem(),
-                message.getBatchId(),
-                message.getUniqueConsumerRef(),
-                summaryFileName);
-
-        String jsonContent;
-        try {
-            if (localFilePathOrUrl.startsWith("http://") || localFilePathOrUrl.startsWith("https://")) {
-                jsonContent = downloadContentFromUrl(localFilePathOrUrl);
-            } else {
-                jsonContent = Files.readString(Paths.get(localFilePathOrUrl));
-            }
-        } catch (Exception e) {
-            logger.error("❌ Error reading summary JSON content: {}", e.getMessage(), e);
-            throw new CustomAppException("Error reading summary JSON content", 604, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
-
-        return uploadFile(jsonContent, remoteBlobPath);
-    }
-
-    private String downloadContentFromUrl(String urlString) throws IOException {
-        try (InputStream in = new URL(urlString).openStream()) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-        }
-    }
-}
+java.lang.RuntimeException: Max retries 3 times exceeded. Error Details: DefaultAzureCredential authentication failed. ---> EnvironmentCredential authentication failed. Error Details: AADSTS700016: Application with identifier 'f8b3e641-5baa-4a97-b58d-a7deecc0f5c2' was not found in the directory 'Nedbank'. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. You may have sent your authentication request to the wrong tenant. Trace ID: 8c5daf43-d7bc-4f8a-9c70-cd2ae225f100 Correlation ID: 2830ca98-6ba9-4221-a76e-00bee11f3fd8 Timestamp: 2025-06-10 14:36:48Z
+	at com.azure.core.http.policy.RetryPolicy.lambda$attemptAsync$1(RetryPolicy.java:127) ~[azure-core-1.14.0.jar!/:na]
+	at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:94) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.MonoFlatMap$FlatMapMain.onError(MonoFlatMap.java:172) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.MonoFlatMap$FlatMapMain.onError(MonoFlatMap.java:172) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.MonoFlatMap$FlatMapMain.secondError(MonoFlatMap.java:192) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.MonoFlatMap$FlatMapInner.onError(MonoFlatMap.java:259) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.MonoPeekTerminal$MonoTerminalPeekSubscriber.onError(MonoPeekTerminal.java:258) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.MonoPeekTerminal$MonoTerminalPeekSubscriber.onError(MonoPeekTerminal.java:258) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.FluxPeekFuseable$PeekConditionalSubscriber.onError(FluxPeekFuseable.java:903) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.FluxPeekFuseable$PeekConditionalSubscriber.onError(FluxPeekFuseable.java:903) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.Operators$MultiSubscriptionSubscriber.onError(Operators.java:2028) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.MonoNext$NextSubscriber.onError(MonoNext.java:93) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.FluxFlatMap$FlatMapMain.checkTerminated(FluxFlatMap.java:842) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.FluxFlatMap$FlatMapMain.drainLoop(FluxFlatMap.java:608) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.FluxFlatMap$FlatMapMain.drain(FluxFlatMap.java:588) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.FluxFlatMap$FlatMapMain.innerError(FluxFlatMap.java:863) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.FluxFlatMap$FlatMapInner.onError(FluxFlatMap.java:990) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:106) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.Operators.error(Operators.java:198) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.MonoError.subscribe(MonoError.java:53) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.Mono.subscribe(Mono.java:4490) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:103) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.FluxPeekFuseable$PeekFuseableSubscriber.onError(FluxPeekFuseable.java:234) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.MonoPeekTerminal$MonoTerminalPeekSubscriber.onError(MonoPeekTerminal.java:258) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.FluxPeekFuseable$PeekConditionalSubscriber.onError(FluxPeekFuseable.java:903) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.Operators$MultiSubscriptionSubscriber.onError(Operators.java:2028) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.MonoFlatMap$FlatMapMain.secondError(MonoFlatMap.java:192) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.MonoFlatMap$FlatMapInner.onError(MonoFlatMap.java:259) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.FluxMap$MapSubscriber.onError(FluxMap.java:134) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.MonoCompletionStage.lambda$subscribe$0(MonoCompletionStage.java:90) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at java.base/java.util.concurrent.CompletableFuture.uniHandle(CompletableFuture.java:934) ~[na:na]
+	at java.base/java.util.concurrent.CompletableFuture$UniHandle.tryFire(CompletableFuture.java:911) ~[na:na]
+	at java.base/java.util.concurrent.CompletableFuture.postComplete(CompletableFuture.java:510) ~[na:na]
+	at java.base/java.util.concurrent.CompletableFuture$AsyncSupply.run(CompletableFuture.java:1773) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
+	Suppressed: java.lang.Exception: #block terminated with an error
+		at reactor.core.publisher.BlockingSingleSubscriber.blockingGet(BlockingSingleSubscriber.java:99) ~[reactor-core-3.4.25.jar!/:3.4.25]
+		at reactor.core.publisher.Mono.block(Mono.java:1742) ~[reactor-core-3.4.25.jar!/:3.4.25]
+		at com.azure.security.keyvault.secrets.SecretClient.getSecretWithResponse(SecretClient.java:171) ~[azure-security-keyvault-secrets-4.2.3.jar!/:na]
+		at com.azure.security.keyvault.secrets.SecretClient.getSecret(SecretClient.java:150) ~[azure-security-keyvault-secrets-4.2.3.jar!/:na]
+		at com.nedbank.kafka.filemanage.service.BlobStorageService.getSecret(BlobStorageService.java:82) ~[classes!/:na]
+		at com.nedbank.kafka.filemanage.service.BlobStorageService.initSecrets(BlobStorageService.java:63) ~[classes!/:na]
+		at com.nedbank.kafka.filemanage.service.BlobStorageService.downloadFileContent(BlobStorageService.java:179) ~[classes!/:na]
+		at com.nedbank.kafka.filemanage.service.KafkaListenerService.processSingleMessage(KafkaListenerService.java:199) ~[classes!/:na]
+		at com.nedbank.kafka.filemanage.service.KafkaListenerService.listen(KafkaListenerService.java:129) ~[classes!/:na]
+		at com.nedbank.kafka.filemanage.controller.FileProcessingController.triggerFileProcessing(FileProcessingController.java:33) ~[classes!/:na]
+		at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+		at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+		at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+		at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+		at org.springframework.web.method.support.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:207) ~[spring-web-6.0.2.jar!/:6.0.2]
+		at org.springframework.web.method.support.InvocableHandlerMethod.invokeForRequest(InvocableHandlerMethod.java:152) ~[spring-web-6.0.2.jar!/:6.0.2]
+		at org.springframework.web.servlet.mvc.method.annotation.ServletInvocableHandlerMethod.invokeAndHandle(ServletInvocableHandlerMethod.java:117) ~[spring-webmvc-6.0.2.jar!/:6.0.2]
+		at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.invokeHandlerMethod(RequestMappingHandlerAdapter.java:884) ~[spring-webmvc-6.0.2.jar!/:6.0.2]
+		at org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter.handleInternal(RequestMappingHandlerAdapter.java:797) ~[spring-webmvc-6.0.2.jar!/:6.0.2]
+		at org.springframework.web.servlet.mvc.method.AbstractHandlerMethodAdapter.handle(AbstractHandlerMethodAdapter.java:87) ~[spring-webmvc-6.0.2.jar!/:6.0.2]
+		at org.springframework.web.servlet.DispatcherServlet.doDispatch(DispatcherServlet.java:1080) ~[spring-webmvc-6.0.2.jar!/:6.0.2]
+		at org.springframework.web.servlet.DispatcherServlet.doService(DispatcherServlet.java:973) ~[spring-webmvc-6.0.2.jar!/:6.0.2]
+		at org.springframework.web.servlet.FrameworkServlet.processRequest(FrameworkServlet.java:1003) ~[spring-webmvc-6.0.2.jar!/:6.0.2]
+		at org.springframework.web.servlet.FrameworkServlet.doPost(FrameworkServlet.java:906) ~[spring-webmvc-6.0.2.jar!/:6.0.2]
+		at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:731) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.springframework.web.servlet.FrameworkServlet.service(FrameworkServlet.java:880) ~[spring-webmvc-6.0.2.jar!/:6.0.2]
+		at jakarta.servlet.http.HttpServlet.service(HttpServlet.java:814) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:223) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:53) ~[tomcat-embed-websocket-10.1.1.jar!/:na]
+		at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.springframework.web.filter.RequestContextFilter.doFilterInternal(RequestContextFilter.java:100) ~[spring-web-6.0.2.jar!/:6.0.2]
+		at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar!/:6.0.2]
+		at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.springframework.web.filter.FormContentFilter.doFilterInternal(FormContentFilter.java:93) ~[spring-web-6.0.2.jar!/:6.0.2]
+		at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar!/:6.0.2]
+		at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.springframework.web.filter.CharacterEncodingFilter.doFilterInternal(CharacterEncodingFilter.java:201) ~[spring-web-6.0.2.jar!/:6.0.2]
+		at org.springframework.web.filter.OncePerRequestFilter.doFilter(OncePerRequestFilter.java:116) ~[spring-web-6.0.2.jar!/:6.0.2]
+		at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:185) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:158) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:197) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:97) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:542) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:119) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:92) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:78) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.valves.RemoteIpValve.invoke(RemoteIpValve.java:741) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:357) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:400) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:65) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:861) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1739) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1191) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:61) ~[tomcat-embed-core-10.1.1.jar!/:na]
+		... 1 common frames omitted
+Caused by: com.azure.core.exception.ClientAuthenticationException: DefaultAzureCredential authentication failed. ---> EnvironmentCredential authentication failed. Error Details: AADSTS700016: Application with identifier 'f8b3e641-5baa-4a97-b58d-a7deecc0f5c2' was not found in the directory 'Nedbank'. This can happen if the application has not been installed by the administrator of the tenant or consented to by any user in the tenant. You may have sent your authentication request to the wrong tenant. Trace ID: 8c5daf43-d7bc-4f8a-9c70-cd2ae225f100 Correlation ID: 2830ca98-6ba9-4221-a76e-00bee11f3fd8 Timestamp: 2025-06-10 14:36:48Z
+	at com.azure.identity.ChainedTokenCredential.lambda$getToken$1(ChainedTokenCredential.java:62) ~[azure-identity-1.2.5.jar!/:na]
+	at reactor.core.publisher.Mono.lambda$onErrorResume$32(Mono.java:3887) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	at reactor.core.publisher.FluxOnErrorResume$ResumeSubscriber.onError(FluxOnErrorResume.java:94) ~[reactor-core-3.4.25.jar!/:3.4.25]
+	... 13 common frames omitted
