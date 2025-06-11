@@ -1,9 +1,32 @@
-, which we've traced in logs to an Azure AD authentication issue.
+Application Name
 
-The error message:
+Platform COnfigurtion Type
 
-AADSTS700016: Application with identifier  client-id ‘[f8b3e641-5baa-4a97-b58d-a7deecc0f5c2]’ was not found in the directory ‘Nedbank’.
+Redirect URI
 
-This confirms that the application (client ID) is not registered or accessible in the 'Nedbank' Azure AD tenant.
+certificate or clientsecret
 
-Please confirm the correct Azure AD tenant ID and ensure that the application is registered in that tenant. Once the correct tenant is configured, the authentication 
+Application(Client ID)
+
+Expose an API(Yes or NO)
+
+Application ID URI
+
+API Permisstions Required
+
+Domain Group Names to assign access
+
+Owner
+
+Assignment required:yes
+
+Visible to users: yes
+
+Application Access Policy Required(Yes or No)
+=========================
+https://dev-exstream.nednet.co.za/api/file/process
+
+Please use these in DEV so long: 
+Application Name : Ecp Batch Manager
+Client ID: f8b3e641-5baa-4a97-b58d-a7deecc0f5c2
+Client secret: X1dF4fX3mH5vP1oW1pD4kP3mR7sY0mC1uV7nW7vR3rR1wK1jJ5
