@@ -1,1 +1,5 @@
-https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/str-ecp-batch-composition%2FDEBTMAN%2FTrigger%2Fmetadata_1c93525b-42d1-410a-9e26-aa957f19861c.json
+Hi Vinod, thanks for the below but these values are not correct.
+
+The Client Secret value relates to a gateway API which is not relevant in this case.
+
+The Application (Client) ID gets generated as part of the process and will be provided to us once the KV has been actioned.
