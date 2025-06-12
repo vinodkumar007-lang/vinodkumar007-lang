@@ -1,3 +1,1 @@
-
-Do you know if the exstream process is executing and writing to this topic yet?
-yes, exstream process was writing to topic, for now testing purpose , i am publishing messages my self which had provided sample messages by Akash
+Yes, the Exstream process has been writing to the topic. However, for current testing purposes, I am manually publishing messages using the sample payloads that were provided by Akash.
