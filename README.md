@@ -1,1 +1,1 @@
-javax.net.ssl.SSLHandshakeException: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+keytool -import -alias opentext -file opentext.crt -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit
