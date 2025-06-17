@@ -26,7 +26,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
-import java.util.Objects;
 
 @Service
 public class BlobStorageService {
@@ -38,15 +37,15 @@ public class BlobStorageService {
     @Value("${azure.keyvault.url}")
     private String keyVaultUrl;
 
-    private String accountKey;
-    private String accountName;
-    private String containerName;
+    private volatile String accountKey;
+    private volatile String accountName;
+    private volatile String containerName;
 
     public BlobStorageService(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
     }
 
-    private void initSecrets() {
+    private synchronized void initSecrets() {
         if (accountKey != null && accountName != null && containerName != null) {
             return;
         }
@@ -58,14 +57,13 @@ public class BlobStorageService {
                     .credential(new DefaultAzureCredentialBuilder().build())
                     .buildClient();
 
-            // ✅ Updated secret names from your provided URLs
             accountKey = getSecret(secretClient, "ecm-fm-account-key");
             accountName = getSecret(secretClient, "ecm-fm-account-name");
             containerName = getSecret(secretClient, "ecm-fm-container-name");
 
             if (accountKey == null || accountKey.isBlank() ||
-                    accountName == null || accountName.isBlank() ||
-                    containerName == null || containerName.isBlank()) {
+                accountName == null || accountName.isBlank() ||
+                containerName == null || containerName.isBlank()) {
                 throw new CustomAppException("One or more secrets are null/empty from Key Vault", 400, HttpStatus.BAD_REQUEST);
             }
 
@@ -104,9 +102,10 @@ public class BlobStorageService {
             String sourceContainerName = pathParts[1];
             String sourceBlobPath = pathParts[2];
 
+            // ⚠️ Assuming source account = target account (using Key Vault account key)
             BlobServiceClient sourceBlobServiceClient = new BlobServiceClientBuilder()
                     .endpoint(String.format("https://%s.blob.core.windows.net", sourceAccountName))
-                    .credential(new StorageSharedKeyCredential(sourceAccountName, accountKey))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
                     .buildClient();
 
             BlobContainerClient sourceContainerClient = sourceBlobServiceClient.getBlobContainerClient(sourceContainerName);
@@ -134,12 +133,15 @@ public class BlobStorageService {
                     .buildClient();
 
             BlobContainerClient targetContainerClient = targetBlobServiceClient.getBlobContainerClient(containerName);
+            if (!targetContainerClient.exists()) {
+                logger.warn("Container '{}' does not exist, creating...", containerName);
+                targetContainerClient.create();
+            }
+
             BlobClient targetBlobClient = targetContainerClient.getBlobClient(targetBlobPath);
-
             targetBlobClient.upload(new ByteArrayInputStream(sourceBlobBytes), sourceBlobBytes.length, true);
-            logger.info("Blob size{}", sourceBlobBytes.length);
-            logger.info("✅ Copied '{}' to '{}'", sourceUrl, targetBlobClient.getBlobUrl());
 
+            logger.info("✅ Copied '{}' to '{}'", sourceUrl, targetBlobClient.getBlobUrl());
             return targetBlobClient.getBlobUrl();
 
         } catch (Exception e) {
@@ -158,13 +160,17 @@ public class BlobStorageService {
                     .buildClient();
 
             BlobContainerClient containerClient = blobServiceClient.getBlobContainerClient(containerName);
+            if (!containerClient.exists()) {
+                logger.warn("Container '{}' does not exist, creating...", containerName);
+                containerClient.create();
+            }
+
             BlobClient blobClient = containerClient.getBlobClient(targetBlobPath);
 
             byte[] bytes = content.getBytes(StandardCharsets.UTF_8);
             blobClient.upload(new ByteArrayInputStream(bytes), bytes.length, true);
 
             logger.info("✅ Uploaded file to '{}'", blobClient.getBlobUrl());
-
             return blobClient.getBlobUrl();
 
         } catch (Exception e) {
@@ -184,7 +190,7 @@ public class BlobStorageService {
                 URI uri = new URI(blobPathOrUrl);
                 String[] segments = uri.getPath().split("/");
 
-                if (segments == null || segments.length < 3) {
+                if (segments.length < 3) {
                     throw new CustomAppException("Invalid blob URL format: " + blobPathOrUrl, 400, HttpStatus.BAD_REQUEST);
                 }
 
@@ -207,7 +213,7 @@ public class BlobStorageService {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             blobClient.download(outputStream);
 
-            return outputStream.toString(StandardCharsets.UTF_8.name());
+            return new String(outputStream.toByteArray(), StandardCharsets.UTF_8);
 
         } catch (Exception e) {
             logger.error("❌ Error downloading blob content for '{}': {}", blobPathOrUrl, e.getMessage(), e);
@@ -219,7 +225,7 @@ public class BlobStorageService {
         initSecrets();
 
         if (message == null || message.getBatchId() == null || message.getSourceSystem() == null ||
-                message.getUniqueConsumerRef() == null || message.getJobName() == null) {
+            message.getUniqueConsumerRef() == null || message.getJobName() == null) {
             throw new CustomAppException("Invalid Kafka message data for building print file URL", 400, HttpStatus.BAD_REQUEST);
         }
 
@@ -229,7 +235,7 @@ public class BlobStorageService {
                 .atZone(ZoneId.systemDefault())
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
 
-        String printFileName = message.getBatchId() + "_printfile.pdf";
+        String printFileName = String.format("%s_printfile.pdf", message.getBatchId());
 
         return String.format("%s/%s/%s/%s/%s/%s/print/%s",
                 baseUrl,
@@ -245,11 +251,10 @@ public class BlobStorageService {
         initSecrets();
 
         if (message == null || message.getBatchId() == null ||
-                message.getSourceSystem() == null || message.getUniqueConsumerRef() == null) {
+            message.getSourceSystem() == null || message.getUniqueConsumerRef() == null) {
             throw new CustomAppException("Missing Kafka message metadata for uploading summary JSON", 400, HttpStatus.BAD_REQUEST);
         }
 
-        // Use the provided summaryFileName directly (e.g. "summary_<batchId>.json")
         String remoteBlobPath = String.format("%s/%s/%s/%s",
                 message.getSourceSystem(),
                 message.getBatchId(),
@@ -258,7 +263,7 @@ public class BlobStorageService {
 
         String jsonContent;
         try {
-            if (localFilePathOrUrl.startsWith("http://") || localFilePathOrUrl.startsWith("https://")) {
+            if (localFilePathOrUrl.startsWith("http")) {
                 jsonContent = downloadContentFromUrl(localFilePathOrUrl);
             } else {
                 jsonContent = Files.readString(Paths.get(localFilePathOrUrl));
