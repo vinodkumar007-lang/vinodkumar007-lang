@@ -20,7 +20,6 @@ import java.io.*;
 import java.net.URI;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -45,6 +44,9 @@ public class BlobStorageService {
 
     @Value("${azure.keyvault.ecm-fm-container-name}")
     private String containerNameSecretName;
+
+    @Value("${azure.blob.storage.format}")
+    private String blobStorageFormat;
 
     private String accountKey;
     private String accountName;
@@ -208,8 +210,9 @@ public class BlobStorageService {
 
     private BlobServiceClient getBlobServiceClient() {
         StorageSharedKeyCredential credential = new StorageSharedKeyCredential(accountName, accountKey);
+        String endpoint = String.format(blobStorageFormat, accountName, containerName);
         return new BlobServiceClientBuilder()
-                .endpoint(String.format("https://%s.blob.core.windows.net", accountName))
+                .endpoint(endpoint)
                 .credential(credential)
                 .buildClient();
     }
@@ -222,9 +225,3 @@ public class BlobStorageService {
         return String.format("%s/%s/%s_%s", targetFolder, batchId, timestamp, fileName);
     }
 }
-
-azure.keyvault.url=https://nsn-dev-ecm-kva-001.vault.azure.net
-azure.keyvault.ecm-fm-account-key=ecm-fm-account-key
-azure.keyvault.ecm-fm-account-name=ecm-fm-account-name
-azure.keyvault.ecm-fm-container-name=ecm-fm-container-name
-azure.blob.storage.format=https://%s.blob.core.windows.net/%s
