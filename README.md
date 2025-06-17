@@ -227,3 +227,4 @@ azure.keyvault.url=https://nsn-dev-ecm-kva-001.vault.azure.net
 azure.keyvault.ecm-fm-account-key=ecm-fm-account-key
 azure.keyvault.ecm-fm-account-name=ecm-fm-account-name
 azure.keyvault.ecm-fm-container-name=ecm-fm-container-name
+azure.blob.storage.format=https://%s.blob.core.windows.net/%s
