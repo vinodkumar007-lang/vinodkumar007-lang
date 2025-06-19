@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.*;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -86,9 +87,6 @@ public class KafkaListenerService {
         this.blobStorageService = blobStorageService;
     }
 
-    /**
-     * Main Kafka Listener Service
-     */
     public ApiResponse listen() {
         Properties props = new Properties();
         props.put("bootstrap.servers", bootstrapServers);
@@ -162,9 +160,6 @@ public class KafkaListenerService {
         );
     }
 
-    /**
-     * Processes a single Kafka message and generates output files + summary.json
-     */
     private ApiResponse processSingleMessage(KafkaMessage message) throws UnsupportedEncodingException {
         if (message == null) {
             return new ApiResponse("Empty message", "error",
@@ -277,10 +272,8 @@ public class KafkaListenerService {
         summaryPayload.setMobstatTriggerFile("");
         summaryPayload.setPrintFiles(printFiles);
 
-        // Write summary JSON
         String summaryJsonPath = SummaryJsonWriter.writeSummaryJsonToFile(summaryPayload);
 
-        // Upload summary JSON
         String summaryFileName = "summary_" + message.getBatchId() + ".json";
         summaryFileUrl = blobStorageService.uploadSummaryJson(summaryJsonPath, message, summaryFileName);
         String decodedUrl = URLDecoder.decode(summaryFileUrl, StandardCharsets.UTF_8);
@@ -299,9 +292,6 @@ public class KafkaListenerService {
         return new ApiResponse(apiPayload.getMessage(), apiPayload.getStatus(), apiPayload.getSummaryResponse());
     }
 
-    /**
-     * Builds blob storage path
-     */
     private String buildBlobPath(String sourceSystem, long timestamp, String batchId,
                                  String uniqueConsumerRef, String jobName, String folder,
                                  String customerAccount, String fileName) {
@@ -312,9 +302,6 @@ public class KafkaListenerService {
                 sourceSystem, dateStr, batchId, uniqueConsumerRef, jobName, folder, fileName);
     }
 
-    /**
-     * Extracts blob path from full URL
-     */
     private String extractBlobPath(String fullUrl) {
         if (fullUrl == null) return "";
         try {
@@ -326,9 +313,6 @@ public class KafkaListenerService {
         }
     }
 
-    /**
-     * Extracts file name from path or URL
-     */
     public String extractFileName(String fullPathOrUrl) {
         if (fullPathOrUrl == null || fullPathOrUrl.isEmpty()) return fullPathOrUrl;
         String trimmed = fullPathOrUrl.replaceAll("/+", "/");
@@ -336,10 +320,21 @@ public class KafkaListenerService {
         return lastSlashIndex >= 0 ? trimmed.substring(lastSlashIndex + 1) : trimmed;
     }
 
-    /**
-     * Converts epoch millis to ISO timestamp
-     */
     private String instantToIsoString(long epochMillis) {
         return Instant.ofEpochMilli(epochMillis).toString();
     }
+
+    // 🔸 Auto-Poll — runs every 5 sec 🔸
+    @Scheduled(fixedDelay = 5000)
+    public void autoPollKafkaMessages() {
+        try {
+            logger.info("Auto-polling Kafka messages...");
+            ApiResponse response = listen();
+            logger.info("Kafka message processed. Response: {}", response.getMessage());
+        } catch (Exception e) {
+            logger.error("Error auto-polling Kafka messages", e);
+        }
+    }
 }
+
+@EnableScheduling
