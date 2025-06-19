@@ -1,2 +1,1 @@
-git config --global http.proxy http://CC437236:34dYaB%40jEh56@proxyprod.africa.nedcor.net:80
-git config --global https.proxy http://CC437236:34dYaB%40jEh56@proxyprod.africa.nedcor.net:80
+git clone git@ssh.dev.azure.com:v3/Nedbank-Limited/ECM_Exstream/ECM_comp_Filemanager
