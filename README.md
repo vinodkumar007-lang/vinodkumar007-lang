@@ -54,7 +54,7 @@ public class KafkaListenerService {
             // Send to output Kafka topic
             kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
 
-            logger.info("Kafka message processed successfully. Response: {}", response.getMessage());
+            logger.info("Kafka message processed. Response: {}", response.getMessage());
         } catch (Exception ex) {
             logger.error("Error processing Kafka message", ex);
         }
@@ -65,6 +65,43 @@ public class KafkaListenerService {
             return new ApiResponse("Empty message", "error",
                     new SummaryPayloadResponse("Empty message", "error", new SummaryResponse()).getSummaryResponse());
         }
+
+        // === NEW VALIDATION START ===
+        List<BatchFile> batchFiles = message.getBatchFiles();
+
+        if (batchFiles == null || batchFiles.isEmpty()) {
+            logger.error("BatchFiles is empty or null. Rejecting message.");
+            return new ApiResponse("Invalid message: BatchFiles is empty or null", "error",
+                    new SummaryPayloadResponse("Invalid message: BatchFiles is empty or null", "error", new SummaryResponse()).getSummaryResponse());
+        }
+
+        long dataCount = batchFiles.stream()
+                .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
+                .count();
+
+        long refCount = batchFiles.stream()
+                .filter(f -> "REF".equalsIgnoreCase(f.getFileType()))
+                .count();
+
+        if (dataCount == 0 && refCount > 0) {
+            logger.error("Message contains only REF files. Rejecting message.");
+            return new ApiResponse("Invalid message: only REF files present", "error",
+                    new SummaryPayloadResponse("Invalid message: only REF files present", "error", new SummaryResponse()).getSummaryResponse());
+        }
+
+        if (dataCount > 1) {
+            logger.error("Message contains multiple DATA files ({}). Rejecting message.", dataCount);
+            return new ApiResponse("Invalid message: multiple DATA files present", "error",
+                    new SummaryPayloadResponse("Invalid message: multiple DATA files present", "error", new SummaryResponse()).getSummaryResponse());
+        }
+
+        // If 1 DATA + REF(s), we process only DATA — so prepare filtered list
+        List<BatchFile> validFiles = batchFiles.stream()
+                .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
+                .toList();
+
+        logger.info("BatchFiles validation passed. DATA files to process: {}", validFiles.size());
+        // === NEW VALIDATION END ===
 
         Header header = new Header();
         header.setTenantCode(message.getTenantCode());
@@ -86,8 +123,8 @@ public class KafkaListenerService {
         String summaryFileUrl;
 
         String fileName = null;
-        if (message.getBatchFiles() != null && !message.getBatchFiles().isEmpty()) {
-            String firstBlobUrl = message.getBatchFiles().get(0).getBlobUrl();
+        if (!validFiles.isEmpty()) {
+            String firstBlobUrl = validFiles.get(0).getBlobUrl();
             String blobPath = extractBlobPath(firstBlobUrl);
             fileName = extractFileName(blobPath);
         }
@@ -95,7 +132,7 @@ public class KafkaListenerService {
             fileName = message.getBatchId() + "_summary.json";
         }
 
-        for (BatchFile file : message.getBatchFiles()) {
+        for (BatchFile file : validFiles) {
             try {
                 String inputFileContent = blobStorageService.downloadFileContent(extractFileName(extractBlobPath(file.getBlobUrl())));
                 List<CustomerData> customers = DataParser.extractCustomerData(inputFileContent);
@@ -169,11 +206,9 @@ public class KafkaListenerService {
         summaryPayload.setProcessedFiles(processedFiles);
         summaryPayload.setPrintFiles(printFiles);
 
-        // Write the summary JSON file
         String summaryJsonPath = SummaryJsonWriter.writeSummaryJsonToFile(summaryPayload);
 
         String summaryFileName = "summary_" + message.getBatchId() + ".json";
-        // Upload using the clean file name
         summaryFileUrl = blobStorageService.uploadSummaryJson(summaryJsonPath, message, summaryFileName);
         String decodedUrl = URLDecoder.decode(summaryFileUrl, StandardCharsets.UTF_8);
         summaryPayload.setSummaryFileURL(decodedUrl);
