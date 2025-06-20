@@ -1,3 +1,5 @@
+I am in the process of developing the FileType changes. Please confirm if the below scenarios are correct
+
 Scenario	Expect output message in outputTopic
 1 DATA	success with summary
 2 DATA	rejected reason multiple DATA
