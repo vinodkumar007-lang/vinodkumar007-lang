@@ -3,14 +3,19 @@ package com.nedbank.kafka.filemanage.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nedbank.kafka.filemanage.model.*;
 import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
-import org.apache.kafka.clients.consumer.*;
-import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.common.config.SslConfigs;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.*;
-import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.context.annotation.Bean;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.core.*;
+import org.springframework.kafka.listener.ContainerProperties;
 import org.springframework.stereotype.Service;
-import org.springframework.scheduling.annotation.Scheduled;
 
 import java.io.File;
 import java.io.UnsupportedEncodingException;
@@ -18,7 +23,6 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.time.Duration;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -87,75 +91,52 @@ public class KafkaListenerService {
         this.blobStorageService = blobStorageService;
     }
 
-    public ApiResponse listen() {
-        Properties props = new Properties();
-        props.put("bootstrap.servers", bootstrapServers);
-        props.put("group.id", consumerGroupId);
-        props.put("enable.auto.commit", enableAutoCommit);
-        props.put("auto.offset.reset", autoOffsetReset);
-        props.put("key.deserializer", keyDeserializer);
-        props.put("value.deserializer", valueDeserializer);
-        props.put("security.protocol", securityProtocol);
-        props.put("ssl.truststore.location", truststoreLocation);
-        props.put("ssl.truststore.password", truststorePassword);
-        props.put("ssl.keystore.location", keystoreLocation);
-        props.put("ssl.keystore.password", keystorePassword);
-        props.put("ssl.key.password", keyPassword);
-        props.put("ssl.protocol", sslProtocol);
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, consumerGroupId);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, keyDeserializer);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, valueDeserializer);
+        props.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol);
+        props.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, truststoreLocation);
+        props.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, truststorePassword);
+        props.put(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, keystoreLocation);
+        props.put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, keystorePassword);
+        props.put(SslConfigs.SSL_KEY_PASSWORD_CONFIG, keyPassword);
+        props.put(SslConfigs.SSL_PROTOCOL_CONFIG, sslProtocol);
         props.put("ssl.endpoint.identification.algorithm", "");
 
-        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-            TopicPartition partition = new TopicPartition(inputTopic, 0);
-            consumer.assign(Collections.singletonList(partition));
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, autoOffsetReset);
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, enableAutoCommit);
 
-            OffsetAndMetadata committed = consumer.committed(partition);
-            long nextOffset = committed != null ? committed.offset() : 0;
+        ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(props));
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD); // process 1 message at a time
+        factory.setConcurrency(1); // single-thread processing
+        return factory;
+    }
 
-            consumer.seek(partition, nextOffset);
+    @KafkaListener(
+            topics = "${kafka.topic.input}",
+            groupId = "${kafka.consumer.group.id}",
+            containerFactory = "kafkaListenerContainerFactory"
+    )
+    public void consumeKafkaMessage(String message) {
+        try {
+            logger.info("Received Kafka message...");
+            KafkaMessage kafkaMessage = objectMapper.readValue(message, KafkaMessage.class);
 
-            ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(5));
-            if (records.isEmpty()) {
-                logger.info("No new messages at offset {}", nextOffset);
-                return new ApiResponse(
-                        "No new messages to process",
-                        "info",
-                        new SummaryPayloadResponse("No new messages to process", "info", new SummaryResponse()).getSummaryResponse()
-                );
-            }
+            ApiResponse response = processSingleMessage(kafkaMessage);
 
-            for (ConsumerRecord<String, String> record : records) {
-                try {
-                    KafkaMessage kafkaMessage = objectMapper.readValue(record.value(), KafkaMessage.class);
-                    ApiResponse response = processSingleMessage(kafkaMessage);
-                    kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
-                    consumer.commitSync(Collections.singletonMap(
-                            partition,
-                            new OffsetAndMetadata(record.offset() + 1)
-                    ));
-                    return response;
-                } catch (Exception ex) {
-                    logger.error("Error processing Kafka message", ex);
-                    return new ApiResponse(
-                            "Error processing message: " + ex.getMessage(),
-                            "error",
-                            new SummaryPayloadResponse("Error processing message", "error", new SummaryResponse()).getSummaryResponse()
-                    );
-                }
-            }
-        } catch (Exception e) {
-            logger.error("Kafka consumer failed", e);
-            return new ApiResponse(
-                    "Kafka error: " + e.getMessage(),
-                    "error",
-                    new SummaryPayloadResponse("Kafka error", "error", new SummaryResponse()).getSummaryResponse()
-            );
+            // Send to output Kafka topic
+            kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
+
+            logger.info("Kafka message processed successfully. Response: {}", response.getMessage());
+        } catch (Exception ex) {
+            logger.error("Error processing Kafka message", ex);
+            // Optional: DLQ handling
         }
-
-        return new ApiResponse(
-                "No messages processed",
-                "info",
-                new SummaryPayloadResponse("No messages processed", "info", new SummaryResponse()).getSummaryResponse()
-        );
     }
 
     private ApiResponse processSingleMessage(KafkaMessage message) throws UnsupportedEncodingException {
@@ -267,11 +248,9 @@ public class KafkaListenerService {
         summaryPayload.setProcessedFiles(processedFiles);
         summaryPayload.setPrintFiles(printFiles);
 
-        // Write the summary JSON file
         String summaryJsonPath = SummaryJsonWriter.writeSummaryJsonToFile(summaryPayload);
 
         String summaryFileName = "summary_" + message.getBatchId() + ".json";
-        // Upload using the clean file name
         summaryFileUrl = blobStorageService.uploadSummaryJson(summaryJsonPath, message, summaryFileName);
         String decodedUrl = URLDecoder.decode(summaryFileUrl, StandardCharsets.UTF_8);
         summaryPayload.setSummaryFileURL(decodedUrl);
@@ -320,17 +299,4 @@ public class KafkaListenerService {
     private String instantToIsoString(long epochMillis) {
         return Instant.ofEpochMilli(epochMillis).toString();
     }
-
-// 🔸 Auto-Poll — runs every 5 sec 🔸
-    @Scheduled(fixedDelay = 5000)
-    public void autoPollKafkaMessages() {
-        try {
-            logger.info("Auto-polling Kafka messages...");
-            ApiResponse response = listen();
-            logger.info("Kafka message processed. Response: {}", response.getMessage());
-        } catch (Exception e) {
-            logger.error("Error auto-polling Kafka messages", e);
-        }
-    }
 }
-
