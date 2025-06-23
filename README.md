@@ -1,264 +1,91 @@
-package com.nedbank.kafka.filemanage.service;
+2025-06-23T06:21:28.486+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
+2025-06-23T06:21:28.627+02:00 ERROR 12036 --- [ntainer#0-0-C-1] o.s.k.support.LoggingProducerListener    : Exception thrown when sending a message with key='null' and payload='{"message":"Batch processed successfully","status":"success","summaryPayload":{"batchID":"2c93525b-4...' to topic str-ecp-batch-composition-complete:
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nedbank.kafka.filemanage.model.*;
-import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.*;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
+org.apache.kafka.common.errors.TimeoutException: Topic str-ecp-batch-composition-complete not present in metadata after 60000 ms.
 
-import java.io.File;
-import java.io.UnsupportedEncodingException;
-import java.net.URI;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.*;
+2025-06-23T06:21:28.631+02:00 DEBUG 12036 --- [ntainer#0-0-C-1] o.s.kafka.core.KafkaTemplate             : Failed to send: ProducerRecord(topic=str-ecp-batch-composition-complete, partition=null, headers=RecordHeaders(headers = [], isReadOnly = false), key=null, value={"message":"Batch processed successfully","status":"success","summaryPayload":{"batchID":"2c93525b-42d1-410a-9e26-aa957f19861d","fileName":"DEBTMAN.csv","header":{"tenantCode":"ZANBL","channelID":null,"audienceID":null,"timestamp":"1970-01-21T05:39:11.245Z","sourceSystem":"DEBTMAN","product":"DEBTMAN","jobName":"DEBTMAN"},"metadata":{"totalFilesProcessed":11,"processingStatus":"Completed","eventOutcomeCode":"0","eventOutcomeDescription":"Success"},"payload":{"uniqueConsumerRef":"6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f","uniqueECPBatchRef":null,"runPriority":null,"eventID":null,"eventType":null,"restartKey":null,"fileCount":11},"summaryFileURL":"https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN/2c93525b-42d1-410a-9e26-aa957f19861d/6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f/summary_2c93525b-42d1-410a-9e26-aa957f19861d.json","timestamp":"2025-06-23T04:20:28.574412800Z"}}, timestamp=null)
 
-@Service
-public class KafkaListenerService {
+org.apache.kafka.common.errors.TimeoutException: Topic str-ecp-batch-composition-complete not present in metadata after 60000 ms.
 
-    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+2025-06-23T06:21:28.632+02:00 ERROR 12036 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : Error processing Kafka message
 
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final BlobStorageService blobStorageService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+org.springframework.kafka.KafkaException: Send failed
+	at org.springframework.kafka.core.KafkaTemplate.doSend(KafkaTemplate.java:794) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.core.KafkaTemplate.observeSend(KafkaTemplate.java:754) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.core.KafkaTemplate.send(KafkaTemplate.java:538) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.consumeKafkaMessage(KafkaListenerService.java:56) ~[classes/:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:169) ~[spring-messaging-6.0.2.jar:6.0.2]
+	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.invoke(InvocableHandlerMethod.java:119) ~[spring-messaging-6.0.2.jar:6.0.2]
+	at org.springframework.kafka.listener.adapter.HandlerAdapter.invoke(HandlerAdapter.java:56) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.invokeHandler(MessagingMessageListenerAdapter.java:375) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:92) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:53) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeOnMessage(KafkaMessageListenerContainer.java:2873) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeOnMessage(KafkaMessageListenerContainer.java:2854) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.lambda$doInvokeRecordListener$57(KafkaMessageListenerContainer.java:2772) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at io.micrometer.observation.Observation.observe(Observation.java:559) ~[micrometer-observation-1.10.2.jar:1.10.2]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeRecordListener(KafkaMessageListenerContainer.java:2770) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeWithRecords(KafkaMessageListenerContainer.java:2622) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeRecordListener(KafkaMessageListenerContainer.java:2508) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeListener(KafkaMessageListenerContainer.java:2150) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeIfHaveRecords(KafkaMessageListenerContainer.java:1505) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.pollAndInvoke(KafkaMessageListenerContainer.java:1469) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.run(KafkaMessageListenerContainer.java:1344) ~[spring-kafka-3.0.11.jar:3.0.11]
+	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804) ~[na:na]
+	at java.base/java.lang.Thread.run(Thread.java:842) ~[na:na]
+Caused by: org.apache.kafka.common.errors.TimeoutException: Topic str-ecp-batch-composition-complete not present in metadata after 60000 ms.
 
-    @Value("${kafka.topic.output}")
-    private String outputTopic;
+2025-06-23T06:21:28.634+02:00 DEBUG 12036 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Committing: {str-ecp-batch-composition-0=OffsetAndMetadata{offset=18638, leaderEpoch=null, metadata=''}}
+2025-06-23T06:21:29.648+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
+2025-06-23T06:21:29.648+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
+2025-06-23T06:21:29.649+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
+2025-06-23T06:21:30.564+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
+2025-06-23T06:21:30.564+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
+2025-06-23T06:21:30.564+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
+2025-06-23T06:21:31.479+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
+2025-06-23T06:21:31.480+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
+2025-06-23T06:21:31.480+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
+2025-06-23T06:21:32.441+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
+2025-06-23T06:21:32.441+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
+2025-06-23T06:21:32.441+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
+2025-06-23T06:21:33.406+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
+2025-06-23T06:21:33.407+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
+2025-06-23T06:21:33.407+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
+2025-06-23T06:21:33.640+02:00 DEBUG 12036 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
+2025-06-23T06:21:34.269+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
+2025-06-23T06:21:34.269+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
+2025-06-23T06:21:34.269+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
+2025-06-23T06:21:35.389+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
+2025-06-23T06:21:35.389+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
+2025-06-23T06:21:35.389+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
+2025-06-23T06:21:36.410+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
+2025-06-23T06:21:36.410+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
+2025-06-23T06:21:36.410+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
+2025-06-23T06:21:37.258+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
+2025-06-23T06:21:37.259+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
+2025-06-23T06:21:37.259+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
+2025-06-23T06:21:37.729+02:00 DEBUG 12036 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 1 records
+2025-06-23T06:21:37.729+02:00 DEBUG 12036 --- [ntainer#0-0-C-1] .a.RecordMessagingMessageListenerAdapter : Processing [GenericMessage [payload=        {
+                          "BatchId" : "2c93525b-42d1-410a-9e26-aa957f19861d",
+                          "SourceSystem" : "DEBTMAN",
+                          "TenantCode" : "ZANBL",
+                          "ChannelID" : null,
+                          "AudienceID" : null,
+                          "Product" : "DEBTMAN",
+                          "JobName" : "DEBTMAN",
+                          "UniqueConsumerRef" : "6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f",
+                          "Timestamp" : 1748351245.695410901,
+                          "RunPriority" : null,
+                          "EventType" : null,
+                          "BatchFiles" : []
+                        }
 
-    @Autowired
-    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
-                                BlobStorageService blobStorageService) {
-        this.kafkaTemplate = kafkaTemplate;
-        this.blobStorageService = blobStorageService;
-    }
-
-    @KafkaListener(
-            topics = "${kafka.topic.input}",
-            groupId = "${kafka.consumer.group.id}",
-            containerFactory = "kafkaListenerContainerFactory"
-    )
-    public void consumeKafkaMessage(String message) {
-        try {
-            logger.info("Received Kafka message...");
-            KafkaMessage kafkaMessage = objectMapper.readValue(message, KafkaMessage.class);
-
-            ApiResponse response = processSingleMessage(kafkaMessage);
-
-            // ✅ Only send SUCCESS messages to output topic
-            if ("success".equalsIgnoreCase(response.getStatus())) {
-                kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
-                logger.info("Kafka message processed & sent to output topic. Response: {}", response.getMessage());
-            } else {
-                logger.warn("Kafka message processing returned error. Not sending to output topic. Response: {}", response.getMessage());
-            }
-
-        } catch (Exception ex) {
-            logger.error("Error processing Kafka message", ex);
-        }
-    }
-
-    private ApiResponse processSingleMessage(KafkaMessage message) throws UnsupportedEncodingException {
-        if (message == null) {
-            return new ApiResponse("Empty message", "error",
-                    new SummaryPayloadResponse("Empty message", "error", new SummaryResponse()).getSummaryResponse());
-        }
-
-        // === NEW VALIDATION START ===
-        List<BatchFile> batchFiles = message.getBatchFiles();
-
-        if (batchFiles == null || batchFiles.isEmpty()) {
-            logger.error("BatchFiles is empty or null. Rejecting message.");
-            return new ApiResponse("Invalid message: BatchFiles is empty or null", "error",
-                    new SummaryPayloadResponse("Invalid message: BatchFiles is empty or null", "error", new SummaryResponse()).getSummaryResponse());
-        }
-
-        long dataCount = batchFiles.stream()
-                .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
-                .count();
-
-        long refCount = batchFiles.stream()
-                .filter(f -> "REF".equalsIgnoreCase(f.getFileType()))
-                .count();
-
-        if (dataCount == 0 && refCount > 0) {
-            logger.error("Message contains only REF files. Rejecting message.");
-            return new ApiResponse("Invalid message: only REF files present", "error",
-                    new SummaryPayloadResponse("Invalid message: only REF files present", "error", new SummaryResponse()).getSummaryResponse());
-        }
-
-        if (dataCount > 1) {
-            logger.error("Message contains multiple DATA files ({}). Rejecting message.", dataCount);
-            return new ApiResponse("Invalid message: multiple DATA files present", "error",
-                    new SummaryPayloadResponse("Invalid message: multiple DATA files present", "error", new SummaryResponse()).getSummaryResponse());
-        }
-
-        // If 1 DATA + REF(s), we process only DATA — so prepare filtered list
-        List<BatchFile> validFiles = batchFiles.stream()
-                .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
-                .toList();
-
-        logger.info("BatchFiles validation passed. DATA files to process: {}", validFiles.size());
-        // === NEW VALIDATION END ===
-
-        Header header = new Header();
-        header.setTenantCode(message.getTenantCode());
-        header.setChannelID(message.getChannelID());
-        header.setAudienceID(message.getAudienceID());
-        header.setTimestamp(instantToIsoString(message.getTimestamp()));
-        header.setSourceSystem(message.getSourceSystem());
-        header.setProduct(message.getProduct());
-        header.setJobName(message.getJobName());
-
-        Payload payload = new Payload();
-        payload.setUniqueConsumerRef(message.getUniqueConsumerRef());
-        payload.setRunPriority(message.getRunPriority());
-        payload.setEventType(message.getEventType());
-
-        List<SummaryProcessedFile> processedFiles = new ArrayList<>();
-        List<PrintFile> printFiles = new ArrayList<>();
-        Metadata metadata = new Metadata();
-        String summaryFileUrl;
-
-        String fileName = null;
-        if (!validFiles.isEmpty()) {
-            String firstBlobUrl = validFiles.get(0).getBlobUrl();
-            String blobPath = extractBlobPath(firstBlobUrl);
-            fileName = extractFileName(blobPath);
-        }
-        if (fileName == null || fileName.isEmpty()) {
-            fileName = message.getBatchId() + "_summary.json";
-        }
-
-        for (BatchFile file : validFiles) {
-            try {
-                String inputFileContent = blobStorageService.downloadFileContent(extractFileName(extractBlobPath(file.getBlobUrl())));
-                List<CustomerData> customers = DataParser.extractCustomerData(inputFileContent);
-                if (customers.isEmpty()) continue;
-
-                for (CustomerData customer : customers) {
-                    File pdfFile = FileGenerator.generatePdf(customer);
-                    File htmlFile = FileGenerator.generateHtml(customer);
-                    File txtFile = FileGenerator.generateTxt(customer);
-                    File mobstatFile = FileGenerator.generateMobstat(customer);
-
-                    String pdfArchiveUrl = blobStorageService.uploadFile(pdfFile.getAbsolutePath(),
-                            buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
-                                    message.getUniqueConsumerRef(), message.getJobName(), "archive",
-                                    customer.getAccountNumber(), pdfFile.getName())).split("\\?")[0];
-
-                    String pdfEmailUrl = blobStorageService.uploadFile(pdfFile.getAbsolutePath(),
-                            buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
-                                    message.getUniqueConsumerRef(), message.getJobName(), "email",
-                                    customer.getAccountNumber(), pdfFile.getName())).split("\\?")[0];
-
-                    String htmlEmailUrl = blobStorageService.uploadFile(htmlFile.getAbsolutePath(),
-                            buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
-                                    message.getUniqueConsumerRef(), message.getJobName(), "html",
-                                    customer.getAccountNumber(), htmlFile.getName())).split("\\?")[0];
-
-                    String txtEmailUrl = blobStorageService.uploadFile(txtFile.getAbsolutePath(),
-                            buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
-                                    message.getUniqueConsumerRef(), message.getJobName(), "txt",
-                                    customer.getAccountNumber(), txtFile.getName())).split("\\?")[0];
-
-                    String mobstatUrl = blobStorageService.uploadFile(mobstatFile.getAbsolutePath(),
-                            buildBlobPath(message.getSourceSystem(), message.getTimestamp(), message.getBatchId(),
-                                    message.getUniqueConsumerRef(), message.getJobName(), "mobstat",
-                                    customer.getAccountNumber(), mobstatFile.getName())).split("\\?")[0];
-
-                    SummaryProcessedFile processedFile = new SummaryProcessedFile();
-                    processedFile.setCustomerId(customer.getCustomerId());
-                    processedFile.setAccountNumber(customer.getAccountNumber());
-                    processedFile.setPdfArchiveFileUrl(pdfArchiveUrl);
-                    processedFile.setPdfEmailFileUrl(pdfEmailUrl);
-                    processedFile.setHtmlEmailFileUrl(htmlEmailUrl);
-                    processedFile.setTxtEmailFileUrl(txtEmailUrl);
-                    processedFile.setPdfMobstatFileUrl(mobstatUrl);
-                    processedFile.setStatusCode("OK");
-                    processedFile.setStatusDescription("Success");
-                    processedFiles.add(processedFile);
-                }
-            } catch (Exception ex) {
-                logger.error("Error processing file '{}': {}", file.getFilename(), ex.getMessage(), ex);
-            }
-        }
-
-        PrintFile printFile = new PrintFile();
-        printFile.setPrintFileURL(blobStorageService.buildPrintFileUrl(message));
-        printFiles.add(printFile);
-
-        payload.setFileCount(processedFiles.size());
-
-        metadata.setProcessingStatus("Completed");
-        metadata.setTotalFilesProcessed(processedFiles.size());
-        metadata.setEventOutcomeCode("0");
-        metadata.setEventOutcomeDescription("Success");
-
-        SummaryPayload summaryPayload = new SummaryPayload();
-        summaryPayload.setBatchID(message.getBatchId());
-        summaryPayload.setFileName(fileName);
-        summaryPayload.setHeader(header);
-        summaryPayload.setMetadata(metadata);
-        summaryPayload.setPayload(payload);
-        summaryPayload.setProcessedFiles(processedFiles);
-        summaryPayload.setPrintFiles(printFiles);
-
-        String summaryJsonPath = SummaryJsonWriter.writeSummaryJsonToFile(summaryPayload);
-
-        String summaryFileName = "summary_" + message.getBatchId() + ".json";
-        summaryFileUrl = blobStorageService.uploadSummaryJson(summaryJsonPath, message, summaryFileName);
-        String decodedUrl = URLDecoder.decode(summaryFileUrl, StandardCharsets.UTF_8);
-        summaryPayload.setSummaryFileURL(decodedUrl);
-
-        SummaryResponse summaryResponse = new SummaryResponse();
-        summaryResponse.setBatchID(summaryPayload.getBatchID());
-        summaryResponse.setFileName(summaryPayload.getFileName());
-        summaryResponse.setHeader(summaryPayload.getHeader());
-        summaryResponse.setMetadata(summaryPayload.getMetadata());
-        summaryResponse.setPayload(summaryPayload.getPayload());
-        summaryResponse.setSummaryFileURL(summaryPayload.getSummaryFileURL());
-        summaryResponse.setTimestamp(String.valueOf(Instant.now()));
-
-        SummaryPayloadResponse apiPayload = new SummaryPayloadResponse("Batch processed successfully", "success", summaryResponse);
-        return new ApiResponse(apiPayload.getMessage(), apiPayload.getStatus(), apiPayload.getSummaryResponse());
-    }
-
-    private String buildBlobPath(String sourceSystem, long timestamp, String batchId,
-                                 String uniqueConsumerRef, String jobName, String folder,
-                                 String customerAccount, String fileName) {
-        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-                .withZone(ZoneId.systemDefault());
-        String dateStr = dtf.format(Instant.ofEpochMilli(timestamp));
-        return String.format("%s/%s/%s/%s/%s/%s/%s",
-                sourceSystem, dateStr, batchId, uniqueConsumerRef, jobName, folder, fileName);
-    }
-
-    private String extractBlobPath(String fullUrl) {
-        if (fullUrl == null) return "";
-        try {
-            URI uri = URI.create(fullUrl);
-            String path = uri.getPath();
-            return path.startsWith("/") ? path.substring(1) : path;
-        } catch (Exception e) {
-            return fullUrl;
-        }
-    }
-
-    public String extractFileName(String fullPathOrUrl) {
-        if (fullPathOrUrl == null || fullPathOrUrl.isEmpty()) return fullPathOrUrl;
-        String trimmed = fullPathOrUrl.replaceAll("/+", "/");
-        int lastSlashIndex = trimmed.lastIndexOf('/');
-        return lastSlashIndex >= 0 ? trimmed.substring(lastSlashIndex + 1) : trimmed;
-    }
-
-    private String instantToIsoString(long epochMillis) {
-        return Instant.ofEpochMilli(epochMillis).toString();
-    }
-}
+, headers={kafka_offset=18638, kafka_consumer=org.apache.kafka.clients.consumer.KafkaConsumer@161459b5, kafka_timestampType=CREATE_TIME, kafka_receivedPartitionId=0, kafka_receivedTopic=str-ecp-batch-composition, kafka_receivedTimestamp=1750652497662, kafka_groupId=str-ecp-batch}]]
+2025-06-23T06:21:37.730+02:00  INFO 12036 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : Received Kafka message...
+2025-06-23T06:21:37.730+02:00 ERROR 12036 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : BatchFiles is empty or null. Rejecting message.
+2025-06-23T06:21:37.730+02:00  WARN 12036 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : Kafka message processing returned error. Not sending to output topic. Response: Invalid message: BatchFiles is empty or null
+2025-06-23T06:21:37.730+02:00 DEBUG 12036 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Committing: {str-ecp-batch-compo
