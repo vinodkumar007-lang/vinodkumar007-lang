@@ -51,10 +51,14 @@ public class KafkaListenerService {
 
             ApiResponse response = processSingleMessage(kafkaMessage);
 
-            // Send to output Kafka topic
-            kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
+            // ✅ Only send SUCCESS messages to output topic
+            if ("success".equalsIgnoreCase(response.getStatus())) {
+                kafkaTemplate.send(outputTopic, objectMapper.writeValueAsString(response));
+                logger.info("Kafka message processed & sent to output topic. Response: {}", response.getMessage());
+            } else {
+                logger.warn("Kafka message processing returned error. Not sending to output topic. Response: {}", response.getMessage());
+            }
 
-            logger.info("Kafka message processed. Response: {}", response.getMessage());
         } catch (Exception ex) {
             logger.error("Error processing Kafka message", ex);
         }
