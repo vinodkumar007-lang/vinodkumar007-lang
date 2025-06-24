@@ -1,91 +1,164 @@
-2025-06-23T06:21:28.486+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
-2025-06-23T06:21:28.627+02:00 ERROR 12036 --- [ntainer#0-0-C-1] o.s.k.support.LoggingProducerListener    : Exception thrown when sending a message with key='null' and payload='{"message":"Batch processed successfully","status":"success","summaryPayload":{"batchID":"2c93525b-4...' to topic str-ecp-batch-composition-complete:
+📄 File Manager Service — Design Document
+Client: Nedbank
+Version: v2.3 — June 2025 (FINAL)
+Prepared by: [Your team]
 
-org.apache.kafka.common.errors.TimeoutException: Topic str-ecp-batch-composition-complete not present in metadata after 60000 ms.
+1️⃣ Overview
+The File Manager Service automates the processing of driver files from Kafka, integrates with OpenText system, retrieves final processed file URLs, builds summary.json, connects to Azure Key Vault, uploads summary to Azure Blob Storage, and sends final Kafka message.
 
-2025-06-23T06:21:28.631+02:00 DEBUG 12036 --- [ntainer#0-0-C-1] o.s.kafka.core.KafkaTemplate             : Failed to send: ProducerRecord(topic=str-ecp-batch-composition-complete, partition=null, headers=RecordHeaders(headers = [], isReadOnly = false), key=null, value={"message":"Batch processed successfully","status":"success","summaryPayload":{"batchID":"2c93525b-42d1-410a-9e26-aa957f19861d","fileName":"DEBTMAN.csv","header":{"tenantCode":"ZANBL","channelID":null,"audienceID":null,"timestamp":"1970-01-21T05:39:11.245Z","sourceSystem":"DEBTMAN","product":"DEBTMAN","jobName":"DEBTMAN"},"metadata":{"totalFilesProcessed":11,"processingStatus":"Completed","eventOutcomeCode":"0","eventOutcomeDescription":"Success"},"payload":{"uniqueConsumerRef":"6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f","uniqueECPBatchRef":null,"runPriority":null,"eventID":null,"eventType":null,"restartKey":null,"fileCount":11},"summaryFileURL":"https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN/2c93525b-42d1-410a-9e26-aa957f19861d/6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f/summary_2c93525b-42d1-410a-9e26-aa957f19861d.json","timestamp":"2025-06-23T04:20:28.574412800Z"}}, timestamp=null)
+Deployed on Azure AKS. Integrates with Kafka, OpenText, Key Vault, Blob Storage.
 
-org.apache.kafka.common.errors.TimeoutException: Topic str-ecp-batch-composition-complete not present in metadata after 60000 ms.
+2️⃣ Architecture
+Component	Description
+Kafka (Input Topic)	Driver messages (DATA/REF)
+File Manager Service	KafkaListener → OpenText API → Build summary.json → Key Vault → Blob upload
+OpenText System	Processes driver files, uploads output files to Blob, returns URLs
+Azure Key Vault	Stores Blob secrets
+Azure Blob Storage	Stores summary.json
+Kafka (Output Topic)	Sends final summary message
 
-2025-06-23T06:21:28.632+02:00 ERROR 12036 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : Error processing Kafka message
+3️⃣ End-to-End Flow (v2.3 FINAL)
+1️⃣ Kafka message received — @KafkaListener consumes new message
 
-org.springframework.kafka.KafkaException: Send failed
-	at org.springframework.kafka.core.KafkaTemplate.doSend(KafkaTemplate.java:794) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.core.KafkaTemplate.observeSend(KafkaTemplate.java:754) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.core.KafkaTemplate.send(KafkaTemplate.java:538) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.consumeKafkaMessage(KafkaListenerService.java:56) ~[classes/:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
-	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:169) ~[spring-messaging-6.0.2.jar:6.0.2]
-	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.invoke(InvocableHandlerMethod.java:119) ~[spring-messaging-6.0.2.jar:6.0.2]
-	at org.springframework.kafka.listener.adapter.HandlerAdapter.invoke(HandlerAdapter.java:56) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.invokeHandler(MessagingMessageListenerAdapter.java:375) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:92) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:53) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeOnMessage(KafkaMessageListenerContainer.java:2873) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeOnMessage(KafkaMessageListenerContainer.java:2854) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.lambda$doInvokeRecordListener$57(KafkaMessageListenerContainer.java:2772) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at io.micrometer.observation.Observation.observe(Observation.java:559) ~[micrometer-observation-1.10.2.jar:1.10.2]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeRecordListener(KafkaMessageListenerContainer.java:2770) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeWithRecords(KafkaMessageListenerContainer.java:2622) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeRecordListener(KafkaMessageListenerContainer.java:2508) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeListener(KafkaMessageListenerContainer.java:2150) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeIfHaveRecords(KafkaMessageListenerContainer.java:1505) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.pollAndInvoke(KafkaMessageListenerContainer.java:1469) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.run(KafkaMessageListenerContainer.java:1344) ~[spring-kafka-3.0.11.jar:3.0.11]
-	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804) ~[na:na]
-	at java.base/java.lang.Thread.run(Thread.java:842) ~[na:na]
-Caused by: org.apache.kafka.common.errors.TimeoutException: Topic str-ecp-batch-composition-complete not present in metadata after 60000 ms.
+2️⃣ Parse message fields — batchID, fileName, fileType (DATA/REF), deliveryType, blobURL
 
-2025-06-23T06:21:28.634+02:00 DEBUG 12036 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Committing: {str-ecp-batch-composition-0=OffsetAndMetadata{offset=18638, leaderEpoch=null, metadata=''}}
-2025-06-23T06:21:29.648+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
-2025-06-23T06:21:29.648+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
-2025-06-23T06:21:29.649+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
-2025-06-23T06:21:30.564+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
-2025-06-23T06:21:30.564+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
-2025-06-23T06:21:30.564+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
-2025-06-23T06:21:31.479+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
-2025-06-23T06:21:31.480+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
-2025-06-23T06:21:31.480+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
-2025-06-23T06:21:32.441+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
-2025-06-23T06:21:32.441+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
-2025-06-23T06:21:32.441+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
-2025-06-23T06:21:33.406+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
-2025-06-23T06:21:33.407+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
-2025-06-23T06:21:33.407+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
-2025-06-23T06:21:33.640+02:00 DEBUG 12036 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
-2025-06-23T06:21:34.269+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
-2025-06-23T06:21:34.269+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
-2025-06-23T06:21:34.269+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
-2025-06-23T06:21:35.389+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
-2025-06-23T06:21:35.389+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
-2025-06-23T06:21:35.389+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
-2025-06-23T06:21:36.410+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
-2025-06-23T06:21:36.410+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
-2025-06-23T06:21:36.410+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
-2025-06-23T06:21:37.258+02:00  INFO 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Node -1 disconnected.
-2025-06-23T06:21:37.259+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Connection to node -1 (localhost/127.0.0.1:9092) could not be established. Broker may not be available.
-2025-06-23T06:21:37.259+02:00  WARN 12036 --- [ad | producer-1] org.apache.kafka.clients.NetworkClient   : [Producer clientId=producer-1] Bootstrap broker localhost:9092 (id: -1 rack: null) disconnected
-2025-06-23T06:21:37.729+02:00 DEBUG 12036 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 1 records
-2025-06-23T06:21:37.729+02:00 DEBUG 12036 --- [ntainer#0-0-C-1] .a.RecordMessagingMessageListenerAdapter : Processing [GenericMessage [payload=        {
-                          "BatchId" : "2c93525b-42d1-410a-9e26-aa957f19861d",
-                          "SourceSystem" : "DEBTMAN",
-                          "TenantCode" : "ZANBL",
-                          "ChannelID" : null,
-                          "AudienceID" : null,
-                          "Product" : "DEBTMAN",
-                          "JobName" : "DEBTMAN",
-                          "UniqueConsumerRef" : "6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f",
-                          "Timestamp" : 1748351245.695410901,
-                          "RunPriority" : null,
-                          "EventType" : null,
-                          "BatchFiles" : []
-                        }
+3️⃣ DATA/REF logic:
 
-, headers={kafka_offset=18638, kafka_consumer=org.apache.kafka.clients.consumer.KafkaConsumer@161459b5, kafka_timestampType=CREATE_TIME, kafka_receivedPartitionId=0, kafka_receivedTopic=str-ecp-batch-composition, kafka_receivedTimestamp=1750652497662, kafka_groupId=str-ecp-batch}]]
-2025-06-23T06:21:37.730+02:00  INFO 12036 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : Received Kafka message...
-2025-06-23T06:21:37.730+02:00 ERROR 12036 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : BatchFiles is empty or null. Rejecting message.
-2025-06-23T06:21:37.730+02:00  WARN 12036 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : Kafka message processing returned error. Not sending to output topic. Response: Invalid message: BatchFiles is empty or null
-2025-06-23T06:21:37.730+02:00 DEBUG 12036 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Committing: {str-ecp-batch-compo
+If 1 DATA + REF(s) → process only DATA
+
+If only REF → skip batch
+
+4️⃣ Parse DATA file — extract customer records (05 records), deliveryType (PRINT/EMAIL/MOBSTAT)
+
+5️⃣ Call OpenText API — send driver message to OpenText system
+
+6️⃣ OpenText processes files — using Blob URL from Kafka message
+
+7️⃣ OpenText uploads output files → to Blob
+- /archive
+- /email
+- /html
+- /mobstat
+- /print
+
+8️⃣ OpenText sends API response → to File Manager — with Blob URLs of generated files
+
+9️⃣ On receiving OT response:
+
+markdown
+Copy
+Edit
+- **Prepare summary.json**:
+    - batchID  
+    - fileName  
+    - header info  
+    - processedFiles[]  
+    - printFiles[] (from OT returned URLs)  
+🔟 Connect to Azure Key Vault:
+- Authenticate using tenant ID + client ID
+- Retrieve secrets:
+- storageAccountName
+- storageAccountKey
+- containerName
+
+1️⃣1️⃣ Connect to Azure Blob Storage using secrets
+
+1️⃣2️⃣ Upload summary.json → to /summary/ folder
+
+1️⃣3️⃣ Send Kafka result message to output topic
+
+1️⃣4️⃣ Commit Kafka offset after success
+
+4️⃣ Kafka Consumer Design
+Uses Spring KafkaListener (@KafkaListener)
+
+Auto-polling in background
+
+Config:
+
+enable.auto.commit = false
+
+auto.offset.reset = earliest
+
+Flow:
+
+Consume → Call OT → Build summary → Upload summary → Send Kafka msg → Commit offset
+
+5️⃣ Processing Logic
+5.1 Message Fields
+Field	Example
+batchID	BATCH123
+fileName	data_file.dat
+fileType	DATA / REF
+deliveryType	PRINT/EMAIL/MOBSTAT
+blobURL	https://...
+tenantCode	T123
+channelID	...
+
+5.2 DATA / REF Logic
+Case	Action
+DATA + REF(s)	Process only DATA
+Only REF	Skip batch
+
+5.3 Delivery Types
+deliveryType	Output Location
+PRINT	/print
+EMAIL	/email
+MOBSTAT	/mobstat
+
+6️⃣ Folder Structure — Azure Blob (by OpenText)
+Folder	Contents
+/archive	Original driver file
+/email	Email files
+/html	HTML files
+/mobstat	Mobstat files
+/print	Print files
+/summary	summary.json (by File Manager)
+
+7️⃣ summary.json Structure
+json
+Copy
+Edit
+{
+  "batchID": "BATCH123",
+  "fileName": "data_file.dat",
+  "header": {
+    "tenantCode": "...",
+    "channelID": "..."
+  },
+  "processedFiles": [
+    { "fileURL": "...", "status": "SUCCESS" }
+  ],
+  "printFiles": [
+    { "printFileURL": "...", "status": "SUCCESS" }
+  ],
+  "summaryFileURL": "...",
+  "timestamp": "2025-06-24T12:34:56"
+}
+8️⃣ Components
+Component	Role
+KafkaListenerService	Consume Kafka msg, trigger flow
+OpenText API Client	Send msg to OT, receive file URLs
+AzureKeyVaultClient	Retrieve secrets
+BlobStorageService	Upload summary.json
+SummaryJsonWriter	Build summary.json
+KafkaProducer	Send result Kafka msg
+
+9️⃣ Deployment
+Platform: Azure AKS
+
+Kafka: SSL secured
+
+Key Vault: used for secret retrieval
+
+Blob Storage: stores only summary.json
+
+Logs → Azure Monitor
+
+10️⃣ Version History
+Version	Date	Changes
+v1.0	May 2025	Initial design
+v2.0	June 2025	Added DATA/REF logic, KafkaListener
+v2.1	June 2025	Added OpenText API step
+v2.2	June 2025	Added Key Vault step
+v2.3	June 2025	Final flow: OT uploads files, FileManager builds summary.json
