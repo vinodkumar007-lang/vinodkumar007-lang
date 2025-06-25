@@ -1,164 +1,174 @@
-📄 File Manager Service — Design Document
-Client: Nedbank
-Version: v2.3 — June 2025 (FINAL)
-Prepared by: [Your team]
+🔍 Purpose
+The File-Manager service is responsible for orchestrating the processing of customer communication files. It integrates with Kafka, OpenText, Azure Key Vault, and Azure Blob Storage to generate and store output files and metadata.
+________________________________________
+⚙️ High-Level Architecture
+•	Kafka: Message broker for input and output messages
+•	OpenText: External system for document processing
+•	Azure Key Vault: Secure storage for secrets
+•	Azure Blob Storage: Storage for generated summary files
+•	File-Manager: Core Spring Boot service
+________________________________________
+📝 End-to-End Workflow
+________________________________________
+✅ Step 1: Read Kafka Message from Input Topic
+•	File-Manager consumes a message from Kafka input topic (str-ecp-batch-composition).
+•	The message includes:
+o	batchId
+o	fileName
+o	sourceSystem
+o	blobUrl
+•	Required authentication and authorization are already configured (SSL-enabled Kafka consumer).
+________________________________________
+✅ Step 2: Send Kafka Message to OpenText
+•	File-Manager constructs a Kafka message containing:
+o	Metadata about the file.
+o	Instructions for OpenText to process the file.
+•	Sends the message to API service call (https://dev-exstream.nednet.co.za/orchestration/api/v1/inputs/ondemand/dev-SA/ECPDebtmanService)
+________________________________________
+✅ Step 3: OpenText Processes and Sends Response
+•	OpenText system:
+o	Processes the file.
+o	Generates output (HTML, PDF, MOBSTAT, PRINT files).
+o	Sends a response message back to File-Manager via API service call (https://dev-exstream.nednet.co.za/api/file/processed).
+________________________________________
+✅ Step 4: Read OpenText Response & Prepare Summary File
+•	File-Manager consumes the response message.
+•	Prepares a structured summary.json:
+o	batchId
+o	fileName
+o	Timestamps
+o	Processed files details
+o	Blob URLs of generated files
+o	Status (SUCCESS / FAILURE)
+________________________________________
+✅ Step 5: Connect to Azure Key Vault (Authentication)
+•	File-Manager connects to Azure Key Vault.
+•	Uses:
+o	clientId(App registration on AD)
+o	tenantId
+•	Authentication is done via Azure AD.
+________________________________________
+✅ Step 6: Retrieve Secrets from Key Vault
+•	Secrets retrieved:
+o	accountKey
+o	accountName
+o	containerName
+•	Secrets are required to access Azure Blob Storage.
+________________________________________
+✅ Step 7: Connect to Azure Blob Storage
+•	Using retrieved credentials, File-Manager establishes connection with Azure Blob Storage.
+________________________________________
+✅ Step 8: Store Summary File in Blob Storage
+•	Upload summary.json into Azure Blob Storage:
+o	Folder structure:
+/containerName/{sourceSystem}/{batchId}/summary.json
+________________________________________
+✅ Step 9: Send Kafka Message to Output Topic
+•	File-Manager sends a Kafka message to the output topic (str-ecp-batch-composition-complete):
+o	Contains batchId, fileName, status, and blob URL.
+________________________________________
+✅ Step 10: Return Final API Response
+•	File-Manager sends final REST API response:
+o	Processing status (SUCCESS / FAILURE)
+o	Summary file Blob URL
+o	Kafka output message details
+________________________________________
 
-1️⃣ Overview
-The File Manager Service automates the processing of driver files from Kafka, integrates with OpenText system, retrieves final processed file URLs, builds summary.json, connects to Azure Key Vault, uploads summary to Azure Blob Storage, and sends final Kafka message.
 
-Deployed on Azure AKS. Integrates with Kafka, OpenText, Key Vault, Blob Storage.
 
-2️⃣ Architecture
-Component	Description
-Kafka (Input Topic)	Driver messages (DATA/REF)
-File Manager Service	KafkaListener → OpenText API → Build summary.json → Key Vault → Blob upload
-OpenText System	Processes driver files, uploads output files to Blob, returns URLs
-Azure Key Vault	Stores Blob secrets
-Azure Blob Storage	Stores summary.json
-Kafka (Output Topic)	Sends final summary message
-
-3️⃣ End-to-End Flow (v2.3 FINAL)
-1️⃣ Kafka message received — @KafkaListener consumes new message
-
-2️⃣ Parse message fields — batchID, fileName, fileType (DATA/REF), deliveryType, blobURL
-
-3️⃣ DATA/REF logic:
-
-If 1 DATA + REF(s) → process only DATA
-
-If only REF → skip batch
-
-4️⃣ Parse DATA file — extract customer records (05 records), deliveryType (PRINT/EMAIL/MOBSTAT)
-
-5️⃣ Call OpenText API — send driver message to OpenText system
-
-6️⃣ OpenText processes files — using Blob URL from Kafka message
-
-7️⃣ OpenText uploads output files → to Blob
-- /archive
-- /email
-- /html
-- /mobstat
-- /print
-
-8️⃣ OpenText sends API response → to File Manager — with Blob URLs of generated files
-
-9️⃣ On receiving OT response:
-
-markdown
-Copy
-Edit
-- **Prepare summary.json**:
-    - batchID  
-    - fileName  
-    - header info  
-    - processedFiles[]  
-    - printFiles[] (from OT returned URLs)  
-🔟 Connect to Azure Key Vault:
-- Authenticate using tenant ID + client ID
-- Retrieve secrets:
-- storageAccountName
-- storageAccountKey
-- containerName
-
-1️⃣1️⃣ Connect to Azure Blob Storage using secrets
-
-1️⃣2️⃣ Upload summary.json → to /summary/ folder
-
-1️⃣3️⃣ Send Kafka result message to output topic
-
-1️⃣4️⃣ Commit Kafka offset after success
-
-4️⃣ Kafka Consumer Design
-Uses Spring KafkaListener (@KafkaListener)
-
-Auto-polling in background
-
-Config:
-
-enable.auto.commit = false
-
-auto.offset.reset = earliest
-
-Flow:
-
-Consume → Call OT → Build summary → Upload summary → Send Kafka msg → Commit offset
-
-5️⃣ Processing Logic
-5.1 Message Fields
-Field	Example
-batchID	BATCH123
-fileName	data_file.dat
-fileType	DATA / REF
-deliveryType	PRINT/EMAIL/MOBSTAT
-blobURL	https://...
-tenantCode	T123
-channelID	...
-
-5.2 DATA / REF Logic
-Case	Action
-DATA + REF(s)	Process only DATA
-Only REF	Skip batch
-
-5.3 Delivery Types
-deliveryType	Output Location
-PRINT	/print
-EMAIL	/email
-MOBSTAT	/mobstat
-
-6️⃣ Folder Structure — Azure Blob (by OpenText)
-Folder	Contents
-/archive	Original driver file
-/email	Email files
-/html	HTML files
-/mobstat	Mobstat files
-/print	Print files
-/summary	summary.json (by File Manager)
-
-7️⃣ summary.json Structure
-json
-Copy
-Edit
+📚 Technologies Used
+Component	Technology
+Messaging	Apache Kafka (SSL enabled)
+Document Processing	OpenText
+Secrets Management	Azure Key Vault
+Storage	Azure Blob Storage
+Application Framework	Spring Boot
+________________________________________
+📊 Flow Diagram
+Kafka Input Topic → File-Manager → Kafka Message to OpenText → OpenText Processes → API service call →
+File-Manager → Prepare Summary.json → Connect to KeyVault → Get Secrets → Connect to Blob Storage →
+Upload Summary File → Send Kafka Output Message → Return API Response
+________________________________________
+🧾 Sample Final API Response
 {
-  "batchID": "BATCH123",
-  "fileName": "data_file.dat",
-  "header": {
-    "tenantCode": "...",
-    "channelID": "..."
-  },
-  "processedFiles": [
-    { "fileURL": "...", "status": "SUCCESS" }
-  ],
-  "printFiles": [
-    { "printFileURL": "...", "status": "SUCCESS" }
-  ],
-  "summaryFileURL": "...",
-  "timestamp": "2025-06-24T12:34:56"
+    "message": "Batch processed successfully",
+    "status": "success",
+    "summaryPayload": {
+        "batchID": "2c93525b-42d1-410a-9e26-aa957f19861d",
+        "fileName": "DEBTMAN.csv",
+        "header": {
+            "tenantCode": "ZANBL",
+            "channelID": null,
+            "audienceID": null,
+            "timestamp": "1970-01-21T05:39:11.245Z",
+            "sourceSystem": "DEBTMAN",
+            "product": "DEBTMAN",
+            "jobName": "DEBTMAN"
+        },
+        "metadata": {
+            "totalFilesProcessed": 11,
+            "processingStatus": "Completed",
+            "eventOutcomeCode": "0",
+            "eventOutcomeDescription": "Success"
+        },
+        "payload": {
+            "uniqueConsumerRef": "6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f",
+            "uniqueECPBatchRef": null,
+            "runPriority": null,
+            "eventID": null,
+            "eventType": null,
+            "restartKey": null,
+            "fileCount": 11
+        },
+        "summaryFileURL": "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN/2c93525b-42d1-410a-9e26-aa957f19861d/6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f/summary_2c93525b-42d1-410a-9e26-aa957f19861d.json",
+        "timestamp": "2025-06-17T08:37:07.599978170Z"
+    }
 }
-8️⃣ Components
-Component	Role
-KafkaListenerService	Consume Kafka msg, trigger flow
-OpenText API Client	Send msg to OT, receive file URLs
-AzureKeyVaultClient	Retrieve secrets
-BlobStorageService	Upload summary.json
-SummaryJsonWriter	Build summary.json
-KafkaProducer	Send result Kafka msg
 
-9️⃣ Deployment
-Platform: Azure AKS
 
-Kafka: SSL secured
 
-Key Vault: used for secret retrieval
+🧾 Sample Summary file
+{
+  "batchID" : "2c93525b-42d1-410a-9e26-aa957f19861d",
+  "fileName" : "DEBTMAN.csv",
+  "header" : {
+    "tenantCode" : "ZANBL",
+    "channelID" : null,
+    "audienceID" : null,
+    "timestamp" : "1970-01-21T05:39:11.245Z",
+    "sourceSystem" : "DEBTMAN",
+    "product" : "DEBTMAN",
+    "jobName" : "DEBTMAN"
+  },
+  "metadata" : {
+    "totalFilesProcessed" : 11,
+    "processingStatus" : "Completed",
+    "eventOutcomeCode" : "0",
+    "eventOutcomeDescription" : "Success"
+  },
+  "payload" : {
+    "uniqueConsumerRef" : "6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f",
+    "uniqueECPBatchRef" : null,
+    "runPriority" : null,
+    "eventID" : null,
+    "eventType" : null,
+    "restartKey" : null,
+    "fileCount" : 11
+  },
+  "processedFiles" : [ {
+    "customerId" : "110543680509",
+    "accountNumber" : "3768000010607501",
+    "pdfArchiveFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F1970-01-21%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2FDEBTMAN%2Farchive%2F110543680509_12485337728657340876.pdf",
+    "pdfEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F1970-01-21%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2FDEBTMAN%2Femail%2F110543680509_12485337728657340876.pdf",
+    "htmlEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F1970-01-21%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2FDEBTMAN%2Fhtml%2F110543680509_15674937613143496857.html",
+    "txtEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F1970-01-21%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2FDEBTMAN%2Ftxt%2F110543680509_4155712775909391580.txt",
+    "pdfMobstatFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F1970-01-21%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2FDEBTMAN%2Fmobstat%2F110543680509_3101796713995731386.mobstat",
+    "statusCode" : "OK",
+    "statusDescription" : "Success"
+  } ],
+  "printFiles" : [ {
+    "printFileURL" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN/1970-01-21/2c93525b-42d1-410a-9e26-aa957f19861d/6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f/DEBTMAN/print/2c93525b-42d1-410a-9e26-aa957f19861d_printfile.pdf"
+  } ],
+  "mobstatTriggerFile" : "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/mobstat/DropData.trigger"
+}
 
-Blob Storage: stores only summary.json
-
-Logs → Azure Monitor
-
-10️⃣ Version History
-Version	Date	Changes
-v1.0	May 2025	Initial design
-v2.0	June 2025	Added DATA/REF logic, KafkaListener
-v2.1	June 2025	Added OpenText API step
-v2.2	June 2025	Added Key Vault step
-v2.3	June 2025	Final flow: OT uploads files, FileManager builds summary.json
