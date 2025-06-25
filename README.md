@@ -1,82 +1,93 @@
-package com.nedbank.kafka.filemanage.config;
+package com.nedbank.kafka.filemanage.service;
 
-import org.apache.kafka.clients.consumer.ConsumerConfig;
-import org.apache.kafka.clients.CommonClientConfigs;
-import org.apache.kafka.common.config.SslConfigs;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.*;
-import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
-import org.springframework.kafka.core.*;
-import org.springframework.kafka.listener.ContainerProperties;
+import com.azure.storage.blob.*;
+import com.azure.storage.blob.models.BlobDownloadContentResponse;
+import com.azure.storage.blob.specialized.BlockBlobClient;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
-import java.util.Map;
+import java.io.IOException;
+import java.nio.file.*;
 
-@Configuration
-public class KafkaConsumerConfig {
+@Slf4j
+@Service
+public class KafkaListenerService {
 
-    @Value("${kafka.bootstrap.servers}")
-    private String bootstrapServers;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    @Value("${kafka.consumer.group.id}")
-    private String consumerGroupId;
+    @PostConstruct
+    public void init() {
+        log.info("✅ KafkaListenerService initialized.");
+    }
 
-    @Value("${kafka.consumer.auto.offset.reset}")
-    private String autoOffsetReset;
+    @KafkaListener(topics = "${kafka.input.topic}", groupId = "${kafka.consumer.group.id}")
+    public void listen(String message) {
+        log.info("📥 Kafka message received:\n{}", message);
+        try {
+            JsonNode root = objectMapper.readTree(message);
 
-    @Value("${kafka.consumer.enable.auto.commit}")
-    private String enableAutoCommit;
+            String blobUrl = root.path("blobUrl").asText();
+            String fileName = root.path("fileName").asText();
+            String batchId = root.path("batchId").asText();
+            String guiRefId = root.path("guiRefId").asText();
 
-    @Value("${kafka.consumer.key.deserializer}")
-    private String keyDeserializer;
+            // Fallback if guiRefId is null or blank
+            if (guiRefId == null || guiRefId.isBlank()) {
+                guiRefId = java.util.UUID.randomUUID().toString();
+            }
 
-    @Value("${kafka.consumer.value.deserializer}")
-    private String valueDeserializer;
+            // Final mount path: /mnt/nfs/dev-exstream/dev-SA/job/{batchId}/{guiRefId}/{fileName}
+            Path mountPath = Paths.get("/mnt/nfs/dev-exstream/dev-SA/job", batchId, guiRefId, fileName);
+            Files.createDirectories(mountPath.getParent());
 
-    @Value("${kafka.consumer.security.protocol}")
-    private String securityProtocol;
+            downloadBlobToPath(blobUrl, mountPath);
 
-    @Value("${kafka.consumer.ssl.truststore.location}")
-    private String truststoreLocation;
+            log.info("✅ File placed at: {}", mountPath);
 
-    @Value("${kafka.consumer.ssl.truststore.password}")
-    private String truststorePassword;
+        } catch (Exception e) {
+            log.error("❌ Error while processing Kafka message", e);
+        }
+    }
 
-    @Value("${kafka.consumer.ssl.keystore.location}")
-    private String keystoreLocation;
+    private void downloadBlobToPath(String blobUrl, Path targetPath) throws IOException {
+        log.info("⬇️  Downloading blob: {}", blobUrl);
 
-    @Value("${kafka.consumer.ssl.keystore.password}")
-    private String keystorePassword;
+        BlobClient blobClient = new BlobClientBuilder()
+                .endpoint(getBlobEndpoint(blobUrl))
+                .sasToken(getSasToken(blobUrl))
+                .containerName(getContainerName(blobUrl))
+                .blobName(getBlobName(blobUrl))
+                .buildClient();
 
-    @Value("${kafka.consumer.ssl.key.password}")
-    private String keyPassword;
+        BlockBlobClient blockBlobClient = blobClient.getBlockBlobClient();
 
-    @Value("${kafka.consumer.ssl.protocol}")
-    private String sslProtocol;
+        try (var inputStream = blockBlobClient.openInputStream()) {
+            Files.copy(inputStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
+        }
 
-    @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.GROUP_ID_CONFIG, consumerGroupId);
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, keyDeserializer);
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, valueDeserializer);
-        props.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol);
-        props.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, truststoreLocation);
-        props.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, truststorePassword);
-        props.put(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, keystoreLocation);
-        props.put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, keystorePassword);
-        props.put(SslConfigs.SSL_KEY_PASSWORD_CONFIG, keyPassword);
-        props.put(SslConfigs.SSL_PROTOCOL_CONFIG, sslProtocol);
-        props.put("ssl.endpoint.identification.algorithm", "");
+        log.info("📂 Blob file successfully written to: {}", targetPath);
+    }
 
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, autoOffsetReset);
-        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, enableAutoCommit);
+    // Helpers to parse blob URL
+    private String getBlobEndpoint(String blobUrl) {
+        return blobUrl.substring(0, blobUrl.indexOf(".core.windows.net") + 17);
+    }
 
-        ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
-        factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(props));
-        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
-        factory.setConcurrency(1);
-        return factory;
+    private String getContainerName(String blobUrl) {
+        String afterNet = blobUrl.split(".net/")[1];
+        return afterNet.substring(0, afterNet.indexOf('/'));
+    }
+
+    private String getBlobName(String blobUrl) {
+        String afterNet = blobUrl.split(".net/")[1];
+        return afterNet.substring(afterNet.indexOf('/') + 1, blobUrl.contains("?") ? blobUrl.indexOf('?') : blobUrl.length());
+    }
+
+    private String getSasToken(String blobUrl) {
+        return blobUrl.contains("?") ? blobUrl.substring(blobUrl.indexOf("?") + 1) : "";
     }
 }
