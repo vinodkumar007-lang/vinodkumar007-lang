@@ -1,125 +1,80 @@
-package com.nedbank.kafka.filemanage.service;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nedbank.kafka.filemanage.model.ApiResponse;
-import com.nedbank.kafka.filemanage.model.BatchFile;
-import com.nedbank.kafka.filemanage.model.KafkaMessage;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.web.client.RestTemplate;
-
-import java.io.UnsupportedEncodingException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.List;
-
-@Service
-public class KafkaListenerService {
-
-    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
-
-    // Hardcoded temporarily for testing
-    private static final String MOUNT_PATH_BASE = "/mnt/nfs/dev-exstream/dev-SA/jobs";
-    private static final String OPENTEXT_API_URL = "https://dev-exstream.nednet.co.za/orchestration/api/v1/inputs/ondemand/dev-SA/ECPDebtmanService";
-
-    // TODO: Move this token to secure config in production
-    private static final String ACCESS_TOKEN = "eyJraWQiOiJjZjkwMjJmMjUxNjM2MjQzNjI5YmE1ZmNmMjMwZDI4YzFlOTJkNDNiIiwidHlwIjoiSldUIiwiYWxnIjoiUlMyNTYifQ..."
-            + "OSA"; // Truncated for readability
-
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final BlobStorageService blobStorageService;
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final RestTemplate restTemplate = new RestTemplate(); // For OpenText API
-
-    @Autowired
-    public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
-                                BlobStorageService blobStorageService) {
-        this.kafkaTemplate = kafkaTemplate;
-        this.blobStorageService = blobStorageService;
-    }
-
-    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}",
-            containerFactory = "kafkaListenerContainerFactory")
-    public void consumeKafkaMessage(String message) {
-        try {
-            logger.info("📩 Received Kafka message.");
-            KafkaMessage kafkaMessage = objectMapper.readValue(message, KafkaMessage.class);
-            ApiResponse response = processSingleMessage(kafkaMessage);
-            logger.info("✅ Kafka message processed and sent to OT: {}", response.getMessage());
-        } catch (Exception ex) {
-            logger.error("❌ Error processing Kafka message", ex);
-        }
-    }
-
-    private ApiResponse processSingleMessage(KafkaMessage message) throws UnsupportedEncodingException {
-        if (message == null || message.getBatchFiles() == null || message.getBatchFiles().isEmpty()) {
-            return new ApiResponse("Empty or invalid message", "error", null);
-        }
-
-        List<BatchFile> validFiles = message.getBatchFiles().stream()
-                .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
-                .toList();
-
-        if (validFiles.isEmpty()) {
-            return new ApiResponse("No DATA files found", "error", null);
-        }
-
-        String batchId = message.getBatchId();
-        String guiRef = message.getUniqueConsumerRef();
-
-        for (BatchFile file : validFiles) {
-            String blobUrl = file.getBlobUrl();
-            try {
-                String fileName = extractFileName(blobUrl);
-                Path localMountPath = Path.of(MOUNT_PATH_BASE, batchId, guiRef);
-                Files.createDirectories(localMountPath);
-
-                Path targetFilePath = localMountPath.resolve(fileName);
-                String content = blobStorageService.downloadFileContent(blobUrl);
-                Files.write(targetFilePath, content.getBytes(StandardCharsets.UTF_8));
-
-                logger.info("📁 Saved DATA file to mount: {}", targetFilePath);
-
-                // Replace blobUrl with mount path
-                file.setBlobUrl(targetFilePath.toString());
-
-            } catch (Exception ex) {
-                logger.error("❌ Failed to mount blob file [batchId={}, guiRef={}, url={}]", batchId, guiRef, blobUrl, ex);
-                return new ApiResponse("Failed to mount file: " + blobUrl, "error", null);
-            }
-        }
-
-        try {
-            String updatedJson = objectMapper.writeValueAsString(message);
-
-            // Prepare Authorization header
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + ACCESS_TOKEN);
-            headers.set("Content-Type", "application/json");
-
-            HttpEntity<String> request = new HttpEntity<>(updatedJson, headers);
-
-            logger.info("📤 Sending metadata.json to OpenText API at: {}", OPENTEXT_API_URL);
-
-            restTemplate.postForEntity(OPENTEXT_API_URL, request, String.class);
-
-            return new ApiResponse("Sent metadata to OT", "success", null);
-        } catch (Exception e) {
-            logger.error("❌ Failed to send metadata.json to OT [batchId={}, guiRef={}]", message.getBatchId(), message.getUniqueConsumerRef(), e);
-            return new ApiResponse("Failed to call OT API", "error", null);
-        }
-    }
-
-    private String extractFileName(String blobUrl) {
-        if (blobUrl == null || blobUrl.isEmpty()) return "unknown.csv";
-        String[] segments = blobUrl.split("/");
-        return segments.length > 0 ? segments[segments.length - 1] : "unknown.csv";
-    }
-}
+2025-06-26T13:28:46.806+02:00 DEBUG 1 --- [ntainer#0-0-C-1] .a.RecordMessagingMessageListenerAdapter : Processing [GenericMessage [payload=
+                {
+                                  "BatchId" : "2c93525b-42d1-410a-9e26-aa957f19861d",
+                                  "SourceSystem" : "DEBTMAN",
+                                  "TenantCode" : "ZANBL",
+                                  "ChannelID" : null,
+                                  "AudienceID" : null,
+                                  "Product" : "DEBTMAN",
+                                  "JobName" : "DEBTMAN",
+                                  "UniqueConsumerRef" : "6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f",
+                                  "Timestamp" : 1748351245.695410901,
+                                  "RunPriority" : null,
+                                  "EventType" : null,
+                                  "BatchFiles" : [ {
+                                    "ObjectId" : "{1037A096-0000-CE1A-A484-3290CA7938C4}",
+                                    "RepositoryId" : "BATCH",
+                                    "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN.csv",
+                                    "Filename" : "DEBTMAN.csv",
+                                    "FileType": "DATA",
+                                    "ValidationStatus" : "valid"
+                                  } ]
+                                }
+, headers={kafka_offset=18663, kafka_consumer=org.apache.kafka.clients.consumer.KafkaConsumer@2064cd66, kafka_timestampType=CREATE_TIME, kafka_receivedPartitionId=0, kafka_receivedTopic=str-ecp-batch-composition, kafka_receivedTimestamp=1750937326579, kafka_groupId=str-ecp-batch}]]
+2025-06-26T13:28:46.806+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : 📩 Received Kafka message.
+2025-06-26T13:28:47.308+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : 📁 Saved DATA file to mount: /mnt/nfs/dev-exstream/dev-SA/jobs/2c93525b-42d1-410a-9e26-aa957f19861d/6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f/DEBTMAN.csv
+2025-06-26T13:28:47.309+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : 📤 Sending metadata.json to OpenText API at: https://dev-exstream.nednet.co.za/orchestration/api/v1/inputs/ondemand/dev-SA/ECPDebtmanService
+2025-06-26T13:28:47.427+02:00 ERROR 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : ❌ Failed to send metadata.json to OT [batchId=2c93525b-42d1-410a-9e26-aa957f19861d, guiRef=6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f]
+org.springframework.web.client.ResourceAccessException: I/O error on POST request for "https://dev-exstream.nednet.co.za/orchestration/api/v1/inputs/ondemand/dev-SA/ECPDebtmanService": Remote host terminated the handshake
+ at org.springframework.web.client.RestTemplate.createResourceAccessException(RestTemplate.java:888) ~[spring-web-6.0.2.jar!/:6.0.2]
+ at org.springframework.web.client.RestTemplate.doExecute(RestTemplate.java:868) ~[spring-web-6.0.2.jar!/:6.0.2]
+ at org.springframework.web.client.RestTemplate.execute(RestTemplate.java:764) ~[spring-web-6.0.2.jar!/:6.0.2]
+ at org.springframework.web.client.RestTemplate.postForEntity(RestTemplate.java:512) ~[spring-web-6.0.2.jar!/:6.0.2]
+ at com.nedbank.kafka.filemanage.service.KafkaListenerService.processSingleMessage(KafkaListenerService.java:110) ~[classes!/:na]
+ at com.nedbank.kafka.filemanage.service.KafkaListenerService.consumeKafkaMessage(KafkaListenerService.java:53) ~[classes!/:na]
+ at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
+ at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
+ at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
+ at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+ at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:169) ~[spring-messaging-6.0.2.jar!/:6.0.2]
+ at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.invoke(InvocableHandlerMethod.java:119) ~[spring-messaging-6.0.2.jar!/:6.0.2]
+ at org.springframework.kafka.listener.adapter.HandlerAdapter.invoke(HandlerAdapter.java:56) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.invokeHandler(MessagingMessageListenerAdapter.java:375) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:92) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:53) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeOnMessage(KafkaMessageListenerContainer.java:2873) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeOnMessage(KafkaMessageListenerContainer.java:2854) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.lambda$doInvokeRecordListener$57(KafkaMessageListenerContainer.java:2772) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at io.micrometer.observation.Observation.observe(Observation.java:559) ~[micrometer-observation-1.10.2.jar!/:1.10.2]
+ at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeRecordListener(KafkaMessageListenerContainer.java:2770) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeWithRecords(KafkaMessageListenerContainer.java:2622) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeRecordListener(KafkaMessageListenerContainer.java:2508) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeListener(KafkaMessageListenerContainer.java:2150) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeIfHaveRecords(KafkaMessageListenerContainer.java:1505) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.pollAndInvoke(KafkaMessageListenerContainer.java:1469) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.run(KafkaMessageListenerContainer.java:1344) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+ at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804) ~[na:na]
+ at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
+Caused by: javax.net.ssl.SSLHandshakeException: Remote host terminated the handshake
+ at java.base/sun.security.ssl.SSLSocketImpl.handleEOF(SSLSocketImpl.java:1719) ~[na:na]
+ at java.base/sun.security.ssl.SSLSocketImpl.decode(SSLSocketImpl.java:1518) ~[na:na]
+ at java.base/sun.security.ssl.SSLSocketImpl.readHandshakeRecord(SSLSocketImpl.java:1425) ~[na:na]
+ at java.base/sun.security.ssl.SSLSocketImpl.startHandshake(SSLSocketImpl.java:455) ~[na:na]
+ at java.base/sun.security.ssl.SSLSocketImpl.startHandshake(SSLSocketImpl.java:426) ~[na:na]
+ at java.base/sun.net.www.protocol.https.HttpsClient.afterConnect(HttpsClient.java:589) ~[na:na]
+ at java.base/sun.net.www.protocol.https.AbstractDelegateHttpsURLConnection.connect(AbstractDelegateHttpsURLConnection.java:187) ~[na:na]
+ at java.base/sun.net.www.protocol.https.HttpsURLConnectionImpl.connect(HttpsURLConnectionImpl.java:142) ~[na:na]
+ at org.springframework.http.client.SimpleBufferingClientHttpRequest.executeInternal(SimpleBufferingClientHttpRequest.java:75) ~[spring-web-6.0.2.jar!/:6.0.2]
+ at org.springframework.http.client.AbstractBufferingClientHttpRequest.executeInternal(AbstractBufferingClientHttpRequest.java:48) ~[spring-web-6.0.2.jar!/:6.0.2]
+ at org.springframework.http.client.AbstractClientHttpRequest.execute(AbstractClientHttpRequest.java:66) ~[spring-web-6.0.2.jar!/:6.0.2]
+ at org.springframework.web.client.RestTemplate.doExecute(RestTemplate.java:862) ~[spring-web-6.0.2.jar!/:6.0.2]
+ ... 27 common frames omitted
+Caused by: java.io.EOFException: SSL peer shut down incorrectly
+ at java.base/sun.security.ssl.SSLSocketInputRecord.read(SSLSocketInputRecord.java:489) ~[na:na]
+ at java.base/sun.security.ssl.SSLSocketInputRecord.readHeader(SSLSocketInputRecord.java:478) ~[na:na]
+ at java.base/sun.security.ssl.SSLSocketInputRecord.decode(SSLSocketInputRecord.java:160) ~[na:na]
+ at java.base/sun.security.ssl.SSLTransport.decode(SSLTransport.java:111) ~[na:na]
+ at java.base/sun.security.ssl.SSLSocketImpl.decode(SSLSocketImpl.java:1510) ~[na:na]
+ ... 37 common frames omitted
+2025-06-26T13:28:47.431+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : ✅ Kafka message processed and sent to OT: Failed to call OT API
+2025-06-26T13:28:47.431+02:00 DEBUG 1 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Committing: {str-ecp-batch-composition-0=OffsetAndMetadata{offset=18664, leaderEpoch=null, metadata=''}}
