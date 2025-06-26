@@ -6,17 +6,16 @@ import com.nedbank.kafka.filemanage.model.BatchFile;
 import com.nedbank.kafka.filemanage.model.KafkaMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.nio.file.Path;
 import java.util.List;
 
 @Service
@@ -24,16 +23,14 @@ public class KafkaListenerService {
 
     private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
-    /*@Value("${mount.path.base}")
-    private String mountPathBase;  // e.g. /mnt/nfs/dev-exstream/dev-SA/job
-
-    @Value("${opentext.api.url}")
-    private String opentextApiUrl;*/
+    // Hardcoded temporarily for testing
+    private static final String MOUNT_PATH_BASE = "/mnt/nfs/dev-exstream/dev-SA/jobs";
+    private static final String OPENTEXT_API_URL = "https://dev-exstream.nednet.co.za/orchestration/api/v1/inputs/ondemand/dev-SA/ECPDebtmanService";
 
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final BlobStorageService blobStorageService;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final RestTemplate restTemplate = new RestTemplate(); // to call OpenText API
+    private final RestTemplate restTemplate = new RestTemplate(); // for OpenText API
 
     @Autowired
     public KafkaListenerService(KafkaTemplate<String, String> kafkaTemplate,
@@ -72,42 +69,36 @@ public class KafkaListenerService {
         String guiRef = message.getUniqueConsumerRef();
 
         for (BatchFile file : validFiles) {
+            String blobUrl = file.getBlobUrl();
             try {
-                String blobUrl = file.getBlobUrl();
                 String fileName = extractFileName(blobUrl);
+                Path localMountPath = Path.of(MOUNT_PATH_BASE, batchId, guiRef);
+                Files.createDirectories(localMountPath); // safer directory creation
 
-                // === Build mount path like: /mnt/nfs/.../batchId/guiRef/file.csv
-                String localMountPath = String.format("%s/%s/%s", "/mnt/nfs/dev-exstream/dev-SA/jobs", batchId, guiRef);
-                File mountDir = new File(localMountPath);
-                if (!mountDir.exists()) mountDir.mkdirs();
-
-                String targetFilePath = localMountPath + "/" + fileName;
-
-                // === Download blob file content and write to mount
+                Path targetFilePath = localMountPath.resolve(fileName);
                 String content = blobStorageService.downloadFileContent(blobUrl);
-                Files.write(Paths.get(targetFilePath), content.getBytes(StandardCharsets.UTF_8));
+                Files.write(targetFilePath, content.getBytes(StandardCharsets.UTF_8));
 
                 logger.info("📁 Saved DATA file to mount: {}", targetFilePath);
 
-                // === Replace blobUrl with mount path
-                file.setBlobUrl(targetFilePath);
+                // Replace blobUrl with mount path
+                file.setBlobUrl(targetFilePath.toString());
 
             } catch (Exception ex) {
-                logger.error("❌ Failed to download and mount blob file: {}", file.getBlobUrl(), ex);
-                return new ApiResponse("Failed to mount file: " + file.getBlobUrl(), "error", null);
+                logger.error("❌ Failed to mount blob file [batchId={}, guiRef={}, url={}]", batchId, guiRef, blobUrl, ex);
+                return new ApiResponse("Failed to mount file: " + blobUrl, "error", null);
             }
         }
 
         try {
-            // === Send updated KafkaMessage to OpenText as metadata.json
             String updatedJson = objectMapper.writeValueAsString(message);
-            logger.info("📤 Sending metadata.json to OpenText API at: {}", "https://dev-exstream.nednet.co.za/orchestration/api/v1/inputs/ondemand/dev-SA/ECPDebtmanService");
+            logger.info("📤 Sending metadata.json to OpenText API at: {}", OPENTEXT_API_URL);
 
-            restTemplate.postForEntity("https://dev-exstream.nednet.co.za/orchestration/api/v1/inputs/ondemand/dev-SA/ECPDebtmanService", updatedJson, String.class);
+            restTemplate.postForEntity(OPENTEXT_API_URL, updatedJson, String.class);
 
             return new ApiResponse("Sent metadata to OT", "success", null);
         } catch (Exception e) {
-            logger.error("❌ Failed to send metadata.json to OT", e);
+            logger.error("❌ Failed to send metadata.json to OT [batchId={}, guiRef={}]", message.getBatchId(), message.getUniqueConsumerRef(), e);
             return new ApiResponse("Failed to call OT API", "error", null);
         }
     }
