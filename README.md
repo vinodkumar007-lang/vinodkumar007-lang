@@ -24,11 +24,11 @@ public class KafkaListenerService {
 
     private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
-    @Value("${mount.path.base}")
+    /*@Value("${mount.path.base}")
     private String mountPathBase;  // e.g. /mnt/nfs/dev-exstream/dev-SA/job
 
     @Value("${opentext.api.url}")
-    private String opentextApiUrl;
+    private String opentextApiUrl;*/
 
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final BlobStorageService blobStorageService;
@@ -77,7 +77,7 @@ public class KafkaListenerService {
                 String fileName = extractFileName(blobUrl);
 
                 // === Build mount path like: /mnt/nfs/.../batchId/guiRef/file.csv
-                String localMountPath = String.format("%s/%s/%s", mountPathBase, batchId, guiRef);
+                String localMountPath = String.format("%s/%s/%s", "/mnt/nfs/dev-exstream/dev-SA/jobs", batchId, guiRef);
                 File mountDir = new File(localMountPath);
                 if (!mountDir.exists()) mountDir.mkdirs();
 
@@ -101,9 +101,9 @@ public class KafkaListenerService {
         try {
             // === Send updated KafkaMessage to OpenText as metadata.json
             String updatedJson = objectMapper.writeValueAsString(message);
-            logger.info("📤 Sending metadata.json to OpenText API at: {}", opentextApiUrl);
+            logger.info("📤 Sending metadata.json to OpenText API at: {}", "https://dev-exstream.nednet.co.za/orchestration/api/v1/inputs/ondemand/dev-SA/ECPDebtmanService");
 
-            restTemplate.postForEntity(opentextApiUrl, updatedJson, String.class);
+            restTemplate.postForEntity("https://dev-exstream.nednet.co.za/orchestration/api/v1/inputs/ondemand/dev-SA/ECPDebtmanService", updatedJson, String.class);
 
             return new ApiResponse("Sent metadata to OT", "success", null);
         } catch (Exception e) {
