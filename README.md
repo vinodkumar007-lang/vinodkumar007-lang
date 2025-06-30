@@ -1,1 +1,2 @@
-curl -v https://dev-exstream.nednet.co.za/orchestration/api/v1/inputs/ondemand/dev-SA/ECPDebtmanService
+
+http://exstream-deployment-orchestration-service.dev-exstream:8300
