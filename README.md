@@ -1,5 +1,1 @@
-We have added the OpenText certificate to the local environment, and the integration is working fine locally. However, on the POD environment, despite adding the same certificate to the JDK truststore, it is not working as expected.
-
-Could you please advise if there are any specific configurations or known issues related to certificate handling in the POD environment that we should be aware of?
-
-Looking forward to your suggestions.
+We are currently calling the OpenText (OT) service URL directly in the code for the time being. It will be externalized to a properties file later
