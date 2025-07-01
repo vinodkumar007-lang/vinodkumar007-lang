@@ -1,1 +1,5 @@
-This is not a Kafka certificate issue — the FileManager service is making an HTTPS call to an OpenText service URL to pass metadata. To establish a secure connection, we need to add the OpenText SSL certificate, which can be downloaded by accessing the URL via a browser and exporting the certificate.
+We have added the OpenText certificate to the local environment, and the integration is working fine locally. However, on the POD environment, despite adding the same certificate to the JDK truststore, it is not working as expected.
+
+Could you please advise if there are any specific configurations or known issues related to certificate handling in the POD environment that we should be aware of?
+
+Looking forward to your suggestions.
