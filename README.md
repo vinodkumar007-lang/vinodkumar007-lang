@@ -1,3 +1,12 @@
-{"BatchId":"2c93525b-42d1-410a-9e26-aa957f19861d","SourceSystem":"DEBTMAN","TenantCode":"ZANBL","ChannelID":null,"AudienceID":null,"Product":"DEBTMAN","JobName":"DEBTMAN","UniqueConsumerRef":"6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f","UniqueECPBatchRef":null,"Timestamp":1748351245,"RunPriority":null,"EventType":null,"EventID":null,"RestartKey":null,"BatchFiles":[{"ObjectId":"{1037A096-0000-CE1A-A484-3290CA7938C4}","RepositoryId":"BATCH","BlobUrl":"\\mnt\\nfs\\dev-exstream\\dev-SA\\jobs\\output\\DEBTMAN\\2c93525b-42d1-410a-9e26-aa957f19861d\\DEBTMAN.csv","Filename":"DEBTMAN.csv","FileType":"DATA","ValidationStatus":"valid","ValidationRequirement":null}]}
-
-org.springframework.web.client.ResourceAccessException: I/O error on POST request for "http://exstream-deployment-orchestration-service.dev-exstream.svc:8900/orchestration/api/v1/inputs/ondemand/dev-SA/ECPDebtmanService": exstream-deployment-orchestration-service.dev-exstream.svc
+exstream-deployment-orchestration-service
+app.kubernetes.io/managed-by: Helm
+app.kubernetes.io/name: orchestration
+app.kubernetes.io/part-of: exstream-deployment
+app.kubernetes.io/version: 24.4.6_59452
+Show less
+ClusterIP
+158.2.99.125
+exstream-deployment-orchestration-service.dev-exstream:8300 TCP
+exstream-deployment-orchestration-service.dev-exstream:0 TCP
+exstream-deployment-orchestration-service.dev-exstream:8900 TCP
+exstream-deployment-orchestration-service.dev-exstream:0 TCP
