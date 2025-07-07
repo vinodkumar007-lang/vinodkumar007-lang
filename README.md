@@ -132,7 +132,7 @@ public class KafkaListenerService {
                         String uploadedUrl = blobStorageService.uploadFile(f.getAbsolutePath(), blobPath);
                         SummaryProcessedFile pf = new SummaryProcessedFile();
                         pf.setAccountNumber(accountNumber);
-                        pf.setCustomerNumber(customerNumber);
+                        pf.setCustomerId(customerNumber);
                         pf.setBlobURL(decodeUrl(uploadedUrl));
                         pf.setStatusCode("OK");
                         pf.setStatusDescription("Uploaded");
