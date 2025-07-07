@@ -1,3 +1,99 @@
+package com.nedbank.kafka.filemanage.utils;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.nedbank.kafka.filemanage.model.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+import java.io.File;
+import java.nio.file.*;
+import java.time.Instant;
+import java.util.*;
+
+@Component
+public class SummaryJsonWriter {
+
+    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+
+    public static String writeSummaryJsonToFile(SummaryPayload payload) {
+        if (payload == null) {
+            logger.error("❌ SummaryPayload is null. Cannot write summary.json.");
+            throw new IllegalArgumentException("SummaryPayload cannot be null");
+        }
+
+        try {
+            String batchId = payload.getBatchID() != null ? payload.getBatchID() : "unknown";
+            String fileName = "summary_" + batchId + ".json";
+
+            Path tempDir = Files.createTempDirectory("summaryFiles");
+            Path summaryFilePath = tempDir.resolve(fileName);
+
+            File summaryFile = summaryFilePath.toFile();
+            if (summaryFile.exists()) {
+                Files.delete(summaryFilePath);
+                logger.warn("⚠️ Existing summary file deleted: {}", summaryFilePath);
+            }
+
+            objectMapper.writeValue(summaryFile, payload);
+            logger.info("✅ Summary JSON written at: {}", summaryFilePath);
+
+            return summaryFilePath.toAbsolutePath().toString();
+
+        } catch (Exception e) {
+            logger.error("❌ Failed to write summary.json", e);
+            throw new RuntimeException("Failed to write summary JSON", e);
+        }
+    }
+
+    public static SummaryPayload buildPayload(KafkaMessage message,
+                                              List<SummaryProcessedFile> processedFiles,
+                                              List<SummaryPrintFile> printFiles,
+                                              String mobstatTriggerPath) {
+
+        SummaryPayload payload = new SummaryPayload();
+
+        payload.setBatchID(message.getBatchId());
+        payload.setFileName(message.getBatchId() + ".csv");
+        payload.setMobstatTriggerFile(mobstatTriggerPath);
+
+        SummaryHeader header = new SummaryHeader();
+        header.setTenantCode(message.getTenantCode());
+        header.setChannelID(message.getChannelID());
+        header.setAudienceID(message.getAudienceID());
+        header.setSourceSystem(message.getSourceSystem());
+        header.setProduct(message.getProduct());
+        header.setJobName(message.getJobName());
+        header.setTimestamp(Instant.now().toString());
+        payload.setHeader(header);
+
+        SummaryMetadata metadata = new SummaryMetadata();
+        metadata.setTotalFilesProcessed(processedFiles != null ? processedFiles.size() : 0);
+        metadata.setProcessingStatus("Completed");
+        metadata.setEventOutcomeCode("0");
+        metadata.setEventOutcomeDescription("Success");
+        payload.setMetadata(metadata);
+
+        SummaryPayloadDetails payloadDetails = new SummaryPayloadDetails();
+        payloadDetails.setUniqueConsumerRef(message.getUniqueConsumerRef());
+        payloadDetails.setUniqueECPBatchRef(message.getUniqueECPBatchRef());
+        payloadDetails.setRunPriority(message.getRunPriority());
+        payloadDetails.setEventID(message.getEventID());
+        payloadDetails.setEventType(message.getEventType());
+        payloadDetails.setRestartKey(message.getRestartKey());
+        payloadDetails.setFileCount(processedFiles != null ? processedFiles.size() : 0);
+        payload.setPayload(payloadDetails);
+
+        payload.setProcessedFiles(processedFiles);
+        payload.setPrintFiles(printFiles);
+
+        return payload;
+    }
+}
+
+=====
 package com.nedbank.kafka.filemanage.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -88,7 +184,6 @@ public class KafkaListenerService {
         try {
             List<BatchFile> batchFiles = message.getBatchFiles();
             if (batchFiles == null || batchFiles.isEmpty()) {
-                logger.error("❌ No batch files in message, skipping.");
                 return new ApiResponse("No batch files found", "error", null);
             }
 
@@ -96,24 +191,12 @@ public class KafkaListenerService {
             long refCount = batchFiles.stream().filter(f -> "REF".equalsIgnoreCase(f.getFileType())).count();
             boolean hasInvalid = batchFiles.stream().anyMatch(f -> f.getFileType() == null || f.getFileType().trim().isEmpty());
 
-            if (hasInvalid) {
-                logger.error("❌ Found file with missing or empty fileType");
-                return new ApiResponse("Invalid or empty fileType found", "error", null);
-            }
-
-            if (dataCount == 0) {
-                logger.error("❌ No DATA files found to process");
-                return new ApiResponse("No DATA files to process", "error", null);
-            }
-
-            if (dataCount > 1 && refCount == 0) {
-                logger.error("❌ More than one DATA file and no REF — rejecting");
-                return new ApiResponse("Too many DATA files without REF", "error", null);
-            }
+            if (hasInvalid) return new ApiResponse("Invalid or empty fileType found", "error", null);
+            if (dataCount == 0) return new ApiResponse("No DATA files to process", "error", null);
+            if (dataCount > 1 && refCount == 0) return new ApiResponse("Too many DATA files without REF", "error", null);
 
             List<BatchFile> dataFilesOnly = batchFiles.stream().filter(f -> "DATA".equalsIgnoreCase(f.getFileType())).toList();
             message.setBatchFiles(dataFilesOnly);
-            logger.info("✅ Proceeding with {} DATA file(s), REF ignored", dataFilesOnly.size());
 
             String batchId = message.getBatchId();
             String guiRef = message.getUniqueConsumerRef();
@@ -122,12 +205,9 @@ public class KafkaListenerService {
 
             for (BatchFile file : message.getBatchFiles()) {
                 String blobUrl = file.getBlobUrl();
-                logger.info("📥 Downloading file from blob: {}", blobUrl);
                 String content = blobStorageService.downloadFileContent(blobUrl);
-                String fileName = extractFileName(blobUrl);
-                Path localPath = jobDir.resolve(fileName);
+                Path localPath = jobDir.resolve(extractFileName(blobUrl));
                 Files.write(localPath, content.getBytes(StandardCharsets.UTF_8));
-                logger.info("✅ File saved to mount path: {}", localPath);
                 file.setBlobUrl(localPath.toString());
             }
 
@@ -136,50 +216,18 @@ public class KafkaListenerService {
             String token = fetchAccessToken();
             sendToOpenText(token, message);
 
+            logger.info("⏳ Waiting for .rpt file every {}ms, up to {}s...", rptPollIntervalMillis, rptMaxWaitSeconds);
             File rptFile = waitForRptFile(jobDir);
-            if (rptFile == null) {
-                logger.error("⏰ Timeout waiting for .rpt file in {}", jobDir);
-                return new ApiResponse("Timeout waiting for .rpt", "error", null);
-            }
-            logger.info("📄 Found .rpt file: {}", rptFile.getAbsolutePath());
+            if (rptFile == null) return new ApiResponse("Timeout waiting for .rpt", "error", null);
 
             Map<String, String> accountCustomerMap = extractAccountCustomerMapFromRpt(rptFile);
 
-            List<SummaryProcessedFile> processedFiles = new ArrayList<>();
-            String[] subDirs = {"archive", "email", "mobstat", "mobstat_trigger", "print"};
-            for (String sub : subDirs) {
-                Path subFolder = jobDir.resolve("output").resolve(sub);
-                if (!Files.exists(subFolder)) continue;
-                File[] pdfs = subFolder.toFile().listFiles(f -> f.getName().endsWith(".pdf"));
-                if (pdfs == null) continue;
-                for (File f : pdfs) {
-                    String accountNumber = extractAccountNumberFromFile(f.getName());
-                    String customerNumber = accountCustomerMap.get(accountNumber);
-                    if (accountNumber != null && customerNumber != null) {
-                        String blobPath = String.format("output/%s/%s/%s", batchId, sub, f.getName());
-                        String uploadedUrl = blobStorageService.uploadFile(f.getAbsolutePath(), blobPath);
-                        logger.info("📤 Uploaded PDF to blob: {}", uploadedUrl);
-                        SummaryProcessedFile pf = new SummaryProcessedFile();
-                        pf.setAccountNumber(accountNumber);
-                        pf.setCustomerId(customerNumber);
-                        pf.setBlobURL(decodeUrl(uploadedUrl));
-                        pf.setStatusCode("OK");
-                        pf.setStatusDescription("Uploaded");
-                        processedFiles.add(pf);
-                        FileUtils.forceDelete(f);
-                        logger.info("🧹 Deleted local file after upload: {}", f.getAbsolutePath());
-                    }
-                }
-            }
-
-            SummaryPayload payload = SummaryJsonWriter.buildPayload(message, processedFiles);
+            SummaryPayload payload = SummaryJsonWriter.buildFullPayload(message, jobDir, blobStorageService, accountCustomerMap);
             String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
             String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, "summary_" + batchId + ".json");
-            logger.info("📤 summary.json uploaded to blob: {}", summaryUrl);
             payload.setSummaryFileURL(decodeUrl(summaryUrl));
 
-            SummaryResponse summaryResponse = new SummaryResponse(payload);
-            return new ApiResponse("Success", "success", summaryResponse);
+            return new ApiResponse("Success", "success", new SummaryResponse(payload));
         } catch (Exception ex) {
             logger.error("❌ Failed in processing", ex);
             return new ApiResponse("Processing failed: " + ex.getMessage(), "error", null);
@@ -201,7 +249,6 @@ public class KafkaListenerService {
             FileUtils.writeStringToFile(metaFile, json, StandardCharsets.UTF_8);
             String blobPath = String.format("%s/Trigger/metadata_%s.json", message.getSourceSystem(), message.getBatchId());
             blobStorageService.uploadFile(metaFile.getAbsolutePath(), blobPath);
-            logger.info("📤 metadata.json uploaded to blob: {}", blobPath);
             FileUtils.forceDelete(metaFile);
         } catch (Exception ex) {
             logger.error("❌ metadata.json generation failed", ex);
@@ -223,8 +270,7 @@ public class KafkaListenerService {
             ResponseEntity<Map> response = restTemplate.postForEntity(otdsTokenUrl, request, Map.class);
             return (String) response.getBody().get("access_token");
         } catch (Exception e) {
-            logger.error("❌ Failed to get OTDS token", e);
-            throw new RuntimeException("OTDS auth failed");
+            throw new RuntimeException("OTDS auth failed", e);
         }
     }
 
@@ -236,10 +282,8 @@ public class KafkaListenerService {
             String json = objectMapper.writeValueAsString(msg);
             HttpEntity<String> request = new HttpEntity<>(json, headers);
             restTemplate.postForEntity(opentextApiUrl, request, String.class);
-            logger.info("📤 Sent metadata to OT");
         } catch (Exception ex) {
-            logger.error("❌ Failed to send data to OT", ex);
-            throw new RuntimeException("OT call failed");
+            throw new RuntimeException("OT call failed", ex);
         }
     }
 
@@ -247,10 +291,7 @@ public class KafkaListenerService {
         long start = System.currentTimeMillis();
         while (System.currentTimeMillis() - start < rptMaxWaitSeconds * 1000L) {
             File[] rptFiles = jobDir.toFile().listFiles(f -> f.getName().endsWith(".rpt"));
-            if (rptFiles != null && rptFiles.length > 0) {
-                return rptFiles[0];
-            }
-            logger.info("🔁 Still waiting for .rpt file in {}", jobDir);
+            if (rptFiles != null && rptFiles.length > 0) return rptFiles[0];
             try {
                 TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
             } catch (InterruptedException ignored) {}
@@ -268,15 +309,11 @@ public class KafkaListenerService {
             while ((line = reader.readLine()) != null) {
                 if (line.contains("DM_AccountNumber")) {
                     Matcher accMatch = Pattern.compile("DM_AccountNumber\\s+(\\d{9,})").matcher(line);
-                    if (accMatch.find()) {
-                        currentAccount = accMatch.group(1);
-                    }
+                    if (accMatch.find()) currentAccount = accMatch.group(1);
                 }
                 if (line.contains("DM_CISNumber")) {
                     Matcher custMatch = Pattern.compile("DM_CISNumber\\s+(\\d{6,})").matcher(line);
-                    if (custMatch.find()) {
-                        currentCustomer = custMatch.group(1);
-                    }
+                    if (custMatch.find()) currentCustomer = custMatch.group(1);
                 }
                 if (currentAccount != null && currentCustomer != null) {
                     accountCustomerMap.put(currentAccount, currentCustomer);
@@ -285,17 +322,7 @@ public class KafkaListenerService {
                 }
             }
         }
-
         return accountCustomerMap;
-    }
-
-    private String extractAccountNumberFromFile(String fileName) {
-        try {
-            Matcher m = Pattern.compile("(\\d{9,})_").matcher(fileName);
-            return m.find() ? m.group(1) : null;
-        } catch (Exception e) {
-            return null;
-        }
     }
 
     private String extractFileName(String url) {
@@ -303,7 +330,6 @@ public class KafkaListenerService {
             String decoded = URLDecoder.decode(url, StandardCharsets.UTF_8.name());
             return Paths.get(new URI(decoded).getPath()).getFileName().toString();
         } catch (Exception e) {
-            logger.warn("⚠️ Failed to extract file name, fallback to last segment: {}", url);
             String[] parts = url.split("/");
             return parts[parts.length - 1];
         }
@@ -318,73 +344,3 @@ public class KafkaListenerService {
     }
 }
 
-package com.nedbank.kafka.filemanage.utils;
-
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.nedbank.kafka.filemanage.model.KafkaMessage;
-import com.nedbank.kafka.filemanage.model.SummaryPayload;
-import com.nedbank.kafka.filemanage.model.SummaryProcessedFile;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
-
-import java.io.File;
-import java.nio.file.*;
-
-@Component
-public class SummaryJsonWriter {
-
-    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
-
-    private static final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
-
-    /**
-     * Serializes the given SummaryPayload to a temporary file and returns the file path
-     */
-    public static String writeSummaryJsonToFile(SummaryPayload payload) {
-        if (payload == null) {
-            logger.error("❌ SummaryPayload is null. Cannot write summary.json.");
-            throw new IllegalArgumentException("SummaryPayload cannot be null");
-        }
-
-        try {
-            String batchId = payload.getBatchID() != null ? payload.getBatchID() : "unknown";
-            String fileName = "summary_" + batchId + ".json";
-
-            // Create temporary directory
-            Path tempDir = Files.createTempDirectory("summaryFiles");
-
-            Path summaryFilePath = tempDir.resolve(fileName);
-
-            // Clean old file if exists
-            File summaryFile = summaryFilePath.toFile();
-            if (summaryFile.exists()) {
-                Files.delete(summaryFilePath);
-                logger.warn("⚠️ Existing summary file deleted before writing: {}", summaryFilePath);
-            }
-
-            // Write JSON to file
-            objectMapper.writeValue(summaryFile, payload);
-
-            logger.info("✅ Summary JSON successfully written: {}", summaryFilePath);
-
-            return summaryFilePath.toAbsolutePath().toString();
-
-        } catch (Exception e) {
-            logger.error("❌ Failed to write summary.json: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to write summary JSON", e);
-        }
-    }
-
-    /**
-     * Builds a basic payload wrapper if you want to build one from response
-     */
-    public static SummaryPayload buildPayload(KafkaMessage message, java.util.List<SummaryProcessedFile> processedFiles) {
-        SummaryPayload payload = new SummaryPayload();
-        payload.setBatchID(message.getBatchId());
-        payload.setFileName(message.getBatchId() + "_summary.json");
-        payload.setProcessedFiles(processedFiles);
-        return payload;
-    }
-}
