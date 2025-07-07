@@ -19,7 +19,6 @@ import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.*;
@@ -87,6 +86,35 @@ public class KafkaListenerService {
 
     private ApiResponse processSingleMessage(KafkaMessage message) {
         try {
+            List<BatchFile> batchFiles = message.getBatchFiles();
+            if (batchFiles == null || batchFiles.isEmpty()) {
+                logger.error("❌ No batch files in message, skipping.");
+                return new ApiResponse("No batch files found", "error", null);
+            }
+
+            long dataCount = batchFiles.stream().filter(f -> "DATA".equalsIgnoreCase(f.getFileType())).count();
+            long refCount = batchFiles.stream().filter(f -> "REF".equalsIgnoreCase(f.getFileType())).count();
+            boolean hasInvalid = batchFiles.stream().anyMatch(f -> f.getFileType() == null || f.getFileType().trim().isEmpty());
+
+            if (hasInvalid) {
+                logger.error("❌ Found file with missing or empty fileType");
+                return new ApiResponse("Invalid or empty fileType found", "error", null);
+            }
+
+            if (dataCount == 0) {
+                logger.error("❌ No DATA files found to process");
+                return new ApiResponse("No DATA files to process", "error", null);
+            }
+
+            if (dataCount > 1 && refCount == 0) {
+                logger.error("❌ More than one DATA file and no REF — rejecting");
+                return new ApiResponse("Too many DATA files without REF", "error", null);
+            }
+
+            List<BatchFile> dataFilesOnly = batchFiles.stream().filter(f -> "DATA".equalsIgnoreCase(f.getFileType())).toList();
+            message.setBatchFiles(dataFilesOnly);
+            logger.info("✅ Proceeding with {} DATA file(s), REF ignored", dataFilesOnly.size());
+
             String batchId = message.getBatchId();
             String guiRef = message.getUniqueConsumerRef();
             Path jobDir = Paths.get(mountPath, batchId, guiRef);
@@ -94,12 +122,13 @@ public class KafkaListenerService {
 
             for (BatchFile file : message.getBatchFiles()) {
                 String blobUrl = file.getBlobUrl();
-                String fileName = extractFileName(blobUrl);
+                logger.info("📥 Downloading file from blob: {}", blobUrl);
                 String content = blobStorageService.downloadFileContent(blobUrl);
+                String fileName = extractFileName(blobUrl);
                 Path localPath = jobDir.resolve(fileName);
                 Files.write(localPath, content.getBytes(StandardCharsets.UTF_8));
+                logger.info("✅ File saved to mount path: {}", localPath);
                 file.setBlobUrl(localPath.toString());
-                logger.info("✅ Mounted file to: {}", localPath);
             }
 
             writeAndUploadMetadataJson(message, jobDir);
@@ -112,7 +141,6 @@ public class KafkaListenerService {
                 logger.error("⏰ Timeout waiting for .rpt file in {}", jobDir);
                 return new ApiResponse("Timeout waiting for .rpt", "error", null);
             }
-
             logger.info("📄 Found .rpt file: {}", rptFile.getAbsolutePath());
 
             Map<String, String> accountCustomerMap = extractAccountCustomerMapFromRpt(rptFile);
@@ -130,6 +158,7 @@ public class KafkaListenerService {
                     if (accountNumber != null && customerNumber != null) {
                         String blobPath = String.format("output/%s/%s/%s", batchId, sub, f.getName());
                         String uploadedUrl = blobStorageService.uploadFile(f.getAbsolutePath(), blobPath);
+                        logger.info("📤 Uploaded PDF to blob: {}", uploadedUrl);
                         SummaryProcessedFile pf = new SummaryProcessedFile();
                         pf.setAccountNumber(accountNumber);
                         pf.setCustomerId(customerNumber);
@@ -138,6 +167,7 @@ public class KafkaListenerService {
                         pf.setStatusDescription("Uploaded");
                         processedFiles.add(pf);
                         FileUtils.forceDelete(f);
+                        logger.info("🧹 Deleted local file after upload: {}", f.getAbsolutePath());
                     }
                 }
             }
@@ -145,6 +175,7 @@ public class KafkaListenerService {
             SummaryPayload payload = SummaryJsonWriter.buildPayload(message, processedFiles);
             String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
             String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, "summary_" + batchId + ".json");
+            logger.info("📤 summary.json uploaded to blob: {}", summaryUrl);
             payload.setSummaryFileURL(decodeUrl(summaryUrl));
 
             SummaryResponse summaryResponse = new SummaryResponse(payload);
@@ -152,46 +183,6 @@ public class KafkaListenerService {
         } catch (Exception ex) {
             logger.error("❌ Failed in processing", ex);
             return new ApiResponse("Processing failed: " + ex.getMessage(), "error", null);
-        }
-    }
-
-    private Map<String, String> extractAccountCustomerMapFromRpt(File rptFile) throws IOException {
-        Map<String, String> accountCustomerMap = new HashMap<>();
-        String currentAccount = null;
-        String currentCustomer = null;
-
-        try (BufferedReader reader = new BufferedReader(new FileReader(rptFile))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.contains("DM_AccountNumber")) {
-                    Matcher accMatch = Pattern.compile("DM_AccountNumber\\s+(\\d{9,})").matcher(line);
-                    if (accMatch.find()) {
-                        currentAccount = accMatch.group(1);
-                    }
-                }
-                if (line.contains("DM_CISNumber")) {
-                    Matcher custMatch = Pattern.compile("DM_CISNumber\\s+(\\d{6,})").matcher(line);
-                    if (custMatch.find()) {
-                        currentCustomer = custMatch.group(1);
-                    }
-                }
-                if (currentAccount != null && currentCustomer != null) {
-                    accountCustomerMap.put(currentAccount, currentCustomer);
-                    currentAccount = null;
-                    currentCustomer = null;
-                }
-            }
-        }
-
-        return accountCustomerMap;
-    }
-
-    private String extractAccountNumberFromFile(String fileName) {
-        try {
-            Matcher m = Pattern.compile("(\\d{9,})_").matcher(fileName);
-            return m.find() ? m.group(1) : null;
-        } catch (Exception e) {
-            return null;
         }
     }
 
@@ -210,7 +201,7 @@ public class KafkaListenerService {
             FileUtils.writeStringToFile(metaFile, json, StandardCharsets.UTF_8);
             String blobPath = String.format("%s/Trigger/metadata_%s.json", message.getSourceSystem(), message.getBatchId());
             blobStorageService.uploadFile(metaFile.getAbsolutePath(), blobPath);
-            logger.info("✅ metadata.json uploaded to {}", blobPath);
+            logger.info("📤 metadata.json uploaded to blob: {}", blobPath);
             FileUtils.forceDelete(metaFile);
         } catch (Exception ex) {
             logger.error("❌ metadata.json generation failed", ex);
@@ -259,11 +250,52 @@ public class KafkaListenerService {
             if (rptFiles != null && rptFiles.length > 0) {
                 return rptFiles[0];
             }
+            logger.info("🔁 Still waiting for .rpt file in {}", jobDir);
             try {
                 TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
             } catch (InterruptedException ignored) {}
         }
         return null;
+    }
+
+    private Map<String, String> extractAccountCustomerMapFromRpt(File rptFile) throws IOException {
+        Map<String, String> accountCustomerMap = new HashMap<>();
+        String currentAccount = null;
+        String currentCustomer = null;
+
+        try (BufferedReader reader = new BufferedReader(new FileReader(rptFile))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.contains("DM_AccountNumber")) {
+                    Matcher accMatch = Pattern.compile("DM_AccountNumber\\s+(\\d{9,})").matcher(line);
+                    if (accMatch.find()) {
+                        currentAccount = accMatch.group(1);
+                    }
+                }
+                if (line.contains("DM_CISNumber")) {
+                    Matcher custMatch = Pattern.compile("DM_CISNumber\\s+(\\d{6,})").matcher(line);
+                    if (custMatch.find()) {
+                        currentCustomer = custMatch.group(1);
+                    }
+                }
+                if (currentAccount != null && currentCustomer != null) {
+                    accountCustomerMap.put(currentAccount, currentCustomer);
+                    currentAccount = null;
+                    currentCustomer = null;
+                }
+            }
+        }
+
+        return accountCustomerMap;
+    }
+
+    private String extractAccountNumberFromFile(String fileName) {
+        try {
+            Matcher m = Pattern.compile("(\\d{9,})_").matcher(fileName);
+            return m.find() ? m.group(1) : null;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private String extractFileName(String url) {
