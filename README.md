@@ -126,8 +126,8 @@ public class KafkaListenerService {
 
             Map<String, String> accountCustomerMap = extractAccountCustomerMapFromRpt(rptFile);
 
-            List<SummaryProcessedFile> processedFiles = new ArrayList<>();
-            List<SummaryPrintFile> printFiles = new ArrayList<>();
+            List<SummaryProcessedFile> processedFiles = buildProcessedFiles(jobDir, accountCustomerMap);
+            List<SummaryPrintFile> printFiles = buildPrintFiles(jobDir);
             String mobstatTriggerPath = jobDir.resolve("output/mobstat/DropData.trigger").toString();
 
             SummaryPayload payload = SummaryJsonWriter.buildPayload(message, processedFiles, printFiles, mobstatTriggerPath);
@@ -140,6 +140,57 @@ public class KafkaListenerService {
             logger.error("❌ Failed in processing", ex);
             return new ApiResponse("Processing failed: " + ex.getMessage(), "error", null);
         }
+    }
+
+    private List<SummaryProcessedFile> buildProcessedFiles(Path jobDir, Map<String, String> accountCustomerMap) throws IOException {
+        List<SummaryProcessedFile> list = new ArrayList<>();
+        Path outputDir = jobDir.resolve("output");
+        if (!Files.exists(outputDir)) return list;
+
+        DirectoryStream<Path> stream = Files.newDirectoryStream(outputDir);
+        for (Path sub : stream) {
+            if (!Files.isDirectory(sub)) continue;
+            String folder = sub.getFileName().toString();
+            if (List.of("archive", "email", "html", "mobstat", "txt").contains(folder)) {
+                Files.list(sub).forEach(file -> {
+                    String fileName = file.getFileName().toString();
+                    String account = extractAccountFromFileName(fileName);
+                    if (account == null) return;
+                    String customer = accountCustomerMap.get(account);
+                    SummaryProcessedFile entry = list.stream().filter(e -> account.equals(e.getAccountNumber())).findFirst().orElseGet(() -> {
+                        SummaryProcessedFile newEntry = new SummaryProcessedFile();
+                        newEntry.setAccountNumber(account);
+                        newEntry.setCustomerId(customer);
+                        newEntry.setStatusCode("OK");
+                        newEntry.setStatusDescription("Success");
+                        list.add(newEntry);
+                        return newEntry;
+                    });
+                    String blobUrl = file.toUri().toString();
+                    switch (folder) {
+                        case "archive" -> entry.setPdfArchiveFileUrl(blobUrl);
+                        case "email" -> entry.setPdfEmailFileUrl(blobUrl);
+                        case "html" -> entry.setHtmlEmailFileUrl(blobUrl);
+                        case "txt" -> entry.setTxtEmailFileUrl(blobUrl);
+                        case "mobstat" -> entry.setPdfMobstatFileUrl(blobUrl);
+                    }
+                });
+            }
+        }
+        return list;
+    }
+
+    private List<SummaryPrintFile> buildPrintFiles(Path jobDir) throws IOException {
+        List<SummaryPrintFile> list = new ArrayList<>();
+        Path printDir = jobDir.resolve("output/print");
+        if (!Files.exists(printDir)) return list;
+
+        Files.list(printDir).forEach(file -> {
+            SummaryPrintFile print = new SummaryPrintFile();
+            print.setPrintFileURL(file.toUri().toString());
+            list.add(print);
+        });
+        return list;
     }
 
     private void writeAndUploadMetadataJson(KafkaMessage message, Path jobDir) {
@@ -241,6 +292,11 @@ public class KafkaListenerService {
             String[] parts = url.split("/");
             return parts[parts.length - 1];
         }
+    }
+
+    private String extractAccountFromFileName(String fileName) {
+        Matcher m = Pattern.compile("(\\d{9,})").matcher(fileName);
+        return m.find() ? m.group(1) : null;
     }
 
     private String decodeUrl(String encodedUrl) {
