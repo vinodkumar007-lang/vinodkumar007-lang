@@ -84,6 +84,7 @@ public class KafkaListenerService {
             logger.info("📩 Received Kafka message.");
             KafkaMessage kafkaMessage = objectMapper.readValue(message, KafkaMessage.class);
             ApiResponse response = processSingleMessage(kafkaMessage);
+            logger.info("✅ Final API Response to Kafka Output: \n{}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response));
             kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(response));
             logger.info("✅ Sent processed response to Kafka output topic.");
         } catch (Exception ex) {
@@ -150,6 +151,8 @@ public class KafkaListenerService {
             String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
             String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, "summary_" + batchId + ".json");
             payload.setSummaryFileURL(decodeUrl(summaryUrl));
+
+            logger.info("📝 Summary JSON Payload: \n{}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
 
             return new ApiResponse("Success", "success", new SummaryResponse(payload));
         } catch (Exception ex) {
