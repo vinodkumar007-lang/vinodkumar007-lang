@@ -1,140 +1,3 @@
-<?xml version="1.0" encoding="UTF-16" standalone="no" ?>
-<!DOCTYPE outputList>
-
-<outputList transactions="0" customersProcessed="11" pagesProcessed="11">
-  <queue mimeType="application/pdf" pdl="PDF" name="archive">
-    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_25_archive/3768000010607501_CCEML805.pdf">
-      <customer number="1">
-        <key name="AccountNumber">3768000010607501</key>
-        <key name="CISNumber">110543680509</key>
-        <key name="QueuesToCustomer">1</key>
-        <key name="StartPageCustomer">1</key>
-        <key name="TotalPagesInDocument">1</key>
-      </customer>
-      <pageCount>1</pageCount>
-      <fileSize>280033</fileSize>
-    </file>
-    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_25_archive/5898460759264500_CCEML804.pdf">
-      <customer number="2">
-        <key name="AccountNumber">5898460759264500</key>
-        <key name="CISNumber">110067975607</key>
-        <key name="QueuesToCustomer">1</key>
-        <key name="StartPageCustomer">1</key>
-        <key name="TotalPagesInDocument">1</key>
-      </customer>
-      <pageCount>1</pageCount>
-      <fileSize>261077</fileSize>
-    </file>
-    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_25_archive/5898460773139035_EML003.pdf">
-      <customer number="3">
-        <key name="AccountNumber">5898460773139035</key>
-        <key name="CISNumber">110051703106</key>
-        <key name="QueuesToCustomer">1</key>
-        <key name="StartPageCustomer">1</key>
-        <key name="TotalPagesInDocument">1</key>
-      </customer>
-      <pageCount>1</pageCount>
-      <fileSize>364484</fileSize>
-    </file>
-    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_25_archive/5898460773863931_CCMOB805.pdf">
-      <customer number="4">
-        <key name="AccountNumber">5898460773863931</key>
-        <key name="CISNumber">110568881702</key>
-        <key name="QueuesToCustomer">1</key>
-        <key name="StartPageCustomer">1</key>
-        <key name="TotalPagesInDocument">1</key>
-      </customer>
-      <pageCount>1</pageCount>
-      <fileSize>261022</fileSize>
-    </file>
-    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_25_archive/5898460773874268_CCEML805.pdf">
-      <customer number="5">
-        <key name="AccountNumber">5898460773874268</key>
-        <key name="CISNumber">110051703106</key>
-        <key name="QueuesToCustomer">1</key>
-        <key name="StartPageCustomer">1</key>
-        <key name="TotalPagesInDocument">1</key>
-      </customer>
-      <pageCount>1</pageCount>
-      <fileSize>260976</fileSize>
-    </file>
-    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_25_archive/8007035935001_EMLCCAAA.pdf">
-      <customer number="11">
-        <key name="AccountNumber">8007035935001</key>
-        <key name="CISNumber">191850154905</key>
-        <key name="QueuesToCustomer">1</key>
-        <key name="StartPageCustomer">1</key>
-        <key name="TotalPagesInDocument">1</key>
-      </customer>
-      <pageCount>1</pageCount>
-      <fileSize>260805</fileSize>
-    </file>
-  </queue>
-  <queue mimeType="application/pdf" pdl="PDF" name="email">
-    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_26_email/3768000010607501_CCEML805.pdf">
-      <customer number="1">
-        <key name="AccountNumber">3768000010607501</key>
-        <key name="CISNumber">110543680509</key>
-        <key name="StartPageCustomer">1</key>
-        <key name="TotalPagesInDocument">1</key>
-      </customer>
-      <pageCount>1</pageCount>
-      <fileSize>250746</fileSize>
-    </file>
-    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_26_email/5898460773139035_EML003.pdf">
-      <customer number="3">
-        <key name="AccountNumber">5898460773139035</key>
-        <key name="CISNumber">110051703106</key>
-        <key name="StartPageCustomer">1</key>
-        <key name="TotalPagesInDocument">1</key>
-      </customer>
-      <pageCount>1</pageCount>
-      <fileSize>337179</fileSize>
-    </file>
-    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_26_email/5898460773874268_CCEML805.pdf">
-      <customer number="5">
-        <key name="AccountNumber">5898460773874268</key>
-        <key name="CISNumber">110051703106</key>
-        <key name="StartPageCustomer">1</key>
-        <key name="TotalPagesInDocument">1</key>
-      </customer>
-      <pageCount>1</pageCount>
-      <fileSize>235812</fileSize>
-    </file>
-    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_26_email/8007035935001_EMLCCAAA.pdf">
-      <customer number="11">
-        <key name="AccountNumber">8007035935001</key>
-        <key name="CISNumber">191850154905</key>
-        <key name="StartPageCustomer">1</key>
-        <key name="TotalPagesInDocument">1</key>
-      </customer>
-      <pageCount>1</pageCount>
-      <fileSize>235816</fileSize>
-    </file>
-  </queue>
-  <queue mimeType="application/pdf" pdl="PDF" name="mobstat">
-    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_27_mobstat/DEBTMAN_5898460773863931_110568881702_0737392815_0801114949_30_CARD.pdf">
-      <customer number="4">
-        <key name="AccountNumber">5898460773863931</key>
-        <key name="CISNumber">110568881702</key>
-        <key name="StartPageCustomer">1</key>
-        <key name="TotalPagesInDocument">1</key>
-      </customer>
-      <pageCount>1</pageCount>
-      <fileSize>235852</fileSize>
-    </file>
-  </queue>
-  <queue mimeType="application/pdf" pdl="PDF" name="mobstat_trigger">
-    <reportFile dataFile="mobstat_trigger" mimeType="text/plain" name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Report_24_mobstat_trigger/mobstat_trigger" reportType="report">
-      <customer number="4">
-        <key name="AccountNumber">5898460773863931</key>
-        <key name="CISNumber">110568881702</key>
-      </customer>
-    </reportFile>
-  </queue>
-</outputList>
-
-
 package com.nedbank.kafka.filemanage.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -151,7 +14,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+import org.w3c.dom.*;
 
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
@@ -211,13 +77,13 @@ public class KafkaListenerService {
             containerFactory = "kafkaListenerContainerFactory")
     public void consumeKafkaMessage(String message) {
         try {
-            logger.info("📩 Received Kafka message.");
+            logger.info("\uD83D\uDCE9 Received Kafka message.");
             KafkaMessage kafkaMessage = objectMapper.readValue(message, KafkaMessage.class);
             ApiResponse response = processSingleMessage(kafkaMessage);
             kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(response));
-            logger.info("✅ Sent processed response to Kafka output topic.");
+            logger.info("\u2705 Sent processed response to Kafka output topic.");
         } catch (Exception ex) {
-            logger.error("❌ Error processing Kafka message", ex);
+            logger.error("\u274C Error processing Kafka message", ex);
         }
     }
 
@@ -240,7 +106,7 @@ public class KafkaListenerService {
             message.setBatchFiles(dataFilesOnly);
 
             String batchId = message.getBatchId();
-            Path batchDir = Paths.get(mountPath, "output", "DEBTMAN", batchId);
+            Path batchDir = Paths.get(mountPath, "output", message.getSourceSystem(), batchId);
             Files.createDirectories(batchDir);
 
             for (BatchFile file : message.getBatchFiles()) {
@@ -258,13 +124,13 @@ public class KafkaListenerService {
 
             if (jobId == null || jobId.isBlank()) return new ApiResponse("Missing jobId from OT response", "error", null);
 
-            Path jobDir = Paths.get(mountPath, "output", "DEBTMAN", jobId);
+            Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), jobId);
 
-            logger.info("⏳ Waiting for .rpt file every {}ms, up to {}s...", rptPollIntervalMillis, rptMaxWaitSeconds);
-            File rptFile = waitForRptFile(jobDir);
-            if (rptFile == null) return new ApiResponse("Timeout waiting for .rpt", "error", null);
+            logger.info("\u23F3 Waiting for outputList.xml every {}ms, up to {}s...", rptPollIntervalMillis, rptMaxWaitSeconds);
+            File xmlFile = waitForXmlFile(jobDir);
+            if (xmlFile == null) return new ApiResponse("Timeout waiting for outputList.xml", "error", null);
 
-            Map<String, String> accountCustomerMap = extractAccountCustomerMapFromRpt(rptFile);
+            Map<String, String> accountCustomerMap = extractAccountCustomerMapFromXml(xmlFile);
 
             List<SummaryProcessedFile> processedFiles = buildAndUploadProcessedFiles(jobDir, accountCustomerMap, message);
             List<PrintFile> printFiles = buildAndUploadPrintFiles(jobDir, message);
@@ -277,92 +143,16 @@ public class KafkaListenerService {
 
             return new ApiResponse("Success", "success", new SummaryResponse(payload));
         } catch (Exception ex) {
-            logger.error("❌ Failed in processing", ex);
+            logger.error("\u274C Failed in processing", ex);
             return new ApiResponse("Processing failed: " + ex.getMessage(), "error", null);
         }
     }
 
-    private List<SummaryProcessedFile> buildAndUploadProcessedFiles(Path jobDir, Map<String, String> accountCustomerMap, KafkaMessage msg) throws IOException {
-        List<SummaryProcessedFile> list = new ArrayList<>();
-        List<String> folderNames = List.of("archive", "email", "html", "mobstat", "txt");
-
-        for (String folder : folderNames) {
-            Path subDir = jobDir.resolve(folder);
-            if (!Files.exists(subDir)) continue;
-
-            Files.list(subDir).forEach(file -> {
-                try {
-                    String fileName = file.getFileName().toString();
-                    String account = extractAccountFromFileName(fileName);
-                    if (account == null) return;
-                    String customer = accountCustomerMap.get(account);
-                    SummaryProcessedFile entry = list.stream().filter(e -> account.equals(e.getAccountNumber())).findFirst().orElseGet(() -> {
-                        SummaryProcessedFile newEntry = new SummaryProcessedFile();
-                        newEntry.setAccountNumber(account);
-                        newEntry.setCustomerId(customer);
-                        newEntry.setStatusCode("OK");
-                        newEntry.setStatusDescription("Success");
-                        list.add(newEntry);
-                        return newEntry;
-                    });
-                    String blobUrl = blobStorageService.uploadFile(Files.readString(file), String.format("%s/%s/%s/%s/%s", msg.getSourceSystem(), msg.getBatchId(), msg.getUniqueConsumerRef(), folder, fileName));
-                    switch (folder) {
-                        case "archive" -> entry.setPdfArchiveFileUrl(blobUrl);
-                        case "email" -> entry.setPdfEmailFileUrl(blobUrl);
-                        case "html" -> entry.setHtmlEmailFileUrl(blobUrl);
-                        case "txt" -> entry.setTxtEmailFileUrl(blobUrl);
-                        case "mobstat" -> entry.setPdfMobstatFileUrl(blobUrl);
-                    }
-                } catch (Exception e) {
-                    logger.error("Error uploading file: {}", file, e);
-                }
-            });
-        }
-        return list;
-    }
-
-    private List<PrintFile> buildAndUploadPrintFiles(Path jobDir, KafkaMessage msg) throws IOException {
-        List<PrintFile> list = new ArrayList<>();
-        Path printDir = jobDir.resolve("print");
-        if (!Files.exists(printDir)) return list;
-
-        Files.list(printDir).forEach(file -> {
-            try {
-                String fileName = file.getFileName().toString();
-                String blobUrl = blobStorageService.uploadFile(Files.readString(file), String.format("%s/%s/%s/print/%s", msg.getSourceSystem(), msg.getBatchId(), msg.getUniqueConsumerRef(), fileName));
-                PrintFile print = new PrintFile();
-                print.setPrintFileURL(blobUrl);
-                list.add(print);
-            } catch (Exception e) {
-                logger.error("Error uploading print file: {}", file, e);
-            }
-        });
-        return list;
-    }
-
-    private String extractFileName(String url) {
-        try {
-            String decoded = URLDecoder.decode(url, StandardCharsets.UTF_8.name());
-            return Paths.get(new URI(decoded).getPath()).getFileName().toString();
-        } catch (Exception e) {
-            String[] parts = url.split("/");
-            return parts[parts.length - 1];
-        }
-    }
-
-    private String decodeUrl(String encodedUrl) {
-        try {
-            return URLDecoder.decode(encodedUrl, StandardCharsets.UTF_8.name());
-        } catch (Exception e) {
-            return encodedUrl;
-        }
-    }
-
-    private File waitForRptFile(Path jobDir) {
+    private File waitForXmlFile(Path jobDir) {
         long start = System.currentTimeMillis();
         while (System.currentTimeMillis() - start < rptMaxWaitSeconds * 1000L) {
-            File[] rptFiles = jobDir.toFile().listFiles(f -> f.getName().endsWith(".rpt"));
-            if (rptFiles != null && rptFiles.length > 0) return rptFiles[0];
+            File[] xmlFiles = jobDir.toFile().listFiles(f -> f.getName().equalsIgnoreCase("outputList.xml"));
+            if (xmlFiles != null && xmlFiles.length > 0) return xmlFiles[0];
             try {
                 TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
             } catch (InterruptedException ignored) {}
@@ -370,92 +160,37 @@ public class KafkaListenerService {
         return null;
     }
 
-    private Map<String, String> extractAccountCustomerMapFromRpt(File rptFile) throws IOException {
-        Map<String, String> accountCustomerMap = new HashMap<>();
-        String currentAccount = null;
-        String currentCustomer = null;
+    private Map<String, String> extractAccountCustomerMapFromXml(File xmlFile) throws Exception {
+        Map<String, String> map = new HashMap<>();
+        DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+        DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+        Document doc = dBuilder.parse(xmlFile);
+        doc.getDocumentElement().normalize();
 
-        try (BufferedReader reader = new BufferedReader(new FileReader(rptFile))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.contains("DM_AccountNumber")) {
-                    Matcher accMatch = Pattern.compile("DM_AccountNumber\\s+(\\d{9,})").matcher(line);
-                    if (accMatch.find()) currentAccount = accMatch.group(1);
-                }
-                if (line.contains("DM_CISNumber")) {
-                    Matcher custMatch = Pattern.compile("DM_CISNumber\\s+(\\d{6,})").matcher(line);
-                    if (custMatch.find()) currentCustomer = custMatch.group(1);
-                }
-                if (currentAccount != null && currentCustomer != null) {
-                    accountCustomerMap.put(currentAccount, currentCustomer);
-                    currentAccount = null;
-                    currentCustomer = null;
-                }
-            }
-        }
-        return accountCustomerMap;
-    }
+        NodeList customerNodes = doc.getElementsByTagName("customer");
+        for (int i = 0; i < customerNodes.getLength(); i++) {
+            Element customerElement = (Element) customerNodes.item(i);
+            NodeList keys = customerElement.getElementsByTagName("key");
 
-    private String extractAccountFromFileName(String fileName) {
-        Matcher matcher = Pattern.compile("(\\d{9,})").matcher(fileName);
-        return matcher.find() ? matcher.group(1) : null;
-    }
+            String account = null;
+            String customer = null;
 
-    private void writeAndUploadMetadataJson(KafkaMessage message, Path jobDir) {
-        try {
-            Map<String, Object> metaMap = objectMapper.convertValue(message, Map.class);
-            if (metaMap.containsKey("batchFiles")) {
-                List<Map<String, Object>> files = (List<Map<String, Object>>) metaMap.get("batchFiles");
-                for (Map<String, Object> f : files) {
-                    Object blob = f.remove("blobUrl");
-                    if (blob != null) f.put("fileLocation", blob);
+            for (int j = 0; j < keys.getLength(); j++) {
+                Element keyElement = (Element) keys.item(j);
+                String keyName = keyElement.getAttribute("name");
+                String keyValue = keyElement.getTextContent();
+
+                if ("AccountNumber".equalsIgnoreCase(keyName)) {
+                    account = keyValue;
+                } else if ("CISNumber".equalsIgnoreCase(keyName)) {
+                    customer = keyValue;
                 }
             }
-            String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metaMap);
-            File metaFile = new File(jobDir.toFile(), "metadata.json");
-            FileUtils.writeStringToFile(metaFile, json, StandardCharsets.UTF_8);
-            String blobPath = String.format("%s/Trigger/metadata_%s.json", message.getSourceSystem(), message.getBatchId());
-            blobStorageService.uploadFile(metaFile.getAbsolutePath(), blobPath);
-            FileUtils.forceDelete(metaFile);
-        } catch (Exception ex) {
-            logger.error("❌ metadata.json generation failed", ex);
-        }
-    }
 
-    private String fetchAccessToken() {
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-            body.add("grant_type", "password");
-            body.add("username", otdsUsername);
-            body.add("password", otdsPassword);
-            body.add("client_id", otdsClientId);
-            body.add("client_secret", otdsClientSecret);
-
-            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
-            ResponseEntity<Map> response = restTemplate.postForEntity(otdsTokenUrl, request, Map.class);
-            return (String) response.getBody().get("access_token");
-        } catch (Exception e) {
-            throw new RuntimeException("OTDS auth failed", e);
-        }
-    }
-
-    private String sendToOpenText(String token, KafkaMessage msg) {
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + token);
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            String json = objectMapper.writeValueAsString(msg);
-            HttpEntity<String> request = new HttpEntity<>(json, headers);
-            ResponseEntity<Map> response = restTemplate.postForEntity(opentextApiUrl, request, Map.class);
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Object jobId = response.getBody().get("jobId");
-                return jobId != null ? jobId.toString() : null;
+            if (account != null && customer != null) {
+                map.put(account, customer);
             }
-            return null;
-        } catch (Exception ex) {
-            throw new RuntimeException("OT call failed", ex);
         }
+
+        return map;
     }
-}
