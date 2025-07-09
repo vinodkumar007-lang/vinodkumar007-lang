@@ -84,7 +84,8 @@ public class KafkaListenerService {
             logger.info("📩 Received Kafka message.");
             KafkaMessage kafkaMessage = objectMapper.readValue(message, KafkaMessage.class);
             ApiResponse response = processSingleMessage(kafkaMessage);
-            logger.info("✅ Final API Response to Kafka Output: \n{}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response));
+            logger.info("📤 Final Summary JSON: \n{}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response.getSummaryPayload()));
+            logger.info("📤 Final API Response: \n{}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response));
             kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(response));
             logger.info("✅ Sent processed response to Kafka output topic.");
         } catch (Exception ex) {
@@ -152,8 +153,6 @@ public class KafkaListenerService {
             String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, "summary_" + batchId + ".json");
             payload.setSummaryFileURL(decodeUrl(summaryUrl));
 
-            logger.info("📝 Summary JSON Payload: \n{}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
-
             return new ApiResponse("Success", "success", new SummaryResponse(payload));
         } catch (Exception ex) {
             logger.error("❌ Failed in processing", ex);
@@ -175,3 +174,133 @@ public class KafkaListenerService {
         }
         return null;
     }
+
+    private Map<String, String> extractAccountCustomerMapFromXml(File xmlFile) throws Exception {
+        Map<String, String> map = new HashMap<>();
+        DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+        DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+        Document doc = dBuilder.parse(xmlFile);
+        doc.getDocumentElement().normalize();
+
+        NodeList customerNodes = doc.getElementsByTagName("customer");
+        for (int i = 0; i < customerNodes.getLength(); i++) {
+            Element customerElement = (Element) customerNodes.item(i);
+            NodeList keys = customerElement.getElementsByTagName("key");
+
+            String account = null;
+            String customer = null;
+
+            for (int j = 0; j < keys.getLength(); j++) {
+                Element keyElement = (Element) keys.item(j);
+                String keyName = keyElement.getAttribute("name");
+                String keyValue = keyElement.getTextContent();
+
+                if ("AccountNumber".equalsIgnoreCase(keyName)) {
+                    account = keyValue;
+                } else if ("CISNumber".equalsIgnoreCase(keyName)) {
+                    customer = keyValue;
+                }
+            }
+
+            if (account != null && customer != null) {
+                map.put(account, customer);
+            }
+        }
+
+        return map;
+    }
+
+    private void writeAndUploadMetadataJson(KafkaMessage message, Path jobDir) {
+        try {
+            Map<String, Object> metaMap = objectMapper.convertValue(message, Map.class);
+            if (metaMap.containsKey("batchFiles")) {
+                List<Map<String, Object>> files = (List<Map<String, Object>>) metaMap.get("batchFiles");
+                for (Map<String, Object> f : files) {
+                    Object blob = f.remove("blobUrl");
+                    if (blob != null) f.put("fileLocation", blob);
+                }
+            }
+            String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metaMap);
+            File metaFile = new File(jobDir.toFile(), "metadata.json");
+            FileUtils.writeStringToFile(metaFile, json, StandardCharsets.UTF_8);
+            String blobPath = String.format("%s/Trigger/metadata_%s.json", message.getSourceSystem(), message.getBatchId());
+            blobStorageService.uploadFile(metaFile.getAbsolutePath(), blobPath);
+            FileUtils.forceDelete(metaFile);
+        } catch (Exception ex) {
+            logger.error("❌ metadata.json generation failed", ex);
+        }
+    }
+
+    private List<SummaryProcessedFile> buildAndUploadProcessedFiles(Path jobDir, Map<String, String> accountCustomerMap, KafkaMessage msg) throws IOException {
+        List<SummaryProcessedFile> list = new ArrayList<>();
+        List<String> folderNames = List.of("archive", "email", "html", "mobstat", "txt");
+
+        for (String folder : folderNames) {
+            Path subDir = jobDir.resolve(folder);
+            if (!Files.exists(subDir)) continue;
+
+            Files.list(subDir).forEach(file -> {
+                try {
+                    String fileName = file.getFileName().toString();
+                    String account = extractAccountFromFileName(fileName);
+                    if (account == null) return;
+                    String customer = accountCustomerMap.get(account);
+                    SummaryProcessedFile entry = list.stream().filter(e -> account.equals(e.getAccountNumber())).findFirst().orElseGet(() -> {
+                        SummaryProcessedFile newEntry = new SummaryProcessedFile();
+                        newEntry.setAccountNumber(account);
+                        newEntry.setCustomerId(customer);
+                        newEntry.setStatusCode("OK");
+                        newEntry.setStatusDescription("Success");
+                        list.add(newEntry);
+                        return newEntry;
+                    });
+                    String blobUrl = blobStorageService.uploadFile(Files.readString(file), String.format("%s/%s/%s/%s/%s",
+                            msg.getSourceSystem(), msg.getBatchId(), msg.getUniqueConsumerRef(), folder, fileName));
+                    switch (folder) {
+                        case "archive" -> entry.setPdfArchiveFileUrl(blobUrl);
+                        case "email" -> entry.setPdfEmailFileUrl(blobUrl);
+                        case "html" -> entry.setHtmlEmailFileUrl(blobUrl);
+                        case "txt" -> entry.setTxtEmailFileUrl(blobUrl);
+                        case "mobstat" -> entry.setPdfMobstatFileUrl(blobUrl);
+                    }
+                } catch (Exception e) {
+                    logger.error("Error uploading file: {}", file, e);
+                }
+            });
+        }
+        return list;
+    }
+
+    private List<PrintFile> buildAndUploadPrintFiles(Path jobDir, KafkaMessage msg) throws IOException {
+        List<PrintFile> list = new ArrayList<>();
+        Path printDir = jobDir.resolve("print");
+        if (!Files.exists(printDir)) return list;
+
+        Files.list(printDir).forEach(file -> {
+            try {
+                String fileName = file.getFileName().toString();
+                String blobUrl = blobStorageService.uploadFile(Files.readString(file), String.format("%s/%s/%s/print/%s",
+                        msg.getSourceSystem(), msg.getBatchId(), msg.getUniqueConsumerRef(), fileName));
+                PrintFile print = new PrintFile();
+                print.setPrintFileURL(blobUrl);
+                list.add(print);
+            } catch (Exception e) {
+                logger.error("Error uploading print file: {}", file, e);
+            }
+        });
+        return list;
+    }
+
+    private String extractAccountFromFileName(String fileName) {
+        Matcher matcher = Pattern.compile("(\\d{9,})").matcher(fileName);
+        return matcher.find() ? matcher.group(1) : null;
+    }
+
+    private String decodeUrl(String encodedUrl) {
+        try {
+            return URLDecoder.decode(encodedUrl, StandardCharsets.UTF_8.name());
+        } catch (Exception e) {
+            return encodedUrl;
+        }
+    }
+}
