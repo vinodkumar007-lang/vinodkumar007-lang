@@ -120,25 +120,15 @@ public class KafkaListenerService {
 
             writeAndUploadMetadataJson(message, batchDir);
 
-            String orchestrationUrl = otOrchestrationApiUrl;
-            ResponseEntity<Map> otResponse = restTemplate.getForEntity(orchestrationUrl, Map.class);
-            if (!otResponse.getStatusCode().is2xxSuccessful() || otResponse.getBody() == null) {
-                return new ApiResponse("Failed to call OT batch input API", "error", null);
-            }
+            String token = fetchAccessToken();
+            String jobId = callOrchestrationBatchApi(token, message);
+            if (jobId == null) return new ApiResponse("Failed to call OT batch input API", "error", null);
 
-            List<Map<String, Object>> dataList = (List<Map<String, Object>>) otResponse.getBody().get("data");
-            if (dataList == null || dataList.isEmpty()) {
-                return new ApiResponse("No data returned from OT API", "error", null);
-            }
-
-            Map<String, Object> first = dataList.get(0);
-            String jobId = (String) first.get("jobId");
-            String instanceId = (String) first.get("id");
-
+            String instanceId = message.getBatchId();
             logger.info("🪪 OT JobId: {}, InstanceId: {}", jobId, instanceId);
 
             Path xmlRoot = Paths.get(mountPath, "jobs", jobId, instanceId, "docgen");
-            File xmlFile = findXmlFile(xmlRoot);
+            File xmlFile = waitForXmlFile(xmlRoot);
             if (xmlFile == null) return new ApiResponse("_STDDELIVERYFILE.xml not found", "error", null);
 
             Map<String, String> accountCustomerMap = extractAccountCustomerMapFromXml(xmlFile);
@@ -160,17 +150,61 @@ public class KafkaListenerService {
         }
     }
 
-    private File findXmlFile(Path docgenDir) {
-        try {
-            if (!Files.exists(docgenDir)) return null;
-            try (Stream<Path> folders = Files.list(docgenDir)) {
-                for (Path folder : folders.toList()) {
-                    Path xml = folder.resolve("output/_STDDELIVERYFILE.xml");
-                    if (Files.exists(xml)) return xml.toFile();
+    private File waitForXmlFile(Path dir) {
+        logger.info("🔍 Waiting for _STDDELIVERYFILE.xml in: {}", dir);
+        long startTime = System.currentTimeMillis();
+        while ((System.currentTimeMillis() - startTime) < rptMaxWaitSeconds * 1000L) {
+            try (Stream<Path> files = Files.walk(dir)) {
+                Optional<File> xml = files
+                        .filter(Files::isRegularFile)
+                        .map(Path::toFile)
+                        .filter(file -> file.getName().endsWith(".xml"))
+                        .findFirst();
+
+                if (xml.isPresent()) {
+                    logger.info("✅ Found XML file: {}", xml.get().getAbsolutePath());
+                    return xml.get();
+                } else {
+                    logger.info("⏳ Still waiting for _STDDELIVERYFILE.xml... will retry in {}ms", rptPollIntervalMillis);
+                    TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
                 }
+            } catch (Exception e) {
+                logger.warn("⚠️ Error during XML search in {}: {}", dir, e.getMessage());
             }
-        } catch (IOException e) {
-            logger.error("Error scanning docgen folder for XML", e);
+        }
+        logger.error("❌ Timed out after {} seconds waiting for _STDDELIVERYFILE.xml", rptMaxWaitSeconds);
+        return null;
+    }
+
+    private String fetchAccessToken() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", "password");
+        body.add("username", otdsUsername);
+        body.add("password", otdsPassword);
+        body.add("client_id", otdsClientId);
+        body.add("client_secret", otdsClientSecret);
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        ResponseEntity<Map> response = restTemplate.postForEntity(otdsTokenUrl, request, Map.class);
+        return (String) response.getBody().get("access_token");
+    }
+
+    private String callOrchestrationBatchApi(String token, KafkaMessage msg) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer " + token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
+            ResponseEntity<Map> response = restTemplate.exchange(otOrchestrationApiUrl, HttpMethod.POST, request, Map.class);
+
+            List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get("data");
+            if (data != null && !data.isEmpty()) {
+                return (String) data.get(0).get("jobId");
+            }
+        } catch (Exception e) {
+            logger.error("❌ Failed OT Orchestration call", e);
         }
         return null;
     }
@@ -231,6 +265,26 @@ public class KafkaListenerService {
         }
     }
 
+    private List<PrintFile> buildAndUploadPrintFiles(Path jobDir, KafkaMessage msg) throws IOException {
+        List<PrintFile> list = new ArrayList<>();
+        Path printDir = jobDir.resolve("print");
+        if (!Files.exists(printDir)) return list;
+
+        Files.list(printDir).forEach(file -> {
+            try {
+                String fileName = file.getFileName().toString();
+                String blobUrl = blobStorageService.uploadFile(Files.readString(file), String.format("%s/%s/%s/print/%s",
+                        msg.getSourceSystem(), msg.getBatchId(), msg.getUniqueConsumerRef(), fileName));
+                PrintFile print = new PrintFile();
+                print.setPrintFileURL(blobUrl);
+                list.add(print);
+            } catch (Exception e) {
+                logger.error("Error uploading print file: {}", file, e);
+            }
+        });
+        return list;
+    }
+
     private List<SummaryProcessedFile> buildAndUploadProcessedFiles(Path jobDir, Map<String, String> accountCustomerMap, KafkaMessage msg) throws IOException {
         List<SummaryProcessedFile> list = new ArrayList<>();
         List<String> folderNames = List.of("archive", "email", "html", "mobstat", "txt");
@@ -268,26 +322,6 @@ public class KafkaListenerService {
                 }
             });
         }
-        return list;
-    }
-
-    private List<PrintFile> buildAndUploadPrintFiles(Path jobDir, KafkaMessage msg) throws IOException {
-        List<PrintFile> list = new ArrayList<>();
-        Path printDir = jobDir.resolve("print");
-        if (!Files.exists(printDir)) return list;
-
-        Files.list(printDir).forEach(file -> {
-            try {
-                String fileName = file.getFileName().toString();
-                String blobUrl = blobStorageService.uploadFile(Files.readString(file), String.format("%s/%s/%s/print/%s",
-                        msg.getSourceSystem(), msg.getBatchId(), msg.getUniqueConsumerRef(), fileName));
-                PrintFile print = new PrintFile();
-                print.setPrintFileURL(blobUrl);
-                list.add(print);
-            } catch (Exception e) {
-                logger.error("Error uploading print file: {}", file, e);
-            }
-        });
         return list;
     }
 
