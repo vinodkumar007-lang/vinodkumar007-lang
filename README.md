@@ -126,9 +126,9 @@ public class KafkaListenerService {
 
             Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), jobId);
 
-            logger.info("\u23F3 Waiting for outputList.xml every {}ms, up to {}s...", rptPollIntervalMillis, rptMaxWaitSeconds);
-            File xmlFile = waitForXmlFile(jobDir);
-            if (xmlFile == null) return new ApiResponse("Timeout waiting for outputList.xml", "error", null);
+            logger.info("⏳ Waiting for XML file (*.xml) every {}ms, up to {}s...", rptPollIntervalMillis, rptMaxWaitSeconds);
+            File xmlFile = waitForAnyXmlFile(jobDir);
+            if (xmlFile == null) return new ApiResponse("Timeout waiting for XML file", "error", null);
 
             Map<String, String> accountCustomerMap = extractAccountCustomerMapFromXml(xmlFile);
 
@@ -148,10 +148,10 @@ public class KafkaListenerService {
         }
     }
 
-    private File waitForXmlFile(Path jobDir) {
+    private File waitForAnyXmlFile(Path jobDir) {
         long start = System.currentTimeMillis();
         while (System.currentTimeMillis() - start < rptMaxWaitSeconds * 1000L) {
-            File[] xmlFiles = jobDir.toFile().listFiles(f -> f.getName().equalsIgnoreCase("outputList.xml"));
+            File[] xmlFiles = jobDir.toFile().listFiles(f -> f.getName().toLowerCase().endsWith(".xml"));
             if (xmlFiles != null && xmlFiles.length > 0) return xmlFiles[0];
             try {
                 TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
@@ -194,3 +194,6 @@ public class KafkaListenerService {
 
         return map;
     }
+
+    // ... other unchanged methods remain as is
+}
