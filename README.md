@@ -77,13 +77,13 @@ public class KafkaListenerService {
             containerFactory = "kafkaListenerContainerFactory")
     public void consumeKafkaMessage(String message) {
         try {
-            logger.info("\uD83D\uDCE9 Received Kafka message.");
+            logger.info("📩 Received Kafka message.");
             KafkaMessage kafkaMessage = objectMapper.readValue(message, KafkaMessage.class);
             ApiResponse response = processSingleMessage(kafkaMessage);
             kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(response));
-            logger.info("\u2705 Sent processed response to Kafka output topic.");
+            logger.info("✅ Sent processed response to Kafka output topic.");
         } catch (Exception ex) {
-            logger.error("\u274C Error processing Kafka message", ex);
+            logger.error("❌ Error processing Kafka message", ex);
         }
     }
 
@@ -126,9 +126,9 @@ public class KafkaListenerService {
 
             Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), jobId);
 
-            logger.info("⏳ Waiting for XML file (*.xml) every {}ms, up to {}s...", rptPollIntervalMillis, rptMaxWaitSeconds);
-            File xmlFile = waitForAnyXmlFile(jobDir);
-            if (xmlFile == null) return new ApiResponse("Timeout waiting for XML file", "error", null);
+            logger.info("⏳ Waiting for .xml output from OT in: {}", jobDir);
+            File xmlFile = waitForXmlFile(jobDir);
+            if (xmlFile == null) return new ApiResponse("Timeout waiting for XML", "error", null);
 
             Map<String, String> accountCustomerMap = extractAccountCustomerMapFromXml(xmlFile);
 
@@ -143,12 +143,12 @@ public class KafkaListenerService {
 
             return new ApiResponse("Success", "success", new SummaryResponse(payload));
         } catch (Exception ex) {
-            logger.error("\u274C Failed in processing", ex);
+            logger.error("❌ Failed in processing", ex);
             return new ApiResponse("Processing failed: " + ex.getMessage(), "error", null);
         }
     }
 
-    private File waitForAnyXmlFile(Path jobDir) {
+    private File waitForXmlFile(Path jobDir) {
         long start = System.currentTimeMillis();
         while (System.currentTimeMillis() - start < rptMaxWaitSeconds * 1000L) {
             File[] xmlFiles = jobDir.toFile().listFiles(f -> f.getName().toLowerCase().endsWith(".xml"));
@@ -195,5 +195,144 @@ public class KafkaListenerService {
         return map;
     }
 
-    // ... other unchanged methods remain as is
+    private void writeAndUploadMetadataJson(KafkaMessage message, Path jobDir) {
+        try {
+            Map<String, Object> metaMap = objectMapper.convertValue(message, Map.class);
+            if (metaMap.containsKey("batchFiles")) {
+                List<Map<String, Object>> files = (List<Map<String, Object>>) metaMap.get("batchFiles");
+                for (Map<String, Object> f : files) {
+                    Object blob = f.remove("blobUrl");
+                    if (blob != null) f.put("fileLocation", blob);
+                }
+            }
+            String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metaMap);
+            File metaFile = new File(jobDir.toFile(), "metadata.json");
+            FileUtils.writeStringToFile(metaFile, json, StandardCharsets.UTF_8);
+            String blobPath = String.format("%s/Trigger/metadata_%s.json", message.getSourceSystem(), message.getBatchId());
+            blobStorageService.uploadFile(metaFile.getAbsolutePath(), blobPath);
+            FileUtils.forceDelete(metaFile);
+        } catch (Exception ex) {
+            logger.error("❌ metadata.json generation failed", ex);
+        }
+    }
+
+    private String fetchAccessToken() {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+            MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+            body.add("grant_type", "password");
+            body.add("username", otdsUsername);
+            body.add("password", otdsPassword);
+            body.add("client_id", otdsClientId);
+            body.add("client_secret", otdsClientSecret);
+
+            HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+            ResponseEntity<Map> response = restTemplate.postForEntity(otdsTokenUrl, request, Map.class);
+            return (String) response.getBody().get("access_token");
+        } catch (Exception e) {
+            throw new RuntimeException("OTDS auth failed", e);
+        }
+    }
+
+    private String sendToOpenText(String token, KafkaMessage msg) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer " + token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            String json = objectMapper.writeValueAsString(msg);
+            HttpEntity<String> request = new HttpEntity<>(json, headers);
+            ResponseEntity<Map> response = restTemplate.postForEntity(opentextApiUrl, request, Map.class);
+            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
+                Object jobId = response.getBody().get("jobId");
+                return jobId != null ? jobId.toString() : null;
+            }
+            return null;
+        } catch (Exception ex) {
+            throw new RuntimeException("OT call failed", ex);
+        }
+    }
+
+    private String extractFileName(String url) {
+        try {
+            String decoded = URLDecoder.decode(url, StandardCharsets.UTF_8.name());
+            return Paths.get(new URI(decoded).getPath()).getFileName().toString();
+        } catch (Exception e) {
+            String[] parts = url.split("/");
+            return parts[parts.length - 1];
+        }
+    }
+
+    private String decodeUrl(String encodedUrl) {
+        try {
+            return URLDecoder.decode(encodedUrl, StandardCharsets.UTF_8.name());
+        } catch (Exception e) {
+            return encodedUrl;
+        }
+    }
+
+    private List<PrintFile> buildAndUploadPrintFiles(Path jobDir, KafkaMessage msg) throws IOException {
+        List<PrintFile> list = new ArrayList<>();
+        Path printDir = jobDir.resolve("print");
+        if (!Files.exists(printDir)) return list;
+
+        Files.list(printDir).forEach(file -> {
+            try {
+                String fileName = file.getFileName().toString();
+                String blobUrl = blobStorageService.uploadFile(Files.readString(file), String.format("%s/%s/%s/print/%s",
+                        msg.getSourceSystem(), msg.getBatchId(), msg.getUniqueConsumerRef(), fileName));
+                PrintFile print = new PrintFile();
+                print.setPrintFileURL(blobUrl);
+                list.add(print);
+            } catch (Exception e) {
+                logger.error("Error uploading print file: {}", file, e);
+            }
+        });
+        return list;
+    }
+
+    private List<SummaryProcessedFile> buildAndUploadProcessedFiles(Path jobDir, Map<String, String> accountCustomerMap, KafkaMessage msg) throws IOException {
+        List<SummaryProcessedFile> list = new ArrayList<>();
+        List<String> folderNames = List.of("archive", "email", "html", "mobstat", "txt");
+
+        for (String folder : folderNames) {
+            Path subDir = jobDir.resolve(folder);
+            if (!Files.exists(subDir)) continue;
+
+            Files.list(subDir).forEach(file -> {
+                try {
+                    String fileName = file.getFileName().toString();
+                    String account = extractAccountFromFileName(fileName);
+                    if (account == null) return;
+                    String customer = accountCustomerMap.get(account);
+                    SummaryProcessedFile entry = list.stream().filter(e -> account.equals(e.getAccountNumber())).findFirst().orElseGet(() -> {
+                        SummaryProcessedFile newEntry = new SummaryProcessedFile();
+                        newEntry.setAccountNumber(account);
+                        newEntry.setCustomerId(customer);
+                        newEntry.setStatusCode("OK");
+                        newEntry.setStatusDescription("Success");
+                        list.add(newEntry);
+                        return newEntry;
+                    });
+                    String blobUrl = blobStorageService.uploadFile(Files.readString(file), String.format("%s/%s/%s/%s/%s",
+                            msg.getSourceSystem(), msg.getBatchId(), msg.getUniqueConsumerRef(), folder, fileName));
+                    switch (folder) {
+                        case "archive" -> entry.setPdfArchiveFileUrl(blobUrl);
+                        case "email" -> entry.setPdfEmailFileUrl(blobUrl);
+                        case "html" -> entry.setHtmlEmailFileUrl(blobUrl);
+                        case "txt" -> entry.setTxtEmailFileUrl(blobUrl);
+                        case "mobstat" -> entry.setPdfMobstatFileUrl(blobUrl);
+                    }
+                } catch (Exception e) {
+                    logger.error("Error uploading file: {}", file, e);
+                }
+            });
+        }
+        return list;
+    }
+
+    private String extractAccountFromFileName(String fileName) {
+        Matcher matcher = Pattern.compile("(\\d{9,})").matcher(fileName);
+        return matcher.find() ? matcher.group(1) : null;
+    }
 }
