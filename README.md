@@ -1,340 +1,82 @@
-package com.nedbank.kafka.filemanage.service;
+package com.nedbank.kafka.filemanage.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.nedbank.kafka.filemanage.model.*;
-import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
-import org.apache.commons.io.FileUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.*;
-import org.springframework.http.*;
-import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.stereotype.Service;
-import org.springframework.util.LinkedMultiValueMap;
-import org.springframework.util.MultiValueMap;
-import org.springframework.web.client.RestTemplate;
-import org.w3c.dom.*;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.common.config.SslConfigs;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.*;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.core.*;
+import org.springframework.kafka.listener.ContainerProperties;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import java.io.*;
-import java.net.*;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
-import java.util.regex.*;
-import java.util.stream.Stream;
+import java.util.HashMap;
+import java.util.Map;
 
-@Service
-public class KafkaListenerService {
+@Configuration
+public class KafkaConsumerConfig {
 
-    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+    @Value("${kafka.bootstrap.servers}")
+    private String bootstrapServers;
 
-    @Value("${mount.path}")
-    private String mountPath;
+    @Value("${kafka.consumer.group.id}")
+    private String consumerGroupId;
 
-    @Value("${opentext.api.url}")
-    private String opentextApiUrl;
+    @Value("${kafka.consumer.auto.offset.reset}")
+    private String autoOffsetReset;
 
-    @Value("${otds.token.url}")
-    private String otdsTokenUrl;
+    @Value("${kafka.consumer.enable.auto.commit}")
+    private String enableAutoCommit;
 
-    @Value("${otds.username}")
-    private String otdsUsername;
+    @Value("${kafka.consumer.key.deserializer}")
+    private String keyDeserializer;
 
-    @Value("${otds.password}")
-    private String otdsPassword;
+    @Value("${kafka.consumer.value.deserializer}")
+    private String valueDeserializer;
 
-    @Value("${otds.client-id}")
-    private String otdsClientId;
+    @Value("${kafka.consumer.security.protocol}")
+    private String securityProtocol;
 
-    @Value("${otds.client-secret}")
-    private String otdsClientSecret;
+    @Value("${kafka.consumer.ssl.truststore.location}")
+    private String truststoreLocation;
 
-    @Value("${kafka.topic.output}")
-    private String kafkaOutputTopic;
+    @Value("${kafka.consumer.ssl.truststore.password}")
+    private String truststorePassword;
 
-    @Value("${rpt.max.wait.seconds}")
-    private int rptMaxWaitSeconds;
+    @Value("${kafka.consumer.ssl.keystore.location}")
+    private String keystoreLocation;
 
-    @Value("${rpt.poll.interval.millis}")
-    private int rptPollIntervalMillis;
+    @Value("${kafka.consumer.ssl.keystore.password}")
+    private String keystorePassword;
 
-    @Value("${ot.orchestration.api.url}")
-    private String otOrchestrationApiUrl;
+    @Value("${kafka.consumer.ssl.key.password}")
+    private String keyPassword;
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final BlobStorageService blobStorageService;
-    private final KafkaTemplate<String, String> kafkaTemplate;
-    private final RestTemplate restTemplate = new RestTemplate();
+    @Value("${kafka.consumer.ssl.protocol}")
+    private String sslProtocol;
 
-    @Autowired
-    public KafkaListenerService(BlobStorageService blobStorageService,
-                                KafkaTemplate<String, String> kafkaTemplate) {
-        this.blobStorageService = blobStorageService;
-        this.kafkaTemplate = kafkaTemplate;
-    }
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, consumerGroupId);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, keyDeserializer);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, valueDeserializer);
+        props.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol);
+        props.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, truststoreLocation);
+        props.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, truststorePassword);
+        props.put(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, keystoreLocation);
+        props.put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, keystorePassword);
+        props.put(SslConfigs.SSL_KEY_PASSWORD_CONFIG, keyPassword);
+        props.put(SslConfigs.SSL_PROTOCOL_CONFIG, sslProtocol);
+        props.put("ssl.endpoint.identification.algorithm", "");
 
-    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}",
-            containerFactory = "kafkaListenerContainerFactory")
-    public void consumeKafkaMessage(String message) {
-        try {
-            logger.info("📩 Received Kafka message.");
-            KafkaMessage kafkaMessage = objectMapper.readValue(message, KafkaMessage.class);
-            ApiResponse response = processSingleMessage(kafkaMessage);
-            logger.info("📤 Final Summary JSON: \n{}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response.getSummaryPayload()));
-            logger.info("📤 Final API Response: \n{}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response));
-            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(response));
-            logger.info("✅ Sent processed response to Kafka output topic.");
-        } catch (Exception ex) {
-            logger.error("❌ Error processing Kafka message", ex);
-        }
-    }
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, autoOffsetReset);
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, enableAutoCommit);
 
-    private ApiResponse processSingleMessage(KafkaMessage message) {
-        try {
-            List<BatchFile> batchFiles = message.getBatchFiles();
-            if (batchFiles == null || batchFiles.isEmpty()) {
-                return new ApiResponse("No batch files found", "error", null);
-            }
-
-            List<BatchFile> dataFilesOnly = batchFiles.stream()
-                    .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
-                    .toList();
-            if (dataFilesOnly.isEmpty()) return new ApiResponse("No DATA files to process", "error", null);
-            message.setBatchFiles(dataFilesOnly);
-
-            String batchId = message.getBatchId();
-            Path batchDir = Paths.get(mountPath, "input", message.getSourceSystem(), batchId);
-            Files.createDirectories(batchDir);
-
-            for (BatchFile file : message.getBatchFiles()) {
-                String blobUrl = file.getBlobUrl();
-                String content = blobStorageService.downloadFileContent(blobUrl);
-                Path localPath = batchDir.resolve(message.getSourceSystem() + ".csv");
-                Files.write(localPath, content.getBytes(StandardCharsets.UTF_8));
-                file.setBlobUrl(localPath.toString());
-            }
-
-            writeAndUploadMetadataJson(message, batchDir);
-
-            String token = fetchAccessToken();
-            String jobId = callOrchestrationBatchApi(token, message);
-            if (jobId == null) return new ApiResponse("Failed to call OT batch input API", "error", null);
-
-            String instanceId = message.getBatchId();
-            logger.info("🪪 OT JobId: {}, InstanceId: {}", jobId, instanceId);
-
-            Path xmlRoot = Paths.get(mountPath, "jobs", jobId, instanceId, "docgen");
-            File xmlFile = waitForXmlFile(xmlRoot);
-            if (xmlFile == null) return new ApiResponse("_STDDELIVERYFILE.xml not found", "error", null);
-
-            Map<String, String> accountCustomerMap = extractAccountCustomerMapFromXml(xmlFile);
-
-            Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), jobId);
-            List<SummaryProcessedFile> processedFiles = buildAndUploadProcessedFiles(jobDir, accountCustomerMap, message);
-            List<PrintFile> printFiles = buildAndUploadPrintFiles(jobDir, message);
-            String mobstatTriggerPath = jobDir.resolve("mobstat_trigger/DropData.trigger").toString();
-
-            SummaryPayload payload = SummaryJsonWriter.buildPayload(message, processedFiles, printFiles, mobstatTriggerPath);
-            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
-            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, "summary_" + batchId + ".json");
-            payload.setSummaryFileURL(decodeUrl(summaryUrl));
-
-            return new ApiResponse("Success", "success", new SummaryResponse(payload));
-        } catch (Exception ex) {
-            logger.error("❌ Failed in processing", ex);
-            return new ApiResponse("Processing failed: " + ex.getMessage(), "error", null);
-        }
-    }
-
-    private File waitForXmlFile(Path dir) {
-        logger.info("🔍 Waiting for _STDDELIVERYFILE.xml in: {}", dir);
-        long startTime = System.currentTimeMillis();
-        while ((System.currentTimeMillis() - startTime) < rptMaxWaitSeconds * 1000L) {
-            try (Stream<Path> files = Files.walk(dir)) {
-                Optional<File> xml = files
-                        .filter(Files::isRegularFile)
-                        .map(Path::toFile)
-                        .filter(file -> file.getName().endsWith(".xml"))
-                        .findFirst();
-
-                if (xml.isPresent()) {
-                    logger.info("✅ Found XML file: {}", xml.get().getAbsolutePath());
-                    return xml.get();
-                } else {
-                    logger.info("⏳ Still waiting for _STDDELIVERYFILE.xml... will retry in {}ms", rptPollIntervalMillis);
-                    TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
-                }
-            } catch (Exception e) {
-                logger.warn("⚠️ Error during XML search in {}: {}", dir, e.getMessage());
-            }
-        }
-        logger.error("❌ Timed out after {} seconds waiting for _STDDELIVERYFILE.xml", rptMaxWaitSeconds);
-        return null;
-    }
-
-    private String fetchAccessToken() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("grant_type", "password");
-        body.add("username", otdsUsername);
-        body.add("password", otdsPassword);
-        body.add("client_id", otdsClientId);
-        body.add("client_secret", otdsClientSecret);
-
-        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
-        ResponseEntity<Map> response = restTemplate.postForEntity(otdsTokenUrl, request, Map.class);
-        return (String) response.getBody().get("access_token");
-    }
-
-    private String callOrchestrationBatchApi(String token, KafkaMessage msg) {
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + token);
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
-            ResponseEntity<Map> response = restTemplate.exchange(otOrchestrationApiUrl, HttpMethod.POST, request, Map.class);
-
-            List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get("data");
-            if (data != null && !data.isEmpty()) {
-                return (String) data.get(0).get("jobId");
-            }
-        } catch (Exception e) {
-            logger.error("❌ Failed OT Orchestration call", e);
-        }
-        return null;
-    }
-
-    private Map<String, String> extractAccountCustomerMapFromXml(File xmlFile) throws Exception {
-        Map<String, String> map = new HashMap<>();
-        DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
-        DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
-        Document doc = dBuilder.parse(xmlFile);
-        doc.getDocumentElement().normalize();
-
-        NodeList customerNodes = doc.getElementsByTagName("customer");
-        for (int i = 0; i < customerNodes.getLength(); i++) {
-            Element customerElement = (Element) customerNodes.item(i);
-            NodeList keys = customerElement.getElementsByTagName("key");
-
-            String account = null;
-            String customer = null;
-
-            for (int j = 0; j < keys.getLength(); j++) {
-                Element keyElement = (Element) keys.item(j);
-                String keyName = keyElement.getAttribute("name");
-                String keyValue = keyElement.getTextContent();
-
-                if ("AccountNumber".equalsIgnoreCase(keyName)) {
-                    account = keyValue;
-                } else if ("CISNumber".equalsIgnoreCase(keyName)) {
-                    customer = keyValue;
-                }
-            }
-
-            if (account != null && customer != null) {
-                map.put(account, customer);
-            }
-        }
-
-        return map;
-    }
-
-    private void writeAndUploadMetadataJson(KafkaMessage message, Path jobDir) {
-        try {
-            Map<String, Object> metaMap = objectMapper.convertValue(message, Map.class);
-            if (metaMap.containsKey("batchFiles")) {
-                List<Map<String, Object>> files = (List<Map<String, Object>>) metaMap.get("batchFiles");
-                for (Map<String, Object> f : files) {
-                    Object blob = f.remove("blobUrl");
-                    if (blob != null) f.put("fileLocation", blob);
-                }
-            }
-            String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metaMap);
-            File metaFile = new File(jobDir.toFile(), "metadata.json");
-            FileUtils.writeStringToFile(metaFile, json, StandardCharsets.UTF_8);
-            String blobPath = String.format("%s/Trigger/metadata_%s.json", message.getSourceSystem(), message.getBatchId());
-            blobStorageService.uploadFile(metaFile.getAbsolutePath(), blobPath);
-            FileUtils.forceDelete(metaFile);
-        } catch (Exception ex) {
-            logger.error("❌ metadata.json generation failed", ex);
-        }
-    }
-
-    private List<PrintFile> buildAndUploadPrintFiles(Path jobDir, KafkaMessage msg) throws IOException {
-        List<PrintFile> list = new ArrayList<>();
-        Path printDir = jobDir.resolve("print");
-        if (!Files.exists(printDir)) return list;
-
-        Files.list(printDir).forEach(file -> {
-            try {
-                String fileName = file.getFileName().toString();
-                String blobUrl = blobStorageService.uploadFile(Files.readString(file), String.format("%s/%s/%s/print/%s",
-                        msg.getSourceSystem(), msg.getBatchId(), msg.getUniqueConsumerRef(), fileName));
-                PrintFile print = new PrintFile();
-                print.setPrintFileURL(blobUrl);
-                list.add(print);
-            } catch (Exception e) {
-                logger.error("Error uploading print file: {}", file, e);
-            }
-        });
-        return list;
-    }
-
-    private List<SummaryProcessedFile> buildAndUploadProcessedFiles(Path jobDir, Map<String, String> accountCustomerMap, KafkaMessage msg) throws IOException {
-        List<SummaryProcessedFile> list = new ArrayList<>();
-        List<String> folderNames = List.of("archive", "email", "html", "mobstat", "txt");
-
-        for (String folder : folderNames) {
-            Path subDir = jobDir.resolve(folder);
-            if (!Files.exists(subDir)) continue;
-
-            Files.list(subDir).forEach(file -> {
-                try {
-                    String fileName = file.getFileName().toString();
-                    String account = extractAccountFromFileName(fileName);
-                    if (account == null) return;
-                    String customer = accountCustomerMap.get(account);
-                    SummaryProcessedFile entry = list.stream().filter(e -> account.equals(e.getAccountNumber())).findFirst().orElseGet(() -> {
-                        SummaryProcessedFile newEntry = new SummaryProcessedFile();
-                        newEntry.setAccountNumber(account);
-                        newEntry.setCustomerId(customer);
-                        newEntry.setStatusCode("OK");
-                        newEntry.setStatusDescription("Success");
-                        list.add(newEntry);
-                        return newEntry;
-                    });
-                    String blobUrl = blobStorageService.uploadFile(Files.readString(file), String.format("%s/%s/%s/%s/%s",
-                            msg.getSourceSystem(), msg.getBatchId(), msg.getUniqueConsumerRef(), folder, fileName));
-                    switch (folder) {
-                        case "archive" -> entry.setPdfArchiveFileUrl(blobUrl);
-                        case "email" -> entry.setPdfEmailFileUrl(blobUrl);
-                        case "html" -> entry.setHtmlEmailFileUrl(blobUrl);
-                        case "txt" -> entry.setTxtEmailFileUrl(blobUrl);
-                        case "mobstat" -> entry.setPdfMobstatFileUrl(blobUrl);
-                    }
-                } catch (Exception e) {
-                    logger.error("Error uploading file: {}", file, e);
-                }
-            });
-        }
-        return list;
-    }
-
-    private String extractAccountFromFileName(String fileName) {
-        Matcher matcher = Pattern.compile("(\\d{9,})").matcher(fileName);
-        return matcher.find() ? matcher.group(1) : null;
-    }
-
-    private String decodeUrl(String encodedUrl) {
-        try {
-            return URLDecoder.decode(encodedUrl, StandardCharsets.UTF_8.name());
-        } catch (Exception e) {
-            return encodedUrl;
-        }
+        ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(props));
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
+        factory.setConcurrency(1);
+        return factory;
     }
 }
