@@ -135,6 +135,13 @@ public class KafkaListenerService {
 
             Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), jobId);
             List<SummaryProcessedFile> processedFiles = buildAndUploadProcessedFiles(jobDir, accountCustomerMap, message);
+
+            Map<String, String> successMap = new HashMap<>();
+            for (SummaryProcessedFile s : processedFiles) {
+                successMap.put(s.getAccountNumber(), s.getCustomerId());
+            }
+            processedFiles.addAll(appendFailureEntries(jobDir, message, successMap));
+
             List<PrintFile> printFiles = buildAndUploadPrintFiles(jobDir, message);
             String mobstatTriggerPath = jobDir.resolve("mobstat_trigger/DropData.trigger").toString();
 
@@ -150,7 +157,48 @@ public class KafkaListenerService {
         }
     }
 
-    private File waitForXmlFile(Path dir) {
+    private Map<String, String> readFailureReport(Path jobDir) {
+        Map<String, String> failureMap = new HashMap<>();
+        Path errorReportPath = jobDir.resolve("ErrorReport.csv");
+        if (!Files.exists(errorReportPath)) return failureMap;
+
+        try (BufferedReader reader = Files.newBufferedReader(errorReportPath)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] fields = line.split(",");
+                if (fields.length >= 2) {
+                    String account = fields[0].trim();
+                    String customer = fields[1].trim();
+                    failureMap.put(account, customer);
+                }
+            }
+        } catch (IOException e) {
+            logger.error("❌ Failed to read ErrorReport.csv", e);
+        }
+        return failureMap;
+    }
+
+    private List<SummaryProcessedFile> appendFailureEntries(Path jobDir, KafkaMessage msg, Map<String, String> successMap) {
+        Map<String, String> failureMap = readFailureReport(jobDir);
+        List<SummaryProcessedFile> failures = new ArrayList<>();
+
+        for (Map.Entry<String, String> entry : failureMap.entrySet()) {
+            String account = entry.getKey();
+            String customer = entry.getValue();
+            if (!successMap.containsKey(account)) {
+                SummaryProcessedFile failEntry = new SummaryProcessedFile();
+                failEntry.setAccountNumber(account);
+                failEntry.setCustomerId(customer);
+                failEntry.setStatusCode("FAILURE");
+                failEntry.setStatusDescription("Processing failed");
+                failures.add(failEntry);
+            }
+        }
+
+        return failures;
+    }
+
+    private File waitForXmlFile(Path dir) throws InterruptedException, IOException {
         logger.info("Waiting for _STDDELIVERYFILE.xml in: {}", dir);
         long startTime = System.currentTimeMillis();
         while ((System.currentTimeMillis() - startTime) < rptMaxWaitSeconds * 1000L) {
@@ -168,44 +216,9 @@ public class KafkaListenerService {
                     logger.info("Still waiting for _STDDELIVERYFILE.xml... will retry in {}ms", rptPollIntervalMillis);
                     TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
                 }
-            } catch (Exception e) {
-                logger.warn("Error during XML search in {}: {}", dir, e.getMessage());
             }
         }
         logger.error("Timed out after {} seconds waiting for _STDDELIVERYFILE.xml", rptMaxWaitSeconds);
-        return null;
-    }
-
-    private String fetchAccessToken() {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
-        body.add("grant_type", grantType);
-        body.add("username", otdsUsername);
-        body.add("password", otdsPassword);
-        body.add("client_id", otdsClientId);
-        body.add("client_secret", otdsClientSecret);
-
-        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
-        ResponseEntity<Map> response = restTemplate.postForEntity(otdsTokenUrl, request, Map.class);
-        return (String) response.getBody().get("access_token");
-    }
-
-    private String callOrchestrationBatchApi(String token, KafkaMessage msg) {
-        try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + token);
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
-            ResponseEntity<Map> response = restTemplate.exchange(otOrchestrationApiUrl, HttpMethod.POST, request, Map.class);
-
-            List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get("data");
-            if (data != null && !data.isEmpty()) {
-                return (String) data.get(0).get("jobId");
-            }
-        } catch (Exception e) {
-            logger.error("Failed OT Orchestration call", e);
-        }
         return null;
     }
 
@@ -262,6 +275,47 @@ public class KafkaListenerService {
             FileUtils.forceDelete(metaFile);
         } catch (Exception ex) {
             logger.error("metadata.json generation failed", ex);
+        }
+    }
+
+    private String fetchAccessToken() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        MultiValueMap<String, String> body = new LinkedMultiValueMap<>();
+        body.add("grant_type", grantType);
+        body.add("username", otdsUsername);
+        body.add("password", otdsPassword);
+        body.add("client_id", otdsClientId);
+        body.add("client_secret", otdsClientSecret);
+
+        HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(body, headers);
+        ResponseEntity<Map> response = restTemplate.postForEntity(otdsTokenUrl, request, Map.class);
+        return (String) response.getBody().get("access_token");
+    }
+
+    private String callOrchestrationBatchApi(String token, KafkaMessage msg) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer " + token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
+            ResponseEntity<Map> response = restTemplate.exchange(otOrchestrationApiUrl, HttpMethod.POST, request, Map.class);
+
+            List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get("data");
+            if (data != null && !data.isEmpty()) {
+                return (String) data.get(0).get("jobId");
+            }
+        } catch (Exception e) {
+            logger.error("Failed OT Orchestration call", e);
+        }
+        return null;
+    }
+
+    private String decodeUrl(String encodedUrl) {
+        try {
+            return URLDecoder.decode(encodedUrl, StandardCharsets.UTF_8.name());
+        } catch (Exception e) {
+            return encodedUrl;
         }
     }
 
@@ -327,14 +381,4 @@ public class KafkaListenerService {
 
     private String extractAccountFromFileName(String fileName) {
         Matcher matcher = Pattern.compile("(\\d{9,})").matcher(fileName);
-        return matcher.find() ? matcher.group(1) : null;
-    }
-
-    private String decodeUrl(String encodedUrl) {
-        try {
-            return URLDecoder.decode(encodedUrl, StandardCharsets.UTF_8.name());
-        } catch (Exception e) {
-            return encodedUrl;
-        }
-    }
-}
+        return matcher.find() ? matcher.group(1)
