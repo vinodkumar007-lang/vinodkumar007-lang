@@ -1,3 +1,140 @@
+<?xml version="1.0" encoding="UTF-16" standalone="no" ?>
+<!DOCTYPE outputList>
+
+<outputList transactions="0" customersProcessed="11" pagesProcessed="11">
+  <queue mimeType="application/pdf" pdl="PDF" name="archive">
+    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_25_archive/3768000010607501_CCEML805.pdf">
+      <customer number="1">
+        <key name="AccountNumber">3768000010607501</key>
+        <key name="CISNumber">110543680509</key>
+        <key name="QueuesToCustomer">1</key>
+        <key name="StartPageCustomer">1</key>
+        <key name="TotalPagesInDocument">1</key>
+      </customer>
+      <pageCount>1</pageCount>
+      <fileSize>280033</fileSize>
+    </file>
+    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_25_archive/5898460759264500_CCEML804.pdf">
+      <customer number="2">
+        <key name="AccountNumber">5898460759264500</key>
+        <key name="CISNumber">110067975607</key>
+        <key name="QueuesToCustomer">1</key>
+        <key name="StartPageCustomer">1</key>
+        <key name="TotalPagesInDocument">1</key>
+      </customer>
+      <pageCount>1</pageCount>
+      <fileSize>261077</fileSize>
+    </file>
+    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_25_archive/5898460773139035_EML003.pdf">
+      <customer number="3">
+        <key name="AccountNumber">5898460773139035</key>
+        <key name="CISNumber">110051703106</key>
+        <key name="QueuesToCustomer">1</key>
+        <key name="StartPageCustomer">1</key>
+        <key name="TotalPagesInDocument">1</key>
+      </customer>
+      <pageCount>1</pageCount>
+      <fileSize>364484</fileSize>
+    </file>
+    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_25_archive/5898460773863931_CCMOB805.pdf">
+      <customer number="4">
+        <key name="AccountNumber">5898460773863931</key>
+        <key name="CISNumber">110568881702</key>
+        <key name="QueuesToCustomer">1</key>
+        <key name="StartPageCustomer">1</key>
+        <key name="TotalPagesInDocument">1</key>
+      </customer>
+      <pageCount>1</pageCount>
+      <fileSize>261022</fileSize>
+    </file>
+    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_25_archive/5898460773874268_CCEML805.pdf">
+      <customer number="5">
+        <key name="AccountNumber">5898460773874268</key>
+        <key name="CISNumber">110051703106</key>
+        <key name="QueuesToCustomer">1</key>
+        <key name="StartPageCustomer">1</key>
+        <key name="TotalPagesInDocument">1</key>
+      </customer>
+      <pageCount>1</pageCount>
+      <fileSize>260976</fileSize>
+    </file>
+    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_25_archive/8007035935001_EMLCCAAA.pdf">
+      <customer number="11">
+        <key name="AccountNumber">8007035935001</key>
+        <key name="CISNumber">191850154905</key>
+        <key name="QueuesToCustomer">1</key>
+        <key name="StartPageCustomer">1</key>
+        <key name="TotalPagesInDocument">1</key>
+      </customer>
+      <pageCount>1</pageCount>
+      <fileSize>260805</fileSize>
+    </file>
+  </queue>
+  <queue mimeType="application/pdf" pdl="PDF" name="email">
+    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_26_email/3768000010607501_CCEML805.pdf">
+      <customer number="1">
+        <key name="AccountNumber">3768000010607501</key>
+        <key name="CISNumber">110543680509</key>
+        <key name="StartPageCustomer">1</key>
+        <key name="TotalPagesInDocument">1</key>
+      </customer>
+      <pageCount>1</pageCount>
+      <fileSize>250746</fileSize>
+    </file>
+    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_26_email/5898460773139035_EML003.pdf">
+      <customer number="3">
+        <key name="AccountNumber">5898460773139035</key>
+        <key name="CISNumber">110051703106</key>
+        <key name="StartPageCustomer">1</key>
+        <key name="TotalPagesInDocument">1</key>
+      </customer>
+      <pageCount>1</pageCount>
+      <fileSize>337179</fileSize>
+    </file>
+    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_26_email/5898460773874268_CCEML805.pdf">
+      <customer number="5">
+        <key name="AccountNumber">5898460773874268</key>
+        <key name="CISNumber">110051703106</key>
+        <key name="StartPageCustomer">1</key>
+        <key name="TotalPagesInDocument">1</key>
+      </customer>
+      <pageCount>1</pageCount>
+      <fileSize>235812</fileSize>
+    </file>
+    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_26_email/8007035935001_EMLCCAAA.pdf">
+      <customer number="11">
+        <key name="AccountNumber">8007035935001</key>
+        <key name="CISNumber">191850154905</key>
+        <key name="StartPageCustomer">1</key>
+        <key name="TotalPagesInDocument">1</key>
+      </customer>
+      <pageCount>1</pageCount>
+      <fileSize>235816</fileSize>
+    </file>
+  </queue>
+  <queue mimeType="application/pdf" pdl="PDF" name="mobstat">
+    <file name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Queue_27_mobstat/DEBTMAN_5898460773863931_110568881702_0737392815_0801114949_30_CARD.pdf">
+      <customer number="4">
+        <key name="AccountNumber">5898460773863931</key>
+        <key name="CISNumber">110568881702</key>
+        <key name="StartPageCustomer">1</key>
+        <key name="TotalPagesInDocument">1</key>
+      </customer>
+      <pageCount>1</pageCount>
+      <fileSize>235852</fileSize>
+    </file>
+  </queue>
+  <queue mimeType="application/pdf" pdl="PDF" name="mobstat_trigger">
+    <reportFile dataFile="mobstat_trigger" mimeType="text/plain" name="/mnt/nfs/dev-exstream/dev-SA/jobs/8af152e5-64c4-479f-917d-0b3df5935642/d6c71687-7887-4eae-a6ae-1b3d367ad68c/docgen/a2e875c1-7eec-4a51-a01d-91d638e4a5f7/output/Report_24_mobstat_trigger/mobstat_trigger" reportType="report">
+      <customer number="4">
+        <key name="AccountNumber">5898460773863931</key>
+        <key name="CISNumber">110568881702</key>
+      </customer>
+    </reportFile>
+  </queue>
+</outputList>
+
+
 package com.nedbank.kafka.filemanage.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
