@@ -1,12 +1,5 @@
-package com.nedbank.kafka.filemanage;
-
-import org.springframework.boot.SpringApplication;
-import org.springframework.boot.autoconfigure.SpringBootApplication;
-
-@SpringBootApplication
-//@EnableScheduling
-public class Application {
-    public static void main(String[] args) {
-        SpringApplication.run(Application.class, args);
-    }
-}
+FROM openjdk:17-jdk-slim
+WORKDIR /app
+COPY target/file-manager-1.0-SNAPSHOT.jar .
+EXPOSE 8080
+CMD ["java", "-jar", "file-manager-1.0-SNAPSHOT.jar"]
