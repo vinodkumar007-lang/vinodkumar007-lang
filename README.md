@@ -6,11 +6,16 @@ private void writeAndUploadMetadataJson(KafkaMessage message, Path jobDir) {
             for (Map<String, Object> f : files) {
                 Object blob = f.remove("blobUrl");
                 if (blob != null) {
-                    f.put("mountPath", blob);  // ✅ Instead of "fileLocation", use "mountPath"
+                    f.put("mountPath", blob);  // ✅ Include mount path in metadata
                 }
             }
         }
+
         String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metaMap);
+
+        // ✅ Log metadata.json before uploading
+        logger.info("📝 Metadata JSON before sending to OT:\n{}", json);
+
         File metaFile = new File(jobDir.toFile(), "metadata.json");
         FileUtils.writeStringToFile(metaFile, json, StandardCharsets.UTF_8);
         String blobPath = String.format("%s/Trigger/metadata_%s.json", message.getSourceSystem(), message.getBatchId());
