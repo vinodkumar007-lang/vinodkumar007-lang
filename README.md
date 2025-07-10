@@ -1,16 +1,12 @@
-2025-07-10T07:45:00.594Z  INFO 1 --- [           main] .s.b.a.l.ConditionEvaluationReportLogger :
-
-Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
-2025-07-10T07:45:00.643Z ERROR 1 --- [           main] o.s.b.d.LoggingFailureAnalysisReporter   :
-
-***************************
-APPLICATION FAILED TO START
-***************************
-
-Description:
-
-The bean 'kafkaTemplate', defined in class path resource [com/nedbank/kafka/filemanage/config/KafkaProducerConfig.class], could not be registered. A bean with that name has already been defined in class path resource [com/nedbank/kafka/filemanage/config/KafkaConfig.class] and overriding is disabled.
-
-Action:
-
-Consider renaming one of the beans or enabling overriding by setting spring.main.allow-bean-definition-overriding=true
+C:\Users\CC437236\OneDrive - Nedbank\Documents\file-manager>docker run -t file-manager-app
+Exception in thread "main" java.lang.ClassNotFoundException: com.nedbank.kafka.filemanager.Application
+        at java.base/java.net.URLClassLoader.findClass(URLClassLoader.java:445)
+        at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:587)
+        at org.springframework.boot.loader.LaunchedURLClassLoader.loadClass(LaunchedURLClassLoader.java:149)
+        at java.base/java.lang.ClassLoader.loadClass(ClassLoader.java:520)
+        at java.base/java.lang.Class.forName0(Native Method)
+        at java.base/java.lang.Class.forName(Class.java:467)
+        at org.springframework.boot.loader.MainMethodRunner.run(MainMethodRunner.java:46)
+        at org.springframework.boot.loader.Launcher.launch(Launcher.java:95)
+        at org.springframework.boot.loader.Launcher.launch(Launcher.java:58)
+        at org.springframework.boot.loader.JarLauncher.main(JarLauncher.java:65)
