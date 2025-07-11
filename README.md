@@ -58,29 +58,20 @@ public class KafkaListenerService {
         this.kafkaTemplate = kafkaTemplate;
     }
 
-    private OTResponse callOrchestrationBatchApi(String token, KafkaMessage msg) {
+    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}",
+            containerFactory = "kafkaListenerContainerFactory")
+    public void consumeKafkaMessage(String message) {
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.set("Authorization", "Bearer " + token);
-            headers.setContentType(MediaType.APPLICATION_JSON);
-
-            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
-            ResponseEntity<Map> response = restTemplate.exchange(otOrchestrationApiUrl, HttpMethod.POST, request, Map.class);
-
-            logger.info("📨 OT Orchestration Response: {}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response.getBody()));
-
-            List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get("data");
-            if (data != null && !data.isEmpty()) {
-                Map<String, Object> item = data.get(0);
-                OTResponse otResponse = new OTResponse();
-                otResponse.setJobId((String) item.get("jobId"));
-                otResponse.setId((String) item.get("id"));
-                return otResponse;
-            }
-        } catch (Exception e) {
-            logger.error("❌ Failed OT Orchestration call", e);
+            logger.info("Received Kafka message.");
+            KafkaMessage kafkaMessage = objectMapper.readValue(message, KafkaMessage.class);
+            ApiResponse response = processSingleMessage(kafkaMessage);
+            logger.info("Final Summary JSON: \n{}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response.getSummaryPayload()));
+            logger.info("Final API Response: \n{}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response));
+            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(response));
+            logger.info("Sent processed response to Kafka output topic.");
+        } catch (Exception ex) {
+            logger.error("❌ Error processing Kafka message", ex);
         }
-        return null;
     }
 
     public ApiResponse processSingleMessage(KafkaMessage message) {
@@ -142,6 +133,31 @@ public class KafkaListenerService {
             logger.error("Failed in processing", ex);
             return new ApiResponse("Processing failed: " + ex.getMessage(), "error", null);
         }
+    }
+
+    private OTResponse callOrchestrationBatchApi(String token, KafkaMessage msg) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer " + token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
+            ResponseEntity<Map> response = restTemplate.exchange(otOrchestrationApiUrl, HttpMethod.POST, request, Map.class);
+
+            logger.info("📨 OT Orchestration Response: {}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response.getBody()));
+
+            List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get("data");
+            if (data != null && !data.isEmpty()) {
+                Map<String, Object> item = data.get(0);
+                OTResponse otResponse = new OTResponse();
+                otResponse.setJobId((String) item.get("jobId"));
+                otResponse.setId((String) item.get("id"));
+                return otResponse;
+            }
+        } catch (Exception e) {
+            logger.error("❌ Failed OT Orchestration call", e);
+        }
+        return null;
     }
 
     private File waitForXmlFile(String jobId, String id) throws InterruptedException, IOException {
@@ -342,4 +358,4 @@ class OTResponse {
 
     public String getId() { return id; }
     public void setId(String id) { this.id = id; }
-} 
+}
