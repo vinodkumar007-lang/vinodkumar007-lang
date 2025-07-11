@@ -1,30 +1,58 @@
-2025-07-11T15:10:30.574+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : 📂 docgen folder not found. Retrying in 5000ms...
-2025-07-11T15:10:35.768+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : ✅ Found XML file: /mnt/nfs/dev-exstream/dev-SA/jobs/6d5a9c27-595f-453d-868d-36262bd92c64/1a597464-fab1-46f2-8dab-56e952f2a81f/docgen/3dbe63e8-5c5f-4f1d-893e-5e0b992b9c03/output/_STDDELIVERYFILE.xml
-2025-07-11T15:10:36.939+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.BlobStorageService       : Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2Farchive%2FD69E7661F52C8DF-0000000000009882'
-2025-07-11T15:10:37.250+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.BlobStorageService       : Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2Farchive%2FD69E7661F52C8DF-0000000000009883'
-2025-07-11T15:10:37.558+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.BlobStorageService       : Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2Farchive%2FD69E7661F52C8DF-000000000000988B'
-2025-07-11T15:10:37.941+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.BlobStorageService       : Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2Farchive%2FD69E7661F52C8DF-000000000000988E'
-2025-07-11T15:10:38.240+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.BlobStorageService       : Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2Farchive%2FD69E7661F52C8DF-000000000000988F'
-2025-07-11T15:10:38.641+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.BlobStorageService       : Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2Farchive%2FD69E7661F52C8DF-0000000000009890'
-2025-07-11T15:10:38.741+02:00 ERROR 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : Error uploading file: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/6d5a9c27-595f-453d-868d-36262bd92c64/email/3768000010607501_CCEML805.pdf
+public String uploadFile(String content, String targetPath) {
+        try {
+            initSecrets();
+            BlobServiceClient blobClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format(azureStorageFormat, accountName))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+                    .buildClient();
 
-java.nio.charset.MalformedInputException: Input length = 3
-	at java.base/java.lang.String.throwMalformed(String.java:1242) ~[na:na]
-	at java.base/java.lang.String.decodeUTF8_UTF16(String.java:1129) ~[na:na]
-	at java.base/java.lang.String.newStringUTF8NoRepl(String.java:732) ~[na:na]
-	at java.base/java.lang.String.newStringNoRepl1(String.java:760) ~[na:na]
-	at java.base/java.lang.String.newStringNoRepl(String.java:742) ~[na:na]
-	at java.base/java.lang.System$2.newStringNoRepl(System.java:2394) ~[na:na]
-	at java.base/java.nio.file.Files.readString(Files.java:3369) ~[na:na]
-	at java.base/java.nio.file.Files.readString(Files.java:3325) ~[na:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.lambda$buildAndUploadProcessedFiles$5(KafkaListenerService.java:282) ~[classes!/:na]
-	at java.base/java.util.Iterator.forEachRemaining(Iterator.java:133) ~[na:na]
-	at java.base/java.util.Spliterators$IteratorSpliterator.forEachRemaining(Spliterators.java:1845) ~[na:na]
-	at java.base/java.util.stream.ReferencePipeline$Head.forEach(ReferencePipeline.java:762) ~[na:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.buildAndUploadProcessedFiles(KafkaListenerService.java:267) ~[classes!/:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.processSingleMessage(KafkaListenerService.java:115) ~[classes!/:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.consumeKafkaMessage(KafkaListenerService.java:67) ~[classes!/:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method) ~[na:na]
-	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77) ~[na:na]
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
+            BlobClient blob = blobClient.getBlobContainerClient(containerName).getBlobClient(targetPath);
+            blob.upload(new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)), content.length(), true);
+
+            logger.info("Uploaded file to '{}'", blob.getBlobUrl());
+            return blob.getBlobUrl();
+        } catch (Exception e) {
+            logger.error("Upload failed: {}", e.getMessage(), e);
+            throw new CustomAppException("Upload failed", 602, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
+
+    private List<SummaryProcessedFile> buildAndUploadProcessedFiles(Path jobDir, Map<String, String> accountCustomerMap, KafkaMessage msg) throws IOException {
+        List<SummaryProcessedFile> list = new ArrayList<>();
+        List<String> folders = List.of("archive", "email", "html", "mobstat", "txt");
+
+        for (String folder : folders) {
+            Path subDir = jobDir.resolve(folder);
+            if (!Files.exists(subDir)) continue;
+
+            Files.list(subDir).forEach(file -> {
+                try {
+                    String fileName = file.getFileName().toString();
+                    String account = extractAccountFromFileName(fileName);
+                    if (account == null) return;
+                    String customer = accountCustomerMap.get(account);
+                    SummaryProcessedFile entry = list.stream().filter(e -> account.equals(e.getAccountNumber())).findFirst().orElseGet(() -> {
+                        SummaryProcessedFile newEntry = new SummaryProcessedFile();
+                        newEntry.setAccountNumber(account);
+                        newEntry.setCustomerId(customer);
+                        newEntry.setStatusCode("OK");
+                        newEntry.setStatusDescription("Success");
+                        list.add(newEntry);
+                        return newEntry;
+                    });
+                    String blobUrl = blobStorageService.uploadFile(Files.readString(file), String.format("%s/%s/%s/%s/%s",
+                            msg.getSourceSystem(), msg.getBatchId(), msg.getUniqueConsumerRef(), folder, fileName));
+                    switch (folder) {
+                        case "archive" -> entry.setPdfArchiveFileUrl(blobUrl);
+                        case "email" -> entry.setPdfEmailFileUrl(blobUrl);
+                        case "html" -> entry.setHtmlEmailFileUrl(blobUrl);
+                        case "txt" -> entry.setTxtEmailFileUrl(blobUrl);
+                        case "mobstat" -> entry.setPdfMobstatFileUrl(blobUrl);
+                    }
+                } catch (Exception e) {
+                    logger.error("Error uploading file: {}", file, e);
+                }
+            });
+        }
+        return list;
+    }
