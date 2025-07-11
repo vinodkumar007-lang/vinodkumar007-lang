@@ -25,7 +25,7 @@ public class SummaryJsonWriter {
         }
 
         try {
-            String batchId = payload.getBatchID() != null ? payload.getBatchID() : "unknown";
+            String batchId = Optional.ofNullable(payload.getBatchID()).orElse("unknown");
             String fileName = "summary_" + batchId + ".json";
 
             Path tempDir = Files.createTempDirectory("summaryFiles");
@@ -38,12 +38,12 @@ public class SummaryJsonWriter {
             }
 
             objectMapper.writeValue(summaryFile, payload);
-            logger.info("Summary JSON written at: {}", summaryFilePath);
+            logger.info("✅ Summary JSON written at: {}", summaryFilePath);
 
             return summaryFilePath.toAbsolutePath().toString();
 
         } catch (Exception e) {
-            logger.error("Failed to write summary.json", e);
+            logger.error("❌ Failed to write summary.json", e);
             throw new RuntimeException("Failed to write summary JSON", e);
         }
     }
@@ -59,6 +59,7 @@ public class SummaryJsonWriter {
         payload.setFileName(message.getBatchId() + ".csv");
         payload.setMobstatTriggerFile(mobstatTriggerPath);
 
+        // Header block
         Header header = new Header();
         header.setTenantCode(message.getTenantCode());
         header.setChannelID(message.getChannelID());
@@ -69,6 +70,7 @@ public class SummaryJsonWriter {
         header.setTimestamp(Instant.now().toString());
         payload.setHeader(header);
 
+        // Metadata block
         Metadata metadata = new Metadata();
         metadata.setTotalFilesProcessed(processedFiles != null ? processedFiles.size() : 0);
         metadata.setProcessingStatus("Completed");
@@ -76,6 +78,7 @@ public class SummaryJsonWriter {
         metadata.setEventOutcomeDescription("Success");
         payload.setMetadata(metadata);
 
+        // Payload block
         Payload payloadDetails = new Payload();
         payloadDetails.setUniqueConsumerRef(message.getUniqueConsumerRef());
         payloadDetails.setUniqueECPBatchRef(message.getUniqueECPBatchRef());
@@ -86,8 +89,8 @@ public class SummaryJsonWriter {
         payloadDetails.setFileCount(processedFiles != null ? processedFiles.size() : 0);
         payload.setPayload(payloadDetails);
 
-        payload.setProcessedFiles(processedFiles);
-        payload.setPrintFiles(printFiles);
+        payload.setProcessedFiles(processedFiles != null ? processedFiles : new ArrayList<>());
+        payload.setPrintFiles(printFiles != null ? printFiles : new ArrayList<>());
 
         return payload;
     }
