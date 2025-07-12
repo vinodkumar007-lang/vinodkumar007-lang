@@ -1,100 +1,15 @@
-public ApiResponse processSingleMessage(KafkaMessage message) {
-    try {
-        List<BatchFile> dataFiles = message.getBatchFiles().stream()
-                .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
-                .toList();
-        message.setBatchFiles(dataFiles);
+2025-07-12T13:55:24.539+02:00 ERROR 1 --- [ntainer#0-0-C-1] o.s.k.support.LoggingProducerListener    : Exception thrown when sending a message with key='null' and payload='{"message":"Success","status":"success","summaryPayload":{"batchID":"6e8e56f7-a4fe-42a1-96b3-bf12d63...' to topic str-ecp-batch-composition-complete:
 
-        String batchId = message.getBatchId();
-        Path batchDir = Paths.get(mountPath, "input", message.getSourceSystem(), batchId);
-        Files.createDirectories(batchDir);
+org.apache.kafka.common.errors.TimeoutException: Topic str-ecp-batch-composition-complete not present in metadata after 60000 ms.
 
-        for (BatchFile file : dataFiles) {
-            String blobUrl = file.getBlobUrl();
-            String content = blobStorageService.downloadFileContent(blobUrl);
-            Path localPath = batchDir.resolve(message.getSourceSystem() + ".csv");
-            Files.write(localPath, content.getBytes(StandardCharsets.UTF_8));
-            file.setBlobUrl(localPath.toString());
-        }
+2025-07-12T13:55:24.540+02:00 DEBUG 1 --- [ntainer#0-0-C-1] o.s.kafka.core.KafkaTemplate             : Failed to send: ProducerRecord(topic=str-ecp-batch-composition-complete, partition=null, headers=RecordHeaders(headers = [RecordHeader(key = X-dynaTrace, value = [0, 0, 0, 4, -83, -87, 31, 75, 0, 0, 0, -100, 0, 0, 0, -85, 0, 0, 0, 13, -63, 28, 91, 39, 20, 117, -120, -111, 0, 0, 1, -2, -7, 90, 4, 8, 0, 0, 0, 1, 6, 8, -83, -87, 31, 75, 8, 8, 0, 0, 0, -100, 10, 8, 0, 0, 0, 1, 12, 32, 121, 8, -63, 22, -53, 19, -93, -44, -41, 72, 32, 126, 123, -127, 75, -42, 14, 16, 51, 125, 80, -81, -94, 64, 47, -44]), RecordHeader(key = traceparent, value = [48, 48, 45, 55, 57, 48, 56, 99, 49, 49, 54, 99, 98, 49, 51, 97, 51, 100, 52, 100, 55, 52, 56, 50, 48, 55, 101, 55, 98, 56, 49, 52, 98, 100, 54, 45, 51, 51, 55, 100, 53, 48, 97, 102, 97, 50, 52, 48, 50, 102, 100, 52, 45, 48, 49]), RecordHeader(key = tracestate, value = [49, 52, 55, 53, 56, 56, 57, 49, 45, 99, 49, 49, 99, 53, 98, 50, 55, 64, 100, 116, 61, 102, 119, 52, 59, 100, 59, 97, 100, 97, 57, 49, 102, 52, 98, 59, 57, 99, 59, 97, 98, 59, 48, 59, 48, 59, 49, 102, 101, 59, 57, 49, 56, 99, 59, 50, 104, 48, 49, 59, 51, 104, 97, 100, 97, 57, 49, 102, 52, 98, 59, 52, 104, 57, 99, 59, 53, 104, 48, 49, 59, 54, 104, 55, 57, 48, 56, 99, 49, 49, 54, 99, 98, 49, 51, 97, 51, 100, 52, 100, 55, 52, 56, 50, 48, 55, 101, 55, 98, 56, 49, 52, 98, 100, 54, 59, 55, 104, 51, 51, 55, 100, 53, 48, 97, 102, 97, 50, 52, 48, 50, 102, 100, 52])], isReadOnly = false), key=null, value={"message":"Success","status":"success","summaryPayload":{"batchID":"6e8e56f7-a4fe-42a1-96b3-bf12d63c9142","fileName":"6e8e56f7-a4fe-42a1-96b3-bf12d63c9142.csv","header":{"tenantCode":"ZANBL","channelID":null,"audienceID":null,"timestamp":"2025-07-12T11:54:24.429320974Z","sourceSystem":"DEBTMAN","product":"DEBTMAN","jobName":"DEBTMAN"},"metadata":{"totalFilesProcessed":9617,"processingStatus":"Completed","eventOutcomeCode":"0","eventOutcomeDescription":"Success"},"payload":{"uniqueConsumerRef":"19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs","uniqueECPBatchRef":null,"runPriority":null,"eventID":null,"eventType":null,"restartKey":null,"fileCount":166},"summaryFileURL":"https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN/6e8e56f7-a4fe-42a1-96b3-bf12d63c9142/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/summary_6e8e56f7-a4fe-42a1-96b3-bf12d63c9142.json","timestamp":null}}, timestamp=null)
 
-        writeAndUploadMetadataJson(message, batchDir);
+org.apache.kafka.common.errors.TimeoutException: Topic str-ecp-batch-composition-complete not present in metadata after 60000 ms.
 
-        // ✅ Use your actual token
-        String token = "eyJraWQiOiJjZjkwMjJmMjUxNjM2MjQzNjI5YmE1ZmNmMjMwZDI4YzFlOTJkNDNiIiwidHlwIjoiSldUIiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiIxZGY1MmRlMy1hYTJhLTQwMDUtODBmMi1jYzljMTY5NDU4ZDAiLCJzY3AiOlsib3Rkczpncm91cHMiLCJvdGRzOnJvbGVzIl0sInJvbGUiOltdLCJncnAiOlsidGVuYW50YWRtaW5zQGV4c3RyZWFtLnJvbGUiLCJvdGRzYWRtaW5zQG90ZHMuYWRtaW4iLCJvdGFkbWluc0BvdGRzLmFkbWluIiwiZW1wb3dlcmFkbWluc0BleHN0cmVhbS5yb2xlIl0sImRtcCI6eyJPVERTX0NSRURTX0FVVEgiOiJ0cnVlIiwiT1REU19IQVNfUEFTU1dPUkQiOiJmYWxzZSJ9LCJydGkiOiI1ZjFkMzFjNC02ZTdkLTRlYWEtOTU3MC1hMGY4OWJiOGI3NTUiLCJzYXQiOjE3NTIyNDU2NTcsImlzcyI6Imh0dHBzOi8vZGV2LWV4c3RyZWFtLm5lZG5ldC5jby56YTo0NDMvb3Rkcy9vdGRzd3MiLCJncnQiOiJwYXNzd29yZCIsInN1Yl90eXAiOjAsInR5cCI6ImFjY2Vzc190b2tlbiIsInBpZCI6ImV4c3RyZWFtLnJvbGUiLCJyaWQiOnt9LCJ0aWQiOiJkZXYtZXhzdHJlYW0iLCJzaWQiOiIxZmQ2YmI4NC00YjY0LTQzZDgtOTJiMS1kY2U2YWIzZDQ3OWYiLCJ1aWQiOiJ0ZW5hbnRhZG1pbkBleHN0cmVhbS5yb2xlIiwidW5tIjoidGVuYW50YWRtaW4iLCJuYW1lIjoidGVuYW50YWRtaW4iLCJleHAiOjE3ODM3ODE2NTcsImlhdCI6MTc1MjI0NTY1NywianRpIjoiMGU4ZWI4NzYtOWJmYi00OTczLWFiN2ItM2EyZTg4NWM5N2MzIiwiY2lkIjoiZGV2ZXhzdHJlYW1jbGllbnQifQ.JdXQ7pDNlEBS8jOny0yhKrC85CsypDdJzjww_OhVKL4BNBLQRfJf04ESqcnoONEIfbeARLGPS6THMP6K6xOeHcO7oViTFtgXg27jhrfj6OXiU52pAvo2qFBAs6VvTueNjDOyQMsau-PzigYdPNw86IWzeK0Ude7DhaR1rNTPbu7LsqKHM3aD6SFli0EeLSux5eJYdWqTy2gpH4iNodxPjlyt5i6UoNEwl1TqUwbMEtbztfrGiwMPXvSflGBH10pSDDtNpssiyvsDl_flnqLmqxso-Ff5AVs8eAjHgsQnSEIeQQp9sX0JoSbNgW8D0iACdlI-6f9onOLg4JW-Ozucmg";
-        OTResponse otResponse = callOrchestrationBatchApi(token, message);
-        if (otResponse == null) return new ApiResponse("OT call failed", "error", null);
+2025-07-12T13:55:24.540+02:00 ERROR 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : ❌ Error processing Kafka message
 
-        File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
-        if (xmlFile == null) return new ApiResponse("_STDDELIVERYFILE.xml not found", "error", null);
-
-        DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
-        DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
-        Document doc = dBuilder.parse(xmlFile);
-        doc.getDocumentElement().normalize();
-
-        int customersProcessed = 0;
-        NodeList outputListNodes = doc.getElementsByTagName("outputList");
-        if (outputListNodes.getLength() > 0) {
-            Element outputList = (Element) outputListNodes.item(0);
-            String val = outputList.getAttribute("customersProcessed");
-            if (val != null) {
-                try {
-                    customersProcessed = Integer.parseInt(val);
-                } catch (NumberFormatException ignored) {}
-            }
-        }
-
-        String errorReportFilePath = null;
-        NodeList reportFileNodes = doc.getElementsByTagName("reportFile");
-        for (int i = 0; i < reportFileNodes.getLength(); i++) {
-            Element reportFile = (Element) reportFileNodes.item(i);
-            if ("Error_Report".equalsIgnoreCase(reportFile.getAttribute("dataFile"))) {
-                errorReportFilePath = reportFile.getAttribute("name");
-                break;
-            }
-        }
-
-        Map<String, String> accountCustomerMap = extractAccountCustomerMapFromDoc(doc);
-        Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
-        List<SummaryProcessedFile> processedFiles = buildAndUploadProcessedFiles(jobDir, accountCustomerMap, message);
-
-        Map<String, String> successMap = new HashMap<>();
-        for (SummaryProcessedFile s : processedFiles) successMap.put(s.getAccountNumber(), s.getCustomerId());
-        processedFiles.addAll(appendFailureEntries(errorReportFilePath, successMap));
-
-        List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
-        String mobstatTriggerPath = jobDir.resolve("mobstat_trigger/DropData.trigger").toString();
-
-        // ✅ Upload DropData.trigger if exists
-        Path triggerFile = Paths.get(mobstatTriggerPath);
-        if (Files.exists(triggerFile)) {
-            String remotePath = String.format("%s/%s/%s/mobstat_trigger/DropData.trigger",
-                    message.getSourceSystem(), message.getBatchId(), message.getUniqueConsumerRef());
-            blobStorageService.uploadFile(triggerFile.toFile(), remotePath);
-        }
-
-        // ✅ Build full summary.json (with full details)
-        SummaryPayload payload = SummaryJsonWriter.buildPayload(
-                message, processedFiles, printFiles, mobstatTriggerPath, customersProcessed);
-
-        String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
-        String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, "summary_" + batchId + ".json");
-        payload.setSummaryFileURL(decodeUrl(summaryUrl));
-
-        // ✅ Send only light final response — no print/processed files
-        SummaryResponse summaryResponse = new SummaryResponse();
-        summaryResponse.setBatchID(batchId);
-        summaryResponse.setFileName(payload.getFileName());
-        summaryResponse.setHeader(payload.getHeader());
-        summaryResponse.setMetadata(payload.getMetadata());
-        summaryResponse.setPayload(payload.getPayload());
-        summaryResponse.setMobstatTriggerFile(payload.getMobstatTriggerFile());
-        summaryResponse.setSummaryFileURL(payload.getSummaryFileURL());
-
-        return new ApiResponse("Success", "success", summaryResponse);
-
-    } catch (Exception ex) {
-        logger.error("❌ Processing failed", ex);
-        return new ApiResponse("Processing failed", "error", null);
-    }
-}
+org.springframework.kafka.KafkaException: Send failed
+	at org.springframework.kafka.core.KafkaTemplate.doSend(KafkaTemplate.java:794) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+	at org.springframework.kafka.core.KafkaTemplate.observeSend(KafkaTemplate.java:754) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+	at org.springframework.kafka.core.KafkaTemplate.send(KafkaTemplate.java:538) ~[spring-kafka-3.0.11.jar!/:3.0.11]
+	at com.nedbank.kafka.filemanage.service.KafkaListenerService.consumeKafkaMessage(KafkaListenerService.java:67) ~[classes!/:na]
