@@ -1,5 +1,5 @@
-# Allow long processing time (e.g., OT takes up to 1 hour)
-spring.kafka.consumer.properties.max.poll.interval.ms=4200000
+org.apache.kafka.common.errors.TimeoutException: Topic str-ecp-batch-composition-complete not present in metadata after 180000 ms.
 
-# Ensure only one message is polled at a time
-spring.kafka.consumer.max-poll-records=1
+2025-07-12T15:15:37.462+02:00 ERROR 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : ❌ Error processing Kafka message or sending response
+
+org.springframework.kafka.KafkaException: Send failed
