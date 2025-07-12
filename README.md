@@ -1,25 +1,3 @@
-@KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}",
-        containerFactory = "kafkaListenerContainerFactory")
-public void consumeKafkaMessage(String message) {
-    try {
-        KafkaMessage kafkaMessage = objectMapper.readValue(message, KafkaMessage.class);
-        ApiResponse response = processSingleMessage(kafkaMessage);
-
-        // ✅ Log final API response
-        String responseJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response);
-        logger.info("📦 Final API Response:\n{}", responseJson);
-
-        // ✅ Kafka send with timeout (e.g., 30 seconds)
-        kafkaTemplate.send(kafkaOutputTopic, responseJson).get(30, TimeUnit.SECONDS);
-        logger.info("✅ Successfully sent response to Kafka topic {}", kafkaOutputTopic);
-    } catch (Exception ex) {
-        logger.error("❌ Error processing Kafka message or sending response", ex);
-    }
-}
-// ✅ Log full summary.json content before uploading
-try {
-    String summaryJson = Files.readString(Paths.get(summaryPath));
-    logger.info("📄 summary.json content before upload:\n{}", summaryJson);
-} catch (Exception e) {
-    logger.warn("⚠️ Failed to read summary.json before upload", e);
-}
+025-07-12T15:05:50.480+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : ⏳ XML file found but still empty. Waiting...
+2025-07-12T15:05:52.080+02:00  WARN 1 --- [| str-ecp-batch] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] consumer poll timeout has expired. This means the time between subsequent calls to poll() was longer than the configured max.poll.interval.ms, which typically implies that the poll loop is spending too much time processing messages. You can address this either by increasing max.poll.interval.ms or by reducing the maximum size of batches returned in poll() with max.poll.records.
+2025-07-12T15:05:52.080+02:00  INFO 1 --- [| str-ecp-batch] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer c
