@@ -1,14 +1,50 @@
-File xmlFile = waitForXmlFile(...);
-if (xmlFile == null) return new ApiResponse("_STDDELIVERYFILE.xml not found", "error", null);
+private File waitForXmlFile(String jobId, String id) throws InterruptedException {
+    Path docgenRoot = Paths.get(mountPath, "jobs", jobId, id, "docgen");
+    logger.info("🔍 Looking for _STDDELIVERYFILE.xml under {}", docgenRoot);
 
-if (xmlFile.length() == 0) {
-    logger.error("❌ _STDDELIVERYFILE.xml is empty");
-    return new ApiResponse("_STDDELIVERYFILE.xml is empty", "error", null);
+    long startTime = System.currentTimeMillis();
+    while ((System.currentTimeMillis() - startTime) < rptMaxWaitSeconds * 1000L) {
+        if (!Files.exists(docgenRoot)) {
+            logger.info("📂 docgen folder not yet available. Retrying in {}ms...", rptPollIntervalMillis);
+            TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+            continue;
+        }
+
+        try (Stream<Path> paths = Files.walk(docgenRoot)) {
+            Optional<Path> xmlPath = paths
+                    .filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().equalsIgnoreCase("_STDDELIVERYFILE.xml"))
+                    .findFirst();
+
+            if (xmlPath.isPresent()) {
+                File xmlFile = xmlPath.get().toFile();
+
+                // Check non-empty
+                if (xmlFile.length() == 0) {
+                    logger.info("⏳ XML file found but still empty. Waiting...");
+                    TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+                    continue;
+                }
+
+                // Try parsing to ensure it’s complete
+                try {
+                    DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+                    DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+                    dBuilder.parse(xmlFile);  // Attempt parse
+                    logger.info("✅ Valid and complete XML file found: {}", xmlFile.getAbsolutePath());
+                    return xmlFile;
+                } catch (Exception e) {
+                    logger.info("⏳ XML file found but still being written (not parseable). Waiting...");
+                    TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+                }
+            }
+        } catch (IOException e) {
+            logger.warn("⚠️ Error while scanning docgen folder", e);
+        }
+
+        TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+    }
+
+    logger.error("❌ Timed out after {} seconds waiting for complete _STDDELIVERYFILE.xml", rptMaxWaitSeconds);
+    return null;
 }
-
-
-2025-07-12T11:17:08.370+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : ✅ Found XML file: /mnt/nfs/dev-exstream/dev-SA/jobs/298142ba-4544-45d8-8e49-bee742fd2f0b/7af5284e-95e4-4766-9217-f0b0cefb7405/docgen/a8a7c9e6-2207-4bff-952e-c6e5d78d8eeb/output/_STDDELIVERYFILE.xml
-[Fatal Error] _STDDELIVERYFILE.xml:1:1: Premature end of file.
-2025-07-12T11:17:08.380+02:00 ERROR 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : ❌ Processing failed
-
-org.xml.sax.SAXParseException: Premature end of file.
