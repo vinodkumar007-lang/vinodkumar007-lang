@@ -1,3 +1,5 @@
-025-07-12T15:05:50.480+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : ⏳ XML file found but still empty. Waiting...
-2025-07-12T15:05:52.080+02:00  WARN 1 --- [| str-ecp-batch] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] consumer poll timeout has expired. This means the time between subsequent calls to poll() was longer than the configured max.poll.interval.ms, which typically implies that the poll loop is spending too much time processing messages. You can address this either by increasing max.poll.interval.ms or by reducing the maximum size of batches returned in poll() with max.poll.records.
-2025-07-12T15:05:52.080+02:00  INFO 1 --- [| str-ecp-batch] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer c
+# Allow long processing time (e.g., OT takes up to 1 hour)
+spring.kafka.consumer.properties.max.poll.interval.ms=4200000
+
+# Ensure only one message is polled at a time
+spring.kafka.consumer.max-poll-records=1
