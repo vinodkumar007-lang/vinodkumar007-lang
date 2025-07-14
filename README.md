@@ -3,6 +3,7 @@ package com.nedbank.kafka.filemanage.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nedbank.kafka.filemanage.model.*;
 import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
+import jakarta.annotation.PreDestroy;
 import org.apache.commons.io.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +16,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.w3c.dom.*;
 
-import javax.annotation.PreDestroy;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.*;
@@ -285,7 +285,7 @@ public class KafkaListenerService {
         return null;
     }
 
-    @PreDestroy
+   @PreDestroy
     public void shutdownExecutor() {
         executor.shutdown();
     }
