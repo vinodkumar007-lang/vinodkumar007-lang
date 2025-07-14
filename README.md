@@ -1,63 +1,166 @@
-2025-07-14T05:56:47.435+02:00 ERROR 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : ❌ Error processing Kafka message or sending response
+# Kafka Consumer Configuration
+kafka.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
+kafka.consumer.group.id=str-ecp-batch
+kafka.consumer.auto.offset.reset=earliest
+kafka.consumer.enable.auto.commit=false
 
-org.springframework.kafka.KafkaException: Send failed
-	at org.springframework.kafka.core.KafkaTemplate.doSend(KafkaTemplate.java:794) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.core.KafkaTemplate.observeSend(KafkaTemplate.java:754) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.core.KafkaTemplate.send(KafkaTemplate.java:538) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.consumeKafkaMessage(KafkaListenerService.java:73) ~[classes!/:na]
-	at jdk.internal.reflect.GeneratedMethodAccessor98.invoke(Unknown Source) ~[na:na]
-	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43) ~[na:na]
-	at java.base/java.lang.reflect.Method.invoke(Method.java:568) ~[na:na]
-	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.doInvoke(InvocableHandlerMethod.java:169) ~[spring-messaging-6.0.2.jar!/:6.0.2]
-	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.invoke(InvocableHandlerMethod.java:119) ~[spring-messaging-6.0.2.jar!/:6.0.2]
-	at org.springframework.kafka.listener.adapter.HandlerAdapter.invoke(HandlerAdapter.java:56) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.invokeHandler(MessagingMessageListenerAdapter.java:375) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:92) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:53) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeOnMessage(KafkaMessageListenerContainer.java:2873) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeOnMessage(KafkaMessageListenerContainer.java:2854) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.lambda$doInvokeRecordListener$57(KafkaMessageListenerContainer.java:2772) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at io.micrometer.observation.Observation.observe(Observation.java:559) ~[micrometer-observation-1.10.2.jar!/:1.10.2]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeRecordListener(KafkaMessageListenerContainer.java:2770) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeWithRecords(KafkaMessageListenerContainer.java:2622) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeRecordListener(KafkaMessageListenerContainer.java:2508) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeListener(KafkaMessageListenerContainer.java:2150) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeIfHaveRecords(KafkaMessageListenerContainer.java:1505) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.pollAndInvoke(KafkaMessageListenerContainer.java:1469) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.run(KafkaMessageListenerContainer.java:1344) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804) ~[na:na]
-	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
-Caused by: org.apache.kafka.common.errors.TimeoutException: Topic str-ecp-batch-composition-complete not present in metadata after 180000 ms.
+# SSL Configuration
+kafka.consumer.security.protocol=SSL
+kafka.consumer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
+kafka.consumer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
+kafka.consumer.ssl.key.password=3dX7y3Yz9Jv6L4F
+kafka.consumer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
+kafka.consumer.ssl.truststore.password=nedbank1
+kafka.consumer.ssl.protocol=TLSv1.2
 
-2025-07-14T05:56:47.442+02:00 DEBUG 1 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Committing: {str-ecp-batch-composition-0=OffsetAndMetadata{offset=18739, leaderEpoch=null, metadata=''}}
-2025-07-14T05:56:47.442+02:00  INFO 1 --- [ntainer#0-0-C-1] o.a.k.c.c.internals.ConsumerCoordinator  : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Failing OffsetCommit request since the consumer is not part of an active group
-2025-07-14T05:56:47.446+02:00  INFO 1 --- [ntainer#0-0-C-1] org.apache.kafka.clients.NetworkClient   : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Node 1 disconnected.
-2025-07-14T05:56:47.446+02:00 DEBUG 1 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Commit list: {}
-2025-07-14T05:56:47.456+02:00  INFO 1 --- [ntainer#0-0-C-1] o.a.k.clients.consumer.KafkaConsumer     : [Consumer clientId=consumer-str-ecp-batch-1, groupId=str-ecp-batch] Seeking to offset 18738 for partition str-ecp-batch-composition-0
-2025-07-14T05:56:47.456+02:00 ERROR 1 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Error handler threw an exception
+# Kafka Consumer Deserialization
+kafka.consumer.key.deserializer=org.apache.kafka.common.serialization.StringDeserializer
+kafka.consumer.value.deserializer=org.apache.kafka.common.serialization.StringDeserializer
 
-org.springframework.kafka.KafkaException: Seek to current after exception
-	at org.springframework.kafka.listener.SeekUtils.seekOrRecover(SeekUtils.java:208) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.DefaultErrorHandler.handleRemaining(DefaultErrorHandler.java:174) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeErrorHandler(KafkaMessageListenerContainer.java:2909) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.lambda$doInvokeRecordListener$57(KafkaMessageListenerContainer.java:2783) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at io.micrometer.observation.Observation.observe(Observation.java:559) ~[micrometer-observation-1.10.2.jar!/:1.10.2]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeRecordListener(KafkaMessageListenerContainer.java:2770) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeWithRecords(KafkaMessageListenerContainer.java:2622) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeRecordListener(KafkaMessageListenerContainer.java:2508) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeListener(KafkaMessageListenerContainer.java:2150) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeIfHaveRecords(KafkaMessageListenerContainer.java:1505) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.pollAndInvoke(KafkaMessageListenerContainer.java:1469) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.run(KafkaMessageListenerContainer.java:1344) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804) ~[na:na]
-	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
-Caused by: org.apache.kafka.clients.consumer.CommitFailedException: Offset commit cannot be completed since the consumer is not part of an active group for auto partition assignment; it is likely that the consumer was kicked out of the group.
-	at org.apache.kafka.clients.consumer.internals.ConsumerCoordinator.sendOffsetCommitRequest(ConsumerCoordinator.java:1311) ~[kafka-clients-3.3.1.jar!/:na]
-	at org.apache.kafka.clients.consumer.internals.ConsumerCoordinator.commitOffsetsSync(ConsumerCoordinator.java:1168) ~[kafka-clients-3.3.1.jar!/:na]
-	at org.apache.kafka.clients.consumer.KafkaConsumer.commitSync(KafkaConsumer.java:1506) ~[kafka-clients-3.3.1.jar!/:na]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doCommitSync(KafkaMessageListenerContainer.java:3285) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.commitSync(KafkaMessageListenerContainer.java:3280) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.ackCurrent(KafkaMessageListenerContainer.java:3007) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeOnMessage(KafkaMessageListenerContainer.java:2856) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.lambda$doInvokeRecordListener$57(KafkaMessageListenerContainer.java:2772) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	... 10 common frames omitted
+# Kafka Producer Configuration (to send Summary File URL)
+kafka.producer.key.serializer=org.apache.kafka.common.serialization.StringSerializer
+kafka.producer.value.serializer=org.apache.kafka.common.serialization.StringSerializer
+kafka.producer.security.protocol=SSL
+kafka.producer.ssl.keystore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks
+kafka.producer.ssl.keystore.password=3dX7y3Yz9Jv6L4F
+kafka.producer.ssl.key.password=3dX7y3Yz9Jv6L4F
+kafka.producer.ssl.truststore.location=C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks
+kafka.producer.ssl.truststore.password=nedbank1
+kafka.producer.ssl.protocol=TLSv1.2
+kafka.producer.bootstrap.servers=nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093
+spring.kafka.producer.properties.request.timeout.ms=60000
+spring.kafka.producer.properties.max.block.ms=180000
+spring.kafka.producer.properties.metadata.max.age.ms=30000
+spring.kafka.producer.properties.retries=5
+spring.kafka.producer.properties.retry.backoff.ms=5000
+# Allow long processing time (e.g., OT takes up to 1 hour)
+spring.kafka.consumer.properties.max.poll.interval.ms=4200000
+# Ensure only one message is polled at a time
+spring.kafka.consumer.max-poll-records=1
+
+azure.keyvault.uri=https://nsn-dev-ecm-kva-001.vault.azure.net/secrets
+
+logging.level.org.springframework.kafka=DEBUG
+
+kafka.topic.input=str-ecp-batch-composition
+kafka.topic.output=str-ecp-batch-composition-complete
+
+vault.hashicorp.url=https://vault-public-vault-75e984b5.bdecd756.z1.hashicorp.cloud:8200
+vault.hashicorp.namespace =admin/espire
+
+vault.hashicorp.passwordDev=Dev+Cred4#
+vault.hashicorp.passwordNbhDev=nbh_dev1
+
+azure.blob.storage.account =https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001
+azure.blob.storage.format=https://%s.blob.core.windows.net
+
+azure.keyvault.url=https://nsn-dev-ecm-kva-001.vault.azure.net
+azure.keyvault.accountKey=ecm-fm-account-key
+azure.keyvault.accountName=ecm-fm-account-name
+azure.keyvault.containerName=ecm-fm-container-name
+
+mount.path=/mnt/nfs/dev-exstream/dev-SA
+ot.orchestration.api.url=http://exstream-deployment-orchestration-service.dev-exstream.svc:8900/orchestration/api/v1/inputs/batch/dev-SA/ECPDebtmanService
+otds.token.url=https://dev-exstream.nednet.co.za/otds/otdstenant/dev-exstream/otdsws/login
+otds.username=tenantadmin
+otds.grant.type=password
+otds.password=Exstream1!
+otds.client-id=devexstreamclient
+otds.client-secret=nV6A23zcFU5bK6lwm5KLBY2r5Sm3bh5l
+rpt.max.wait.seconds=3600
+rpt.poll.interval.millis=5000
+
+kafka.ssl.disable.hostname.verification= ;
+
+proxy.host=proxyprod.africa.nedcor.net
+proxy.port=80
+proxy.username=CC437236
+proxy.password=34dYaB@jEh56
+use.proxy=false
+
+
+package com.nedbank.kafka.filemanage.config;
+
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.CommonClientConfigs;
+import org.apache.kafka.common.config.SslConfigs;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.*;
+import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
+import org.springframework.kafka.core.*;
+import org.springframework.kafka.listener.ContainerProperties;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Configuration
+public class KafkaConsumerConfig {
+
+    @Value("${kafka.bootstrap.servers}")
+    private String bootstrapServers;
+
+    @Value("${kafka.consumer.group.id}")
+    private String consumerGroupId;
+
+    @Value("${kafka.consumer.auto.offset.reset}")
+    private String autoOffsetReset;
+
+    @Value("${kafka.consumer.enable.auto.commit}")
+    private String enableAutoCommit;
+
+    @Value("${kafka.consumer.key.deserializer}")
+    private String keyDeserializer;
+
+    @Value("${kafka.consumer.value.deserializer}")
+    private String valueDeserializer;
+
+    @Value("${kafka.consumer.security.protocol}")
+    private String securityProtocol;
+
+    @Value("${kafka.consumer.ssl.truststore.location}")
+    private String truststoreLocation;
+
+    @Value("${kafka.consumer.ssl.truststore.password}")
+    private String truststorePassword;
+
+    @Value("${kafka.consumer.ssl.keystore.location}")
+    private String keystoreLocation;
+
+    @Value("${kafka.consumer.ssl.keystore.password}")
+    private String keystorePassword;
+
+    @Value("${kafka.consumer.ssl.key.password}")
+    private String keyPassword;
+
+    @Value("${kafka.consumer.ssl.protocol}")
+    private String sslProtocol;
+
+    @Value("${kafka.ssl.disable.hostname.verification}")
+    private String hostNameVerification;
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<String, String> kafkaListenerContainerFactory() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, consumerGroupId);
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, keyDeserializer);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, valueDeserializer);
+        props.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, securityProtocol);
+        props.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, truststoreLocation);
+        props.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, truststorePassword);
+        props.put(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, keystoreLocation);
+        props.put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, keystorePassword);
+        props.put(SslConfigs.SSL_KEY_PASSWORD_CONFIG, keyPassword);
+        props.put(SslConfigs.SSL_PROTOCOL_CONFIG, sslProtocol);
+        props.put("ssl.endpoint.identification.algorithm", hostNameVerification);
+
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, autoOffsetReset);
+        props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, enableAutoCommit);
+
+        ConcurrentKafkaListenerContainerFactory<String, String> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(new DefaultKafkaConsumerFactory<>(props));
+        factory.getContainerProperties().setAckMode(ContainerProperties.AckMode.RECORD);
+        factory.setConcurrency(1);
+        return factory;
+    }
+}
