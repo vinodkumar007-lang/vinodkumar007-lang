@@ -1,19 +1,513 @@
-06:14:13.443 [kafka-producer-network-thread | producer-1] DEBUG org.apache.kafka.clients.NetworkClient - [Producer clientId=producer-1] Sending API_VERSIONS request with header RequestHeader(apiKey=API_VERSIONS, apiVersion=3, clientId=producer-1, correlationId=3) and timeout 60000 to node 0: ApiVersionsRequestData(clientSoftwareName='apache-kafka-java', clientSoftwareVersion='3.3.1')
-06:14:13.454 [kafka-producer-network-thread | producer-1] DEBUG org.apache.kafka.clients.NetworkClient - [Producer clientId=producer-1] Received API_VERSIONS response from node 0 for request with header RequestHeader(apiKey=API_VERSIONS, apiVersion=3, clientId=producer-1, correlationId=3): ApiVersionsResponseData(errorCode=0, apiKeys=[ApiVersion(apiKey=0, minVersion=0, maxVersion=10), ApiVersion(apiKey=1, minVersion=0, maxVersion=16), ApiVersion(apiKey=2, minVersion=0, maxVersion=8), ApiVersion(apiKey=3, minVersion=0, maxVersion=12), ApiVersion(apiKey=4, minVersion=0, maxVersion=7), ApiVersion(apiKey=5, minVersion=0, maxVersion=4), ApiVersion(apiKey=6, minVersion=0, maxVersion=8), ApiVersion(apiKey=7, minVersion=0, maxVersion=3), ApiVersion(apiKey=8, minVersion=0, maxVersion=9), ApiVersion(apiKey=9, minVersion=0, maxVersion=9), ApiVersion(apiKey=10, minVersion=0, maxVersion=4), ApiVersion(apiKey=11, minVersion=0, maxVersion=9), ApiVersion(apiKey=12, minVersion=0, maxVersion=4), ApiVersion(apiKey=13, minVersion=0, maxVersion=5), ApiVersion(apiKey=14, minVersion=0, maxVersion=5), ApiVersion(apiKey=15, minVersion=0, maxVersion=5), ApiVersion(apiKey=16, minVersion=0, maxVersion=5), ApiVersion(apiKey=17, minVersion=0, maxVersion=1), ApiVersion(apiKey=18, minVersion=0, maxVersion=3), ApiVersion(apiKey=19, minVersion=0, maxVersion=7), ApiVersion(apiKey=20, minVersion=0, maxVersion=6), ApiVersion(apiKey=21, minVersion=0, maxVersion=2), ApiVersion(apiKey=22, minVersion=0, maxVersion=4), ApiVersion(apiKey=23, minVersion=0, maxVersion=4), ApiVersion(apiKey=24, minVersion=0, maxVersion=4), ApiVersion(apiKey=25, minVersion=0, maxVersion=3), ApiVersion(apiKey=26, minVersion=0, maxVersion=3), ApiVersion(apiKey=27, minVersion=0, maxVersion=1), ApiVersion(apiKey=28, minVersion=0, maxVersion=3), ApiVersion(apiKey=29, minVersion=0, maxVersion=3), ApiVersion(apiKey=30, minVersion=0, maxVersion=3), ApiVersion(apiKey=31, minVersion=0, maxVersion=3), ApiVersion(apiKey=32, minVersion=0, maxVersion=4), ApiVersion(apiKey=33, minVersion=0, maxVersion=2), ApiVersion(apiKey=34, minVersion=0, maxVersion=2), ApiVersion(apiKey=35, minVersion=0, maxVersion=4), ApiVersion(apiKey=36, minVersion=0, maxVersion=2), ApiVersion(apiKey=37, minVersion=0, maxVersion=3), ApiVersion(apiKey=38, minVersion=0, maxVersion=3), ApiVersion(apiKey=39, minVersion=0, maxVersion=2), ApiVersion(apiKey=40, minVersion=0, maxVersion=2), ApiVersion(apiKey=41, minVersion=0, maxVersion=3), ApiVersion(apiKey=42, minVersion=0, maxVersion=2), ApiVersion(apiKey=43, minVersion=0, maxVersion=2), ApiVersion(apiKey=44, minVersion=0, maxVersion=1), ApiVersion(apiKey=45, minVersion=0, maxVersion=0), ApiVersion(apiKey=46, minVersion=0, maxVersion=0), ApiVersion(apiKey=47, minVersion=0, maxVersion=0), ApiVersion(apiKey=48, minVersion=0, maxVersion=1), ApiVersion(apiKey=49, minVersion=0, maxVersion=1), ApiVersion(apiKey=50, minVersion=0, maxVersion=0), ApiVersion(apiKey=51, minVersion=0, maxVersion=0), ApiVersion(apiKey=56, minVersion=0, maxVersion=3), ApiVersion(apiKey=57, minVersion=0, maxVersion=1), ApiVersion(apiKey=58, minVersion=0, maxVersion=0), ApiVersion(apiKey=60, minVersion=0, maxVersion=1), ApiVersion(apiKey=61, minVersion=0, maxVersion=0), ApiVersion(apiKey=65, minVersion=0, maxVersion=0), ApiVersion(apiKey=66, minVersion=0, maxVersion=1), ApiVersion(apiKey=67, minVersion=0, maxVersion=0), ApiVersion(apiKey=68, minVersion=0, maxVersion=0), ApiVersion(apiKey=69, minVersion=0, maxVersion=0), ApiVersion(apiKey=10000, minVersion=0, maxVersion=4), ApiVersion(apiKey=10001, minVersion=0, maxVersion=1), ApiVersion(apiKey=10002, minVersion=0, maxVersion=4), ApiVersion(apiKey=10003, minVersion=0, maxVersion=5), ApiVersion(apiKey=10004, minVersion=0, maxVersion=2), ApiVersion(apiKey=10005, minVersion=0, maxVersion=0), ApiVersion(apiKey=10006, minVersion=0, maxVersion=6), ApiVersion(apiKey=10007, minVersion=0, maxVersion=2), ApiVersion(apiKey=10008, minVersion=0, maxVersion=1), ApiVersion(apiKey=10009, minVersion=0, maxVersion=6), ApiVersion(apiKey=10010, minVersion=0, maxVersion=0), ApiVersion(apiKey=10011, minVersion=0, maxVersion=1), ApiVersion(apiKey=10012, minVersion=0, maxVersion=1), ApiVersion(apiKey=10013, minVersion=0, maxVersion=1), ApiVersion(apiKey=10014, minVersion=0, maxVersion=1), ApiVersion(apiKey=10015, minVersion=0, maxVersion=0), ApiVersion(apiKey=10016, minVersion=0, maxVersion=0), ApiVersion(apiKey=10017, minVersion=0, maxVersion=0), ApiVersion(apiKey=10018, minVersion=0, maxVersion=0), ApiVersion(apiKey=10019, minVersion=0, maxVersion=5), ApiVersion(apiKey=10020, minVersion=0, maxVersion=1), ApiVersion(apiKey=10021, minVersion=0, maxVersion=1), ApiVersion(apiKey=10022, minVersion=0, maxVersion=4), ApiVersion(apiKey=10024, minVersion=0, maxVersion=2), ApiVersion(apiKey=10025, minVersion=0, maxVersion=0), ApiVersion(apiKey=10026, minVersion=0, maxVersion=0), ApiVersion(apiKey=10027, minVersion=0, maxVersion=0), ApiVersion(apiKey=10028, minVersion=0, maxVersion=0), ApiVersion(apiKey=10029, minVersion=0, maxVersion=0), ApiVersion(apiKey=10030, minVersion=0, maxVersion=0), ApiVersion(apiKey=10031, minVersion=0, maxVersion=0), ApiVersion(apiKey=10032, minVersion=0, maxVersion=0), ApiVersion(apiKey=10033, minVersion=0, maxVersion=0), ApiVersion(apiKey=10034, minVersion=0, maxVersion=0), ApiVersion(apiKey=10035, minVersion=0, maxVersion=0), ApiVersion(apiKey=10038, minVersion=0, maxVersion=0), ApiVersion(apiKey=10039, minVersion=0, maxVersion=0)], throttleTimeMs=0, supportedFeatures=[], finalizedFeaturesEpoch=1, finalizedFeatures=[])
-06:14:13.455 [kafka-producer-network-thread | producer-1] DEBUG org.apache.kafka.clients.NetworkClient - [Producer clientId=producer-1] Node 0 has finalized features epoch: 1, finalized features: [], supported features: [], API versions: (Produce(0): 0 to 10 [usable: 9], Fetch(1): 0 to 16 [usable: 13], ListOffsets(2): 0 to 8 [usable: 7], Metadata(3): 0 to 12 [usable: 12], LeaderAndIsr(4): 0 to 7 [usable: 6], StopReplica(5): 0 to 4 [usable: 3], UpdateMetadata(6): 0 to 8 [usable: 7], ControlledShutdown(7): 0 to 3 [usable: 3], OffsetCommit(8): 0 to 9 [usable: 8], OffsetFetch(9): 0 to 9 [usable: 8], FindCoordinator(10): 0 to 4 [usable: 4], JoinGroup(11): 0 to 9 [usable: 9], Heartbeat(12): 0 to 4 [usable: 4], LeaveGroup(13): 0 to 5 [usable: 5], SyncGroup(14): 0 to 5 [usable: 5], DescribeGroups(15): 0 to 5 [usable: 5], ListGroups(16): 0 to 5 [usable: 4], SaslHandshake(17): 0 to 1 [usable: 1], ApiVersions(18): 0 to 3 [usable: 3], CreateTopics(19): 0 to 7 [usable: 7], DeleteTopics(20): 0 to 6 [usable: 6], DeleteRecords(21): 0 to 2 [usable: 2], InitProducerId(22): 0 to 4 [usable: 4], OffsetForLeaderEpoch(23): 0 to 4 [usable: 4], AddPartitionsToTxn(24): 0 to 4 [usable: 3], AddOffsetsToTxn(25): 0 to 3 [usable: 3], EndTxn(26): 0 to 3 [usable: 3], WriteTxnMarkers(27): 0 to 1 [usable: 1], TxnOffsetCommit(28): 0 to 3 [usable: 3], DescribeAcls(29): 0 to 3 [usable: 3], CreateAcls(30): 0 to 3 [usable: 3], DeleteAcls(31): 0 to 3 [usable: 3], DescribeConfigs(32): 0 to 4 [usable: 4], AlterConfigs(33): 0 to 2 [usable: 2], AlterReplicaLogDirs(34): 0 to 2 [usable: 2], DescribeLogDirs(35): 0 to 4 [usable: 4], SaslAuthenticate(36): 0 to 2 [usable: 2], CreatePartitions(37): 0 to 3 [usable: 3], CreateDelegationToken(38): 0 to 3 [usable: 3], RenewDelegationToken(39): 0 to 2 [usable: 2], ExpireDelegationToken(40): 0 to 2 [usable: 2], DescribeDelegationToken(41): 0 to 3 [usable: 3], DeleteGroups(42): 0 to 2 [usable: 2], ElectLeaders(43): 0 to 2 [usable: 2], IncrementalAlterConfigs(44): 0 to 1 [usable: 1], AlterPartitionReassignments(45): 0 [usable: 0], ListPartitionReassignments(46): 0 [usable: 0], OffsetDelete(47): 0 [usable: 0], DescribeClientQuotas(48): 0 to 1 [usable: 1], AlterClientQuotas(49): 0 to 1 [usable: 1], DescribeUserScramCredentials(50): 0 [usable: 0], AlterUserScramCredentials(51): 0 [usable: 0], AlterPartition(56): 0 to 3 [usable: 2], UpdateFeatures(57): 0 to 1 [usable: 1], Envelope(58): 0 [usable: 0], DescribeCluster(60): 0 to 1 [usable: 0], DescribeProducers(61): 0 [usable: 0], DescribeTransactions(65): 0 [usable: 0], ListTransactions(66): 0 to 1 [usable: 0], AllocateProducerIds(67): 0 [usable: 0], UNKNOWN(68): 0, UNKNOWN(69): 0, UNKNOWN(10000): 0 to 4, UNKNOWN(10001): 0 to 1, UNKNOWN(10002): 0 to 4, UNKNOWN(10003): 0 to 5, UNKNOWN(10004): 0 to 2, UNKNOWN(10005): 0, UNKNOWN(10006): 0 to 6, UNKNOWN(10007): 0 to 2, UNKNOWN(10008): 0 to 1, UNKNOWN(10009): 0 to 6, UNKNOWN(10010): 0, UNKNOWN(10011): 0 to 1, UNKNOWN(10012): 0 to 1, UNKNOWN(10013): 0 to 1, UNKNOWN(10014): 0 to 1, UNKNOWN(10015): 0, UNKNOWN(10016): 0, UNKNOWN(10017): 0, UNKNOWN(10018): 0, UNKNOWN(10019): 0 to 5, UNKNOWN(10020): 0 to 1, UNKNOWN(10021): 0 to 1, UNKNOWN(10022): 0 to 4, UNKNOWN(10024): 0 to 2, UNKNOWN(10025): 0, UNKNOWN(10026): 0, UNKNOWN(10027): 0, UNKNOWN(10028): 0, UNKNOWN(10029): 0, UNKNOWN(10030): 0, UNKNOWN(10031): 0, UNKNOWN(10032): 0, UNKNOWN(10033): 0, UNKNOWN(10034): 0, UNKNOWN(10035): 0, UNKNOWN(10038): 0, UNKNOWN(10039): 0).
-06:14:13.460 [kafka-producer-network-thread | producer-1] DEBUG org.apache.kafka.clients.producer.internals.TransactionManager - [Producer clientId=producer-1] ProducerId of partition str-ecp-batch-composition-complete-0 set to 196255 with epoch 0. Reinitialize sequence at beginning.
-06:14:13.460 [kafka-producer-network-thread | producer-1] DEBUG org.apache.kafka.clients.producer.internals.RecordAccumulator - [Producer clientId=producer-1] Assigned producerId 196255 and producerEpoch 0 to batch with base sequence 0 being sent to partition str-ecp-batch-composition-complete-0
-06:14:13.474 [kafka-producer-network-thread | producer-1] DEBUG org.apache.kafka.clients.NetworkClient - [Producer clientId=producer-1] Sending PRODUCE request with header RequestHeader(apiKey=PRODUCE, apiVersion=9, clientId=producer-1, correlationId=4) and timeout 60000 to node 0: {acks=-1,timeout=60000,partitionSizes=[str-ecp-batch-composition-complete-0=111]}
-06:14:13.505 [kafka-producer-network-thread | producer-1] DEBUG org.apache.kafka.clients.NetworkClient - [Producer clientId=producer-1] Received PRODUCE response from node 0 for request with header RequestHeader(apiKey=PRODUCE, apiVersion=9, clientId=producer-1, correlationId=4): ProduceResponseData(responses=[TopicProduceResponse(name='str-ecp-batch-composition-complete', partitionResponses=[PartitionProduceResponse(index=0, errorCode=0, baseOffset=2522, logAppendTimeMs=-1, logStartOffset=2522, recordErrors=[], errorMessage=null)])], throttleTimeMs=0)
-06:14:13.512 [kafka-producer-network-thread | producer-1] DEBUG org.apache.kafka.clients.producer.internals.TransactionManager - [Producer clientId=producer-1] ProducerId: 196255; Set last ack'd sequence number for topic-partition str-ecp-batch-composition-complete-0 to 0
-✅ Message sent successfully to topic=str-ecp-batch-composition-complete, partition=0, offset=2522
-06:14:13.520 [main] INFO org.apache.kafka.clients.producer.KafkaProducer - [Producer clientId=producer-1] Closing the Kafka producer with timeoutMillis = 9223372036854775807 ms.
-06:14:13.521 [kafka-producer-network-thread | producer-1] DEBUG org.apache.kafka.clients.producer.internals.Sender - [Producer clientId=producer-1] Beginning shutdown of Kafka producer I/O thread, sending remaining records.
-06:14:13.530 [kafka-producer-network-thread | producer-1] DEBUG org.apache.kafka.clients.producer.internals.Sender - [Producer clientId=producer-1] Shutdown of Kafka producer I/O thread has completed.
-06:14:13.532 [main] INFO org.apache.kafka.common.metrics.Metrics - Metrics scheduler closed
-06:14:13.532 [main] INFO org.apache.kafka.common.metrics.Metrics - Closing reporter org.apache.kafka.common.metrics.JmxReporter
-06:14:13.534 [main] INFO org.apache.kafka.common.metrics.Metrics - Metrics reporters closed
-06:14:13.535 [main] INFO org.apache.kafka.common.utils.AppInfoParser - App info kafka.producer for producer-1 unregistered
-06:14:13.535 [main] DEBUG org.apache.kafka.clients.producer.KafkaProducer - [Producer clientId=producer-1] Kafka producer has been closed
+package com.nedbank.kafka.filemanage.service;
 
-Process finished with ex
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.*;
+import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
+import org.apache.commons.io.FileUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.*;
+import org.springframework.http.*;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+import org.w3c.dom.*;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.*;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
+
+@Service
+public class KafkaListenerService {
+
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+
+    @Value("${mount.path}")
+    private String mountPath;
+
+    @Value("${kafka.topic.output}")
+    private String kafkaOutputTopic;
+
+    @Value("${rpt.max.wait.seconds}")
+    private int rptMaxWaitSeconds;
+
+    @Value("${rpt.poll.interval.millis}")
+    private int rptPollIntervalMillis;
+
+    @Value("${ot.orchestration.api.url}")
+    private String otOrchestrationApiUrl;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final BlobStorageService blobStorageService;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final RestTemplate restTemplate = new RestTemplate();
+
+    @Autowired
+    public KafkaListenerService(BlobStorageService blobStorageService,
+                                KafkaTemplate<String, String> kafkaTemplate) {
+        this.blobStorageService = blobStorageService;
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}",
+            containerFactory = "kafkaListenerContainerFactory")
+    public void consumeKafkaMessage(String message) {
+        try {
+            KafkaMessage kafkaMessage = objectMapper.readValue(message, KafkaMessage.class);
+            ApiResponse response = processSingleMessage(kafkaMessage);
+
+            // ✅ Log final API response
+            String responseJson = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response);
+            logger.info("📦 Final API Response:\n{}", responseJson);
+
+            // ✅ Kafka send with timeout (e.g., 30 seconds)
+            kafkaTemplate.send(kafkaOutputTopic, responseJson).get(30, TimeUnit.SECONDS);
+            logger.info("✅ Successfully sent response to Kafka topic {}", kafkaOutputTopic);
+        } catch (Exception ex) {
+            logger.error("❌ Error processing Kafka message or sending response", ex);
+        }
+    }
+
+    public ApiResponse processSingleMessage(KafkaMessage message) {
+        try {
+            List<BatchFile> dataFiles = message.getBatchFiles().stream()
+                    .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
+                    .toList();
+            message.setBatchFiles(dataFiles);
+
+            String batchId = message.getBatchId();
+            Path batchDir = Paths.get(mountPath, "input", message.getSourceSystem(), batchId);
+            Files.createDirectories(batchDir);
+
+            for (BatchFile file : dataFiles) {
+                String blobUrl = file.getBlobUrl();
+                String content = blobStorageService.downloadFileContent(blobUrl);
+                Path localPath = batchDir.resolve(message.getSourceSystem() + ".csv");
+                Files.write(localPath, content.getBytes(StandardCharsets.UTF_8));
+                file.setBlobUrl(localPath.toString());
+            }
+
+            writeAndUploadMetadataJson(message, batchDir);
+
+            // ✅ Use your actual token
+            String token = "eyJraWQiOiJjZjkwMjJmMjUxNjM2MjQzNjI5YmE1ZmNmMjMwZDI4YzFlOTJkNDNiIiwidHlwIjoiSldUIiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiIxZGY1MmRlMy1hYTJhLTQwMDUtODBmMi1jYzljMTY5NDU4ZDAiLCJzY3AiOlsib3Rkczpncm91cHMiLCJvdGRzOnJvbGVzIl0sInJvbGUiOltdLCJncnAiOlsidGVuYW50YWRtaW5zQGV4c3RyZWFtLnJvbGUiLCJvdGRzYWRtaW5zQG90ZHMuYWRtaW4iLCJvdGFkbWluc0BvdGRzLmFkbWluIiwiZW1wb3dlcmFkbWluc0BleHN0cmVhbS5yb2xlIl0sImRtcCI6eyJPVERTX0NSRURTX0FVVEgiOiJ0cnVlIiwiT1REU19IQVNfUEFTU1dPUkQiOiJmYWxzZSJ9LCJydGkiOiI1ZjFkMzFjNC02ZTdkLTRlYWEtOTU3MC1hMGY4OWJiOGI3NTUiLCJzYXQiOjE3NTIyNDU2NTcsImlzcyI6Imh0dHBzOi8vZGV2LWV4c3RyZWFtLm5lZG5ldC5jby56YTo0NDMvb3Rkcy9vdGRzd3MiLCJncnQiOiJwYXNzd29yZCIsInN1Yl90eXAiOjAsInR5cCI6ImFjY2Vzc190b2tlbiIsInBpZCI6ImV4c3RyZWFtLnJvbGUiLCJyaWQiOnt9LCJ0aWQiOiJkZXYtZXhzdHJlYW0iLCJzaWQiOiIxZmQ2YmI4NC00YjY0LTQzZDgtOTJiMS1kY2U2YWIzZDQ3OWYiLCJ1aWQiOiJ0ZW5hbnRhZG1pbkBleHN0cmVhbS5yb2xlIiwidW5tIjoidGVuYW50YWRtaW4iLCJuYW1lIjoidGVuYW50YWRtaW4iLCJleHAiOjE3ODM3ODE2NTcsImlhdCI6MTc1MjI0NTY1NywianRpIjoiMGU4ZWI4NzYtOWJmYi00OTczLWFiN2ItM2EyZTg4NWM5N2MzIiwiY2lkIjoiZGV2ZXhzdHJlYW1jbGllbnQifQ.JdXQ7pDNlEBS8jOny0yhKrC85CsypDdJzjww_OhVKL4BNBLQRfJf04ESqcnoONEIfbeARLGPS6THMP6K6xOeHcO7oViTFtgXg27jhrfj6OXiU52pAvo2qFBAs6VvTueNjDOyQMsau-PzigYdPNw86IWzeK0Ude7DhaR1rNTPbu7LsqKHM3aD6SFli0EeLSux5eJYdWqTy2gpH4iNodxPjlyt5i6UoNEwl1TqUwbMEtbztfrGiwMPXvSflGBH10pSDDtNpssiyvsDl_flnqLmqxso-Ff5AVs8eAjHgsQnSEIeQQp9sX0JoSbNgW8D0iACdlI-6f9onOLg4JW-Ozucmg";
+            OTResponse otResponse = callOrchestrationBatchApi(token, message);
+            if (otResponse == null) return new ApiResponse("OT call failed", "error", null);
+
+            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
+            if (xmlFile == null) return new ApiResponse("_STDDELIVERYFILE.xml not found", "error", null);
+
+            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+            Document doc = dBuilder.parse(xmlFile);
+            doc.getDocumentElement().normalize();
+
+            int customersProcessed = 0;
+            NodeList outputListNodes = doc.getElementsByTagName("outputList");
+            if (outputListNodes.getLength() > 0) {
+                Element outputList = (Element) outputListNodes.item(0);
+                String val = outputList.getAttribute("customersProcessed");
+                if (val != null) {
+                    try {
+                        customersProcessed = Integer.parseInt(val);
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+
+            String errorReportFilePath = null;
+            NodeList reportFileNodes = doc.getElementsByTagName("reportFile");
+            for (int i = 0; i < reportFileNodes.getLength(); i++) {
+                Element reportFile = (Element) reportFileNodes.item(i);
+                if ("Error_Report".equalsIgnoreCase(reportFile.getAttribute("dataFile"))) {
+                    errorReportFilePath = reportFile.getAttribute("name");
+                    break;
+                }
+            }
+
+            Map<String, String> accountCustomerMap = extractAccountCustomerMapFromDoc(doc);
+            Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
+            List<SummaryProcessedFile> processedFiles = buildAndUploadProcessedFiles(jobDir, accountCustomerMap, message);
+
+            Map<String, String> successMap = new HashMap<>();
+            for (SummaryProcessedFile s : processedFiles) successMap.put(s.getAccountNumber(), s.getCustomerId());
+            processedFiles.addAll(appendFailureEntries(errorReportFilePath, successMap));
+
+            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
+            String mobstatTriggerPath = jobDir.resolve("mobstat_trigger/DropData.trigger").toString();
+
+            // ✅ Upload DropData.trigger if exists
+            Path triggerFile = Paths.get(mobstatTriggerPath);
+            if (Files.exists(triggerFile)) {
+                String remotePath = String.format("%s/%s/%s/mobstat_trigger/DropData.trigger",
+                        message.getSourceSystem(), message.getBatchId(), message.getUniqueConsumerRef());
+                blobStorageService.uploadFile(triggerFile.toFile(), remotePath);
+            }
+
+            // ✅ Build full summary.json (with full details)
+            SummaryPayload payload = SummaryJsonWriter.buildPayload(
+                    message, processedFiles, printFiles, mobstatTriggerPath, customersProcessed);
+
+            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
+            // ✅ Log full summary.json content before uploading
+            try {
+                String summaryJson = Files.readString(Paths.get(summaryPath));
+                logger.info("📄 summary.json content before upload:\n{}", summaryJson);
+            } catch (Exception e) {
+                logger.warn("⚠️ Failed to read summary.json before upload", e);
+            }
+            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, "summary_" + batchId + ".json");
+            payload.setSummaryFileURL(decodeUrl(summaryUrl));
+
+            // ✅ Send only light final response — no print/processed files
+            SummaryResponse summaryResponse = new SummaryResponse();
+            summaryResponse.setBatchID(batchId);
+            summaryResponse.setFileName(payload.getFileName());
+            summaryResponse.setHeader(payload.getHeader());
+            summaryResponse.setMetadata(payload.getMetadata());
+            summaryResponse.setPayload(payload.getPayload());
+            summaryResponse.setSummaryFileURL(payload.getSummaryFileURL());
+
+            return new ApiResponse("Success", "success", summaryResponse);
+
+        } catch (Exception ex) {
+            logger.error("❌ Processing failed", ex);
+            return new ApiResponse("Processing failed", "error", null);
+        }
+    }
+
+    private List<SummaryProcessedFile> appendFailureEntries(String errorReportFilePath, Map<String, String> successMap) {
+        List<SummaryProcessedFile> failures = new ArrayList<>();
+        if (errorReportFilePath == null) return failures;
+        Path path = Paths.get(errorReportFilePath);
+        if (!Files.exists(path)) return failures;
+
+        try (BufferedReader reader = Files.newBufferedReader(path)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split("\\|");
+                if (parts.length >= 2) {
+                    String account = parts[0].trim();
+                    String customer = parts[1].trim();
+                    if (!successMap.containsKey(account)) {
+                        SummaryProcessedFile failEntry = new SummaryProcessedFile();
+                        failEntry.setAccountNumber(account);
+                        failEntry.setCustomerId(customer);
+                        failEntry.setStatusCode("FAILURE");
+                        failEntry.setStatusDescription("Processing failed");
+                        failures.add(failEntry);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            logger.error("❌ Failed to read error report file", e);
+        }
+        return failures;
+    }
+
+    private Map<String, String> extractAccountCustomerMapFromDoc(Document doc) {
+        Map<String, String> map = new HashMap<>();
+        NodeList customerNodes = doc.getElementsByTagName("customer");
+        for (int i = 0; i < customerNodes.getLength(); i++) {
+            Element customerElement = (Element) customerNodes.item(i);
+            NodeList keys = customerElement.getElementsByTagName("key");
+
+            String account = null;
+            String customer = null;
+            for (int j = 0; j < keys.getLength(); j++) {
+                Element keyElement = (Element) keys.item(j);
+                String keyName = keyElement.getAttribute("name");
+                String keyValue = keyElement.getTextContent();
+                if ("AccountNumber".equalsIgnoreCase(keyName)) account = keyValue;
+                if ("CISNumber".equalsIgnoreCase(keyName)) customer = keyValue;
+            }
+            if (account != null && customer != null) map.put(account, customer);
+        }
+        return map;
+    }
+
+    private List<PrintFile> uploadPrintFiles(Path jobDir, KafkaMessage msg) {
+        List<PrintFile> printFiles = new ArrayList<>();
+        Path printFolder = jobDir.resolve("print");
+        if (!Files.exists(printFolder)) return printFiles;
+
+        try (Stream<Path> paths = Files.list(printFolder)) {
+            paths.filter(Files::isRegularFile).forEach(file -> {
+                try {
+                    String fileName = file.getFileName().toString();
+                    String remotePath = String.format("%s/%s/%s/print/%s",
+                            msg.getSourceSystem(), msg.getBatchId(), msg.getUniqueConsumerRef(), fileName);
+
+                    String blobUrl = blobStorageService.uploadFile(file.toFile(), remotePath);
+                    printFiles.add(new PrintFile(decodeUrl(blobUrl)));
+                } catch (Exception e) {
+                    logger.error("Failed to upload print file: {}", file, e);
+                }
+            });
+        } catch (IOException e) {
+            logger.error("Error accessing print folder", e);
+        }
+        return printFiles;
+    }
+
+    private OTResponse callOrchestrationBatchApi(String token, KafkaMessage msg) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer " + token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
+            ResponseEntity<Map> response = restTemplate.exchange(otOrchestrationApiUrl, HttpMethod.POST, request, Map.class);
+
+            logger.info("📨 OT Orchestration Response: {}", objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response.getBody()));
+
+            List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get("data");
+            if (data != null && !data.isEmpty()) {
+                Map<String, Object> item = data.get(0);
+                OTResponse otResponse = new OTResponse();
+                otResponse.setJobId((String) item.get("jobId"));
+                otResponse.setId((String) item.get("id"));
+                return otResponse;
+            }
+        } catch (Exception e) {
+            logger.error("❌ Failed OT Orchestration call", e);
+        }
+        return null;
+    }
+
+    private File waitForXmlFile(String jobId, String id) throws InterruptedException {
+        Path docgenRoot = Paths.get(mountPath, "jobs", jobId, id, "docgen");
+        logger.info("🔍 Looking for _STDDELIVERYFILE.xml under {}", docgenRoot);
+
+        long startTime = System.currentTimeMillis();
+        while ((System.currentTimeMillis() - startTime) < rptMaxWaitSeconds * 1000L) {
+            if (!Files.exists(docgenRoot)) {
+                logger.info("📂 docgen folder not yet available. Retrying in {}ms...", rptPollIntervalMillis);
+                TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+                continue;
+            }
+
+            try (Stream<Path> paths = Files.walk(docgenRoot)) {
+                Optional<Path> xmlPath = paths
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().equalsIgnoreCase("_STDDELIVERYFILE.xml"))
+                        .findFirst();
+
+                if (xmlPath.isPresent()) {
+                    File xmlFile = xmlPath.get().toFile();
+
+                    // Check non-empty
+                    if (xmlFile.length() == 0) {
+                        logger.info("⏳ XML file found but still empty. Waiting...");
+                        TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+                        continue;
+                    }
+
+                    // Try parsing to ensure it’s complete
+                    try {
+                        DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+                        DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+                        dBuilder.parse(xmlFile);  // Attempt parse
+                        logger.info("✅ Valid and complete XML file found: {}", xmlFile.getAbsolutePath());
+                        return xmlFile;
+                    } catch (Exception e) {
+                        logger.info("⏳ XML file found but still being written (not parseable). Waiting...");
+                        TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+                    }
+                }
+            } catch (IOException e) {
+                logger.warn("⚠️ Error while scanning docgen folder", e);
+            }
+
+            TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+        }
+
+        logger.error("❌ Timed out after {} seconds waiting for complete _STDDELIVERYFILE.xml", rptMaxWaitSeconds);
+        return null;
+    }
+
+    private Map<String, String> extractAccountCustomerMapFromXml(File xmlFile) throws Exception {
+        Map<String, String> map = new HashMap<>();
+        DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+        DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+        Document doc = dBuilder.parse(xmlFile);
+        doc.getDocumentElement().normalize();
+
+        NodeList customerNodes = doc.getElementsByTagName("customer");
+        for (int i = 0; i < customerNodes.getLength(); i++) {
+            Element customerElement = (Element) customerNodes.item(i);
+            NodeList keys = customerElement.getElementsByTagName("key");
+
+            String account = null;
+            String customer = null;
+
+            for (int j = 0; j < keys.getLength(); j++) {
+                Element keyElement = (Element) keys.item(j);
+                String keyName = keyElement.getAttribute("name");
+                String keyValue = keyElement.getTextContent();
+
+                if ("AccountNumber".equalsIgnoreCase(keyName)) {
+                    account = keyValue;
+                } else if ("CISNumber".equalsIgnoreCase(keyName)) {
+                    customer = keyValue;
+                }
+            }
+
+            if (account != null && customer != null) {
+                map.put(account, customer);
+            }
+        }
+
+        return map;
+    }
+
+    private void writeAndUploadMetadataJson(KafkaMessage message, Path jobDir) {
+        try {
+            Map<String, Object> metaMap = objectMapper.convertValue(message, Map.class);
+            if (metaMap.containsKey("batchFiles")) {
+                List<Map<String, Object>> files = (List<Map<String, Object>>) metaMap.get("batchFiles");
+                for (Map<String, Object> f : files) {
+                    Object blob = f.remove("blobUrl");
+                    if (blob != null) {
+                        f.put("MountPath", blob);
+                    }
+                }
+            }
+
+            String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metaMap);
+            logger.info("📝 Metadata JSON before sending to OT:\n{}", json);
+
+            File metaFile = new File(jobDir.toFile(), "metadata.json");
+            FileUtils.writeStringToFile(metaFile, json, StandardCharsets.UTF_8);
+            String blobPath = String.format("%s/Trigger/metadata_%s.json", message.getSourceSystem(), message.getBatchId());
+            blobStorageService.uploadFile(metaFile.getAbsolutePath(), blobPath);
+            FileUtils.forceDelete(metaFile);
+        } catch (Exception ex) {
+            logger.error("metadata.json generation failed", ex);
+        }
+    }
+
+    private List<SummaryProcessedFile> buildAndUploadProcessedFiles(Path jobDir, Map<String, String> accountCustomerMap, KafkaMessage msg) throws IOException {
+        List<SummaryProcessedFile> list = new ArrayList<>();
+        List<String> folders = List.of("archive", "email", "html", "mobstat", "txt");
+
+        for (String folder : folders) {
+            Path subDir = jobDir.resolve(folder);
+            if (!Files.exists(subDir)) continue;
+
+            Files.list(subDir).filter(Files::isRegularFile).forEach(file -> {
+                try {
+                    String fileName = file.getFileName().toString();
+                    String account = extractAccountFromFileName(fileName);
+                    if (account == null) return;
+
+                    String customer = accountCustomerMap.get(account);
+
+                    SummaryProcessedFile entry = list.stream()
+                            .filter(e -> account.equals(e.getAccountNumber()))
+                            .findFirst()
+                            .orElseGet(() -> {
+                                SummaryProcessedFile newEntry = new SummaryProcessedFile();
+                                newEntry.setAccountNumber(account);
+                                newEntry.setCustomerId(customer);
+                                newEntry.setStatusCode("OK");
+                                newEntry.setStatusDescription("Success");
+                                list.add(newEntry);
+                                return newEntry;
+                            });
+
+                    String blobUrl = blobStorageService.uploadFile(
+                            file, // use Path for binary-safe upload
+                            String.format("%s/%s/%s/%s/%s",
+                                    msg.getSourceSystem(),
+                                    msg.getBatchId(),
+                                    msg.getUniqueConsumerRef(),
+                                    folder,
+                                    fileName)
+                    );
+
+                    // Decode URL before storing
+                    String decodedUrl = decodeUrl(blobUrl);
+
+                    switch (folder) {
+                        case "archive" -> entry.setPdfArchiveFileUrl(decodedUrl);
+                        case "email" -> entry.setPdfEmailFileUrl(decodedUrl);
+                        case "html" -> entry.setHtmlEmailFileUrl(decodedUrl);
+                        case "txt" -> entry.setTxtEmailFileUrl(decodedUrl);
+                        case "mobstat" -> entry.setPdfMobstatFileUrl(decodedUrl);
+                    }
+
+                } catch (Exception e) {
+                    logger.error("Error uploading file: {}", file, e);
+                }
+            });
+        }
+        return list;
+    }
+
+    private List<SummaryProcessedFile> appendFailureEntries(Path jobDir, KafkaMessage msg, Map<String, String> successMap) {
+        Map<String, String> failureMap = new HashMap<>();
+        Path errorReportPath = jobDir.resolve("ErrorReport.csv");
+        if (Files.exists(errorReportPath)) {
+            try (BufferedReader reader = Files.newBufferedReader(errorReportPath)) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String[] fields = line.split(",");
+                    if (fields.length >= 2) {
+                        String account = fields[0].trim();
+                        String customer = fields[1].trim();
+                        failureMap.put(account, customer);
+                    }
+                }
+            } catch (IOException e) {
+                logger.error("❌ Failed to read ErrorReport.csv", e);
+            }
+        }
+
+        List<SummaryProcessedFile> failures = new ArrayList<>();
+        for (Map.Entry<String, String> entry : failureMap.entrySet()) {
+            String account = entry.getKey();
+            if (!successMap.containsKey(account)) {
+                SummaryProcessedFile failEntry = new SummaryProcessedFile();
+                failEntry.setAccountNumber(account);
+                failEntry.setCustomerId(entry.getValue());
+                failEntry.setStatusCode("FAILURE");
+                failEntry.setStatusDescription("Processing failed");
+                failures.add(failEntry);
+            }
+        }
+        return failures;
+    }
+
+    private String extractAccountFromFileName(String fileName) {
+        Matcher matcher = Pattern.compile("(\\d{9,})").matcher(fileName);
+        return matcher.find() ? matcher.group(1) : null;
+    }
+
+    private String decodeUrl(String encodedUrl) {
+        try {
+            return URLDecoder.decode(encodedUrl, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return encodedUrl;
+        }
+    }
+}
+
+class OTResponse {
+    private String jobId;
+    private String id;
+
+    public String getJobId() { return jobId; }
+    public void setJobId(String jobId) { this.jobId = jobId; }
+
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+}
