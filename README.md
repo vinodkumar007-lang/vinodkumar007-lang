@@ -1,95 +1,393 @@
-2025-07-14T16:49:29.153+02:00 DEBUG 1 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 1 records
-2025-07-14T16:49:29.440+02:00 DEBUG 1 --- [ntainer#0-0-C-1] .a.RecordMessagingMessageListenerAdapter : Processing [GenericMessage [payload=
-                {
-                          "BatchId" : "6e8e56f7-a4fe-42a1-96b3-bf12d63c9142",
-                          "SourceSystem" : "DEBTMAN",
-                          "TenantCode" : "ZANBL",
-                          "ChannelID" : null,
-                          "AudienceID" : null,
-                          "Product" : "DEBTMAN",
-                          "JobName" : "DEBTMAN",
-                          "UniqueConsumerRef" : "19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs",
-                          "Timestamp" : 1752230622.648047900,
-                          "RunPriority" : null,
-                          "EventType" : null,
-                          "BatchFiles" : [ {
-                            "ObjectId" : "idd_90D3F897-0000-C21B-83F3-DBA708DE95F1",
-                            "RepositoryId" : "BATCH",
-                            "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN_20250625_151841_error.TXT",
-                            "Filename" : "DEBTMAN_20250625_151841_error.TXT",
-                            "FileType" : "DATA",
-                            "ValidationStatus" : "Valid",
-                            "ValidationRequirement" : "true"
-                          } ]
-                        }
+package com.nedbank.kafka.filemanage.service;
 
-, headers={kafka_offset=18744, kafka_consumer=org.apache.kafka.clients.consumer.KafkaConsumer@c7cdff0, kafka_timestampType=CREATE_TIME, kafka_receivedPartitionId=0, kafka_receivedTopic=str-ecp-batch-composition, kafka_receivedTimestamp=1752504567891, kafka_groupId=str-ecp-batch}]]
-2025-07-14T16:49:29.541+02:00 DEBUG 1 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Commit list: {}
-2025-07-14T16:49:29.641+02:00 ERROR 1 --- [ntainer#0-0-C-1] o.s.kafka.listener.DefaultErrorHandler   : Backoff FixedBackOff{interval=0, currentAttempts=1, maxAttempts=0} exhausted for str-ecp-batch-composition-0@18744
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.*;
+import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
+import jakarta.annotation.PreDestroy;
+import org.apache.commons.io.FileUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.*;
+import org.springframework.http.*;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+import org.w3c.dom.*;
 
-org.springframework.kafka.listener.ListenerExecutionFailedException: invokeHandler Failed
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.decorateException(KafkaMessageListenerContainer.java:2942) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeOnMessage(KafkaMessageListenerContainer.java:2887) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeOnMessage(KafkaMessageListenerContainer.java:2854) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.lambda$doInvokeRecordListener$57(KafkaMessageListenerContainer.java:2772) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at io.micrometer.observation.Observation.observe(Observation.java:559) ~[micrometer-observation-1.10.2.jar!/:1.10.2]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeRecordListener(KafkaMessageListenerContainer.java:2770) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeWithRecords(KafkaMessageListenerContainer.java:2622) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeRecordListener(KafkaMessageListenerContainer.java:2508) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeListener(KafkaMessageListenerContainer.java:2150) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.invokeIfHaveRecords(KafkaMessageListenerContainer.java:1505) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.pollAndInvoke(KafkaMessageListenerContainer.java:1469) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.run(KafkaMessageListenerContainer.java:1344) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at java.base/java.util.concurrent.CompletableFuture$AsyncRun.run(CompletableFuture.java:1804) ~[na:na]
-	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
-	Suppressed: org.springframework.kafka.listener.ListenerExecutionFailedException: Restored Stack Trace
-		at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.checkAckArg(MessagingMessageListenerAdapter.java:397) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-		at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.invokeHandler(MessagingMessageListenerAdapter.java:380) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-		at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:92) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-		at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:53) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-		at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeOnMessage(KafkaMessageListenerContainer.java:2873) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-Caused by: java.lang.IllegalStateException: No Acknowledgment available as an argument, the listener container must have a MANUAL AckMode to populate the Acknowledgment.
-	at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.checkAckArg(MessagingMessageListenerAdapter.java:397) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.invokeHandler(MessagingMessageListenerAdapter.java:380) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:92) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.adapter.RecordMessagingMessageListenerAdapter.onMessage(RecordMessagingMessageListenerAdapter.java:53) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.KafkaMessageListenerContainer$ListenerConsumer.doInvokeOnMessage(KafkaMessageListenerContainer.java:2873) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	... 12 common frames omitted
-Caused by: org.springframework.messaging.converter.MessageConversionException: Cannot handle message
-	... 16 common frames omitted
-Caused by: org.springframework.messaging.converter.MessageConversionException: Cannot convert from [java.lang.String] to [org.springframework.kafka.support.Acknowledgment] for GenericMessage [payload=
-                {
-                          "BatchId" : "6e8e56f7-a4fe-42a1-96b3-bf12d63c9142",
-                          "SourceSystem" : "DEBTMAN",
-                          "TenantCode" : "ZANBL",
-                          "ChannelID" : null,
-                          "AudienceID" : null,
-                          "Product" : "DEBTMAN",
-                          "JobName" : "DEBTMAN",
-                          "UniqueConsumerRef" : "19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs",
-                          "Timestamp" : 1752230622.648047900,
-                          "RunPriority" : null,
-                          "EventType" : null,
-                          "BatchFiles" : [ {
-                            "ObjectId" : "idd_90D3F897-0000-C21B-83F3-DBA708DE95F1",
-                            "RepositoryId" : "BATCH",
-                            "BlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN_20250625_151841_error.TXT",
-                            "Filename" : "DEBTMAN_20250625_151841_error.TXT",
-                            "FileType" : "DATA",
-                            "ValidationStatus" : "Valid",
-                            "ValidationRequirement" : "true"
-                          } ]
-                        }
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.*;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
-, headers={kafka_offset=18744, kafka_consumer=org.apache.kafka.clients.consumer.KafkaConsumer@c7cdff0, kafka_timestampType=CREATE_TIME, kafka_receivedPartitionId=0, kafka_receivedTopic=str-ecp-batch-composition, kafka_receivedTimestamp=1752504567891, kafka_groupId=str-ecp-batch}]
-	at org.springframework.messaging.handler.annotation.support.PayloadMethodArgumentResolver.resolveArgument(PayloadMethodArgumentResolver.java:144) ~[spring-messaging-6.0.2.jar!/:6.0.2]
-	at org.springframework.kafka.annotation.KafkaNullAwarePayloadArgumentResolver.resolveArgument(KafkaNullAwarePayloadArgumentResolver.java:46) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.messaging.handler.invocation.HandlerMethodArgumentResolverComposite.resolveArgument(HandlerMethodArgumentResolverComposite.java:118) ~[spring-messaging-6.0.2.jar!/:6.0.2]
-	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.getMethodArgumentValues(InvocableHandlerMethod.java:147) ~[spring-messaging-6.0.2.jar!/:6.0.2]
-	at org.springframework.messaging.handler.invocation.InvocableHandlerMethod.invoke(InvocableHandlerMethod.java:115) ~[spring-messaging-6.0.2.jar!/:6.0.2]
-	at org.springframework.kafka.listener.adapter.HandlerAdapter.invoke(HandlerAdapter.java:56) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	at org.springframework.kafka.listener.adapter.MessagingMessageListenerAdapter.invokeHandler(MessagingMessageListenerAdapter.java:375) ~[spring-kafka-3.0.11.jar!/:3.0.11]
-	... 15 common frames omitted
+@Service
+public class KafkaListenerService {
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
-2025-07-14T16:49:29.739+02:00 DEBUG 1 --- [ntainer#0-0-C-1] o.s.kafka.listener.DefaultErrorHandler   : Skipping seek of: str-ecp-batch-composition-0@18744
-2025-07-14T16:49:29.741+02:00 DEBUG 1 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Committing: {str-ecp-batch-composition-0=OffsetAndMetadata{offset=18745, leaderEpoch=null, metadata=''}}
+    @Value("${mount.path}")
+    private String mountPath;
+
+    @Value("${kafka.topic.output}")
+    private String kafkaOutputTopic;
+
+    @Value("${rpt.max.wait.seconds}")
+    private int rptMaxWaitSeconds;
+
+    @Value("${rpt.poll.interval.millis}")
+    private int rptPollIntervalMillis;
+
+    @Value("${ot.orchestration.api.url}")
+    private String otOrchestrationApiUrl;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final BlobStorageService blobStorageService;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ExecutorService executor = Executors.newFixedThreadPool(5);
+
+    @Autowired
+    public KafkaListenerService(BlobStorageService blobStorageService, KafkaTemplate<String, String> kafkaTemplate) {
+        this.blobStorageService = blobStorageService;
+        this.kafkaTemplate = kafkaTemplate;
+    }
+
+    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}", containerFactory = "kafkaListenerContainerFactory")
+    public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
+        try {
+            KafkaMessage message = objectMapper.readValue(rawMessage, KafkaMessage.class);
+
+            List<BatchFile> dataFiles = message.getBatchFiles().stream()
+                    .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
+                    .toList();
+            message.setBatchFiles(dataFiles);
+
+            String batchId = message.getBatchId();
+            Path batchDir = Paths.get(mountPath, "input", message.getSourceSystem(), batchId);
+            Files.createDirectories(batchDir);
+
+            for (BatchFile file : dataFiles) {
+                String blobUrl = file.getBlobUrl();
+                String content = blobStorageService.downloadFileContent(blobUrl);
+                Path localPath = batchDir.resolve(message.getSourceSystem() + ".csv");
+                Files.write(localPath, content.getBytes(StandardCharsets.UTF_8));
+                file.setBlobUrl(localPath.toString());
+            }
+
+            writeAndUploadMetadataJson(message, batchDir);
+
+            OTResponse otResponse = callOrchestrationBatchApi("eyJraWQiOiJjZjkwMjJmMjUxNjM2MjQzNjI5YmE1ZmNmMjMwZDI4YzFlOTJkNDNiIiwidHlwIjoiSldUIiwiYWxnIjoiUlMyNTYifQ.eyJzdWIiOiIxZGY1MmRlMy1hYTJhLTQwMDUtODBmMi1jYzljMTY5NDU4ZDAiLCJzY3AiOlsib3Rkczpncm91cHMiLCJvdGRzOnJvbGVzIl0sInJvbGUiOltdLCJncnAiOlsidGVuYW50YWRtaW5zQGV4c3RyZWFtLnJvbGUiLCJvdGRzYWRtaW5zQG90ZHMuYWRtaW4iLCJvdGFkbWluc0BvdGRzLmFkbWluIiwiZW1wb3dlcmFkbWluc0BleHN0cmVhbS5yb2xlIl0sImRtcCI6eyJPVERTX0NSRURTX0FVVEgiOiJ0cnVlIiwiT1REU19IQVNfUEFTU1dPUkQiOiJmYWxzZSJ9LCJydGkiOiI1ZjFkMzFjNC02ZTdkLTRlYWEtOTU3MC1hMGY4OWJiOGI3NTUiLCJzYXQiOjE3NTIyNDU2NTcsImlzcyI6Imh0dHBzOi8vZGV2LWV4c3RyZWFtLm5lZG5ldC5jby56YTo0NDMvb3Rkcy9vdGRzd3MiLCJncnQiOiJwYXNzd29yZCIsInN1Yl90eXAiOjAsInR5cCI6ImFjY2Vzc190b2tlbiIsInBpZCI6ImV4c3RyZWFtLnJvbGUiLCJyaWQiOnt9LCJ0aWQiOiJkZXYtZXhzdHJlYW0iLCJzaWQiOiIxZmQ2YmI4NC00YjY0LTQzZDgtOTJiMS1kY2U2YWIzZDQ3OWYiLCJ1aWQiOiJ0ZW5hbnRhZG1pbkBleHN0cmVhbS5yb2xlIiwidW5tIjoidGVuYW50YWRtaW4iLCJuYW1lIjoidGVuYW50YWRtaW4iLCJleHAiOjE3ODM3ODE2NTcsImlhdCI6MTc1MjI0NTY1NywianRpIjoiMGU4ZWI4NzYtOWJmYi00OTczLWFiN2ItM2EyZTg4NWM5N2MzIiwiY2lkIjoiZGV2ZXhzdHJlYW1jbGllbnQifQ.JdXQ7pDNlEBS8jOny0yhKrC85CsypDdJzjww_OhVKL4BNBLQRfJf04ESqcnoONEIfbeARLGPS6THMP6K6xOeHcO7oViTFtgXg27jhrfj6OXiU52pAvo2qFBAs6VvTueNjDOyQMsau-PzigYdPNw86IWzeK0Ude7DhaR1rNTPbu7LsqKHM3aD6SFli0EeLSux5eJYdWqTy2gpH4iNodxPjlyt5i6UoNEwl1TqUwbMEtbztfrGiwMPXvSflGBH10pSDDtNpssiyvsDl_flnqLmqxso-Ff5AVs8eAjHgsQnSEIeQQp9sX0JoSbNgW8D0iACdlI-6f9onOLg4JW-Ozucmg", message);
+            if (otResponse == null) {
+                kafkaTemplate.send(kafkaOutputTopic, "{\"status\":\"FAILURE\",\"message\":\"OT call failed\"}");
+                ack.acknowledge();
+                return;
+            }
+
+            Map<String, Object> pendingMsg = Map.of(
+                    "batchID", batchId,
+                    "status", "PENDING",
+                    "message", "OT Request Sent"
+            );
+            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(pendingMsg));
+            logger.info("🟡 OT request sent, response sent to output topic with status=PENDING");
+
+            ack.acknowledge();
+
+            executor.submit(() -> processAfterOT(message, otResponse));
+
+        } catch (Exception ex) {
+            logger.error("❌ Kafka processing failed", ex);
+        }
+    }
+
+    private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
+        try {
+            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
+            if (xmlFile == null) throw new IllegalStateException("XML not found");
+
+            DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+            DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+            Document doc = dBuilder.parse(xmlFile);
+            doc.getDocumentElement().normalize();
+
+            Map<String, String> accountCustomerMap = extractAccountCustomerMapFromDoc(doc);
+            Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
+
+            List<SummaryProcessedFile> processedFiles = buildAndUploadProcessedFiles(jobDir, accountCustomerMap, message);
+           
+            // Add error report failures (if any)
+            String errorReportPath = Paths.get(jobDir.toString(), "ErrorReport.csv").toString();
+            List<SummaryProcessedFile> failures = appendFailureEntries(errorReportPath, accountCustomerMap);
+            processedFiles.addAll(failures);
+
+            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
+
+            String triggerPath = jobDir.resolve("mobstat_trigger/DropData.trigger").toString();
+            if (Files.exists(Paths.get(triggerPath))) {
+                blobStorageService.uploadFile(new File(triggerPath), message.getSourceSystem() + "/mobstat_trigger/DropData.trigger");
+            }
+
+            SummaryPayload payload = SummaryJsonWriter.buildPayload(
+                    message, processedFiles, printFiles, triggerPath, 0);
+            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
+            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, "summary_" + message.getBatchId() + ".json");
+            payload.setSummaryFileURL(decodeUrl(summaryUrl));
+
+            logger.info("📄 Summary JSON:");
+            logger.info(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
+
+            SummaryResponse response = new SummaryResponse();
+            response.setBatchID(message.getBatchId());
+            response.setFileName(payload.getFileName());
+            response.setHeader(payload.getHeader());
+            response.setMetadata(payload.getMetadata());
+            response.setPayload(payload.getPayload());
+            response.setSummaryFileURL(payload.getSummaryFileURL());
+
+            ApiResponse finalResponse = new ApiResponse("Summary generated", "COMPLETED", response);
+
+            logger.info("📤 Final API Response:");
+            logger.info(objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(finalResponse));
+
+            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(finalResponse));
+            logger.info("✅ Final summary sent to Kafka output topic");
+        } catch (Exception e) {
+            logger.error("❌ Error post-OT summary generation", e);
+        }
+    }
+
+    private void writeAndUploadMetadataJson(KafkaMessage message, Path jobDir) {
+        try {
+            Map<String, Object> metaMap = objectMapper.convertValue(message, Map.class);
+            File metaFile = new File(jobDir.toFile(), "metadata.json");
+            FileUtils.writeStringToFile(metaFile, objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(metaMap), StandardCharsets.UTF_8);
+            blobStorageService.uploadFile(metaFile.getAbsolutePath(), message.getSourceSystem() + "/Trigger/metadata.json");
+        } catch (Exception e) {
+            logger.warn("Failed to write metadata.json", e);
+        }
+    }
+
+    private File waitForXmlFile(String jobId, String id) throws InterruptedException {
+        Path docgenRoot = Paths.get(mountPath, "jobs", jobId, id, "docgen");
+        logger.info("🔍 Looking for _STDDELIVERYFILE.xml under {}", docgenRoot);
+
+        long startTime = System.currentTimeMillis();
+        while ((System.currentTimeMillis() - startTime) < rptMaxWaitSeconds * 1000L) {
+            if (!Files.exists(docgenRoot)) {
+                logger.info("📂 docgen folder not yet available. Retrying in {}ms...", rptPollIntervalMillis);
+                TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+                continue;
+            }
+
+            try (Stream<Path> paths = Files.walk(docgenRoot)) {
+                Optional<Path> xmlPath = paths
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().equalsIgnoreCase("_STDDELIVERYFILE.xml"))
+                        .findFirst();
+
+                if (xmlPath.isPresent()) {
+                    File xmlFile = xmlPath.get().toFile();
+
+                    if (xmlFile.length() == 0) {
+                        logger.info("⏳ XML file found but still empty. Waiting...");
+                        TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+                        continue;
+                    }
+
+                    try {
+                        DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+                        DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+                        dBuilder.parse(xmlFile);
+                        logger.info("✅ Valid and complete XML file found: {}", xmlFile.getAbsolutePath());
+                        return xmlFile;
+                    } catch (Exception e) {
+                        logger.info("⏳ XML file found but still being written (not parseable). Waiting...");
+                        TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+                    }
+                }
+            } catch (IOException e) {
+                logger.warn("⚠️ Error while scanning docgen folder", e);
+            }
+
+            TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+        }
+
+        logger.error("❌ Timed out after {} seconds waiting for complete _STDDELIVERYFILE.xml", rptMaxWaitSeconds);
+        return null;
+    }
+
+    private List<SummaryProcessedFile> appendFailureEntries(String errorReportFilePath, Map<String, String> successMap) {
+    List<SummaryProcessedFile> failures = new ArrayList<>();
+    if (errorReportFilePath == null) return failures;
+
+    Path path = Paths.get(errorReportFilePath);
+    if (!Files.exists(path)) return failures;
+
+    try (BufferedReader reader = Files.newBufferedReader(path)) {
+        String line;
+        while ((line = reader.readLine()) != null) {
+            String[] parts = line.split("\\|");
+            if (parts.length >= 5) {
+                String account = parts[0].trim();
+                String customer = parts[1].trim();
+                String outputMethod = parts[2].trim().toUpperCase();
+                String status = parts[4].trim();
+
+                if (!successMap.containsKey(account) && "FAILED".equalsIgnoreCase(status)) {
+                    SummaryProcessedFile failEntry = new SummaryProcessedFile();
+                    failEntry.setAccountNumber(account);
+                    failEntry.setCustomerId(customer);
+                    failEntry.setStatusCode("FAILURE");
+                    failEntry.setStatusDescription("Processing failed");
+
+                    // Set FAILED URL for the appropriate delivery method
+                    switch (outputMethod) {
+                        case "EMAIL"   -> failEntry.setPdfEmailFileUrl("FAILED");
+                        case "HTML"    -> failEntry.setHtmlEmailFileUrl("FAILED");
+                        case "MOBSTAT" -> failEntry.setPdfMobstatFileUrl("FAILED");
+                        case "TXT"     -> failEntry.setTxtEmailFileUrl("FAILED");
+                        case "ARCHIVE" -> failEntry.setPdfArchiveFileUrl("FAILED");
+                        default -> logger.warn("⚠️ Unknown OutputMethod in ErrorReport: {}", outputMethod);
+                    }
+
+                    failures.add(failEntry);
+                }
+            }
+        }
+    } catch (IOException e) {
+        logger.error("❌ Failed to read error report file", e);
+    }
+
+    logger.info("📉 Appended {} failure entries from ErrorReport", failures.size());
+    return failures;
+}
+
+    private Map<String, String> extractAccountCustomerMapFromDoc(Document doc) {
+        Map<String, String> map = new HashMap<>();
+        NodeList customers = doc.getElementsByTagName("customer");
+        for (int i = 0; i < customers.getLength(); i++) {
+            Element customer = (Element) customers.item(i);
+            NodeList keys = customer.getElementsByTagName("key");
+            String acc = null, cus = null;
+            for (int j = 0; j < keys.getLength(); j++) {
+                Element k = (Element) keys.item(j);
+                if ("AccountNumber".equalsIgnoreCase(k.getAttribute("name"))) acc = k.getTextContent();
+                if ("CISNumber".equalsIgnoreCase(k.getAttribute("name"))) cus = k.getTextContent();
+            }
+            if (acc != null && cus != null) map.put(acc, cus);
+        }
+        return map;
+    }
+
+    private List<PrintFile> uploadPrintFiles(Path jobDir, KafkaMessage msg) {
+        List<PrintFile> printFiles = new ArrayList<>();
+        Path printDir = jobDir.resolve("print");
+        if (!Files.exists(printDir)) return printFiles;
+        try (Stream<Path> stream = Files.list(printDir)) {
+            stream.filter(Files::isRegularFile).forEach(f -> {
+                try {
+                    String blob = blobStorageService.uploadFile(f.toFile(), msg.getSourceSystem() + "/print/" + f.getFileName());
+                    printFiles.add(new PrintFile(blob));
+                } catch (Exception e) {
+                    logger.warn("Print upload failed", e);
+                }
+            });
+        } catch (IOException ignored) {}
+        return printFiles;
+    }
+
+    private List<SummaryProcessedFile> buildAndUploadProcessedFiles(Path jobDir, Map<String, String> accountMap, KafkaMessage msg) throws IOException {
+        List<SummaryProcessedFile> list = new ArrayList<>();
+        for (String folder : List.of("archive", "email", "html", "mobstat", "txt")) {
+            Path subDir = jobDir.resolve(folder);
+            if (!Files.exists(subDir)) continue;
+            Files.list(subDir).filter(Files::isRegularFile).forEach(file -> {
+                try {
+                    String fileName = file.getFileName().toString();
+                    String account = extractAccountFromFileName(fileName);
+                    String customer = accountMap.get(account);
+                    if (account == null || customer == null) return;
+
+                    SummaryProcessedFile entry = new SummaryProcessedFile();
+                    entry.setAccountNumber(account);
+                    entry.setCustomerId(customer);
+                    entry.setStatusCode("OK");
+                    entry.setStatusDescription("Success");
+
+                    String blob = blobStorageService.uploadFile(file.toFile(), String.format("%s/%s/%s/%s",
+                            msg.getSourceSystem(), msg.getBatchId(), folder, fileName));
+                    String decoded = decodeUrl(blob);
+
+                    switch (folder) {
+                        case "archive" -> entry.setPdfArchiveFileUrl(decoded);
+                        case "email" -> entry.setPdfEmailFileUrl(decoded);
+                        case "html" -> entry.setHtmlEmailFileUrl(decoded);
+                        case "mobstat" -> entry.setPdfMobstatFileUrl(decoded);
+                        case "txt" -> entry.setTxtEmailFileUrl(decoded);
+                    }
+                    list.add(entry);
+                } catch (Exception ignored) {}
+            });
+        }
+        return list;
+    }
+
+    private String extractAccountFromFileName(String name) {
+        Matcher m = Pattern.compile("(\\d{9,})").matcher(name);
+        return m.find() ? m.group(1) : null;
+    }
+
+    private String decodeUrl(String url) {
+        try {
+            return URLDecoder.decode(url, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return url;
+        }
+    }
+
+    private OTResponse callOrchestrationBatchApi(String token, KafkaMessage msg) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer " + token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
+            ResponseEntity<Map> response = restTemplate.exchange(otOrchestrationApiUrl, HttpMethod.POST, request, Map.class);
+
+            logger.info("📨 OT Orchestration Response {}" , objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(response.getBody()));
+
+                    List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get("data");
+            if (data != null && !data.isEmpty()) {
+                Map<String, Object> item = data.get(0);
+                OTResponse otResponse = new OTResponse();
+                otResponse.setJobId((String) item.get("jobId"));
+                otResponse.setId((String) item.get("id"));
+                return otResponse;
+            }
+        } catch (Exception e) {
+            logger.error("❌ Failed OT Orchestration call", e);
+        }
+        return null;
+    }
+
+    @PreDestroy
+    public void shutdownExecutor() {
+        executor.shutdown();
+    }
+
+    static class OTResponse {
+        private String jobId;
+        private String id;
+        public String getJobId() { return jobId; }
+        public void setJobId(String jobId) { this.jobId = jobId; }
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
+    }
+}
