@@ -1,3 +1,4 @@
+// ✅ KafkaListenerService with Detailed Logging Added
 package com.nedbank.kafka.filemanage.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,7 +17,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.w3c.dom.*;
 
-import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.*;
 import java.net.URLDecoder;
@@ -24,7 +24,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.regex.*;
 import java.util.stream.*;
 
 @Service
@@ -67,10 +66,12 @@ public class KafkaListenerService {
     @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
     public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
         try {
+            logger.info("📥 Received Kafka message: {}", rawMessage);
             KafkaMessage message = objectMapper.readValue(rawMessage, KafkaMessage.class);
             String batchId = message.getBatchId();
             Path batchDir = Paths.get(mountPath, "input", message.getSourceSystem(), batchId);
             Files.createDirectories(batchDir);
+            logger.info("📁 Created input directory: {}", batchDir);
 
             for (BatchFile file : message.getBatchFiles()) {
                 String blobUrl = file.getBlobUrl();
@@ -78,6 +79,7 @@ public class KafkaListenerService {
                 Path localPath = batchDir.resolve(file.getFilename());
                 Files.write(localPath, content.getBytes(StandardCharsets.UTF_8));
                 file.setBlobUrl(localPath.toString());
+                logger.info("⬇️ Downloaded file {} to local path {}", blobUrl, localPath);
             }
 
             String url;
@@ -87,9 +89,11 @@ public class KafkaListenerService {
                 default -> throw new IllegalArgumentException("Unsupported source system: " + message.getSourceSystem());
             }
 
+            logger.info("🚀 Calling Orchestration API: {}", url);
             OTResponse otResponse = callOrchestrationBatchApi(orchestrationAuthToken, url, message);
 
             if (otResponse == null) {
+                logger.error("❌ OT orchestration failed for batch {}", batchId);
                 kafkaTemplate.send(kafkaOutputTopic, "{\"status\":\"FAILURE\",\"message\":\"OT call failed\"}");
                 ack.acknowledge();
                 return;
@@ -100,6 +104,7 @@ public class KafkaListenerService {
                     "status", "PENDING",
                     "message", "OT Request Sent"
             )));
+            logger.info("📤 OT request sent for batch {}", batchId);
             ack.acknowledge();
 
             executor.submit(() -> processAfterOT(message, otResponse));
@@ -111,13 +116,17 @@ public class KafkaListenerService {
 
     private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
         try {
+            logger.info("⏳ Waiting for XML for jobId={}, id={}", otResponse.getJobId(), otResponse.getId());
             File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
             if (xmlFile == null) throw new IllegalStateException("XML not found");
+            logger.info("✅ Found XML file: {}", xmlFile);
 
             Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile);
             doc.getDocumentElement().normalize();
 
             Map<String, String> accountCustomerMap = extractAccountCustomerMapFromDoc(doc);
+            logger.info("📄 Extracted {} customers from XML", accountCustomerMap.size());
+
             Map<String, SummaryProcessedFile> customerMap = new HashMap<>();
             accountCustomerMap.forEach((acc, cus) -> {
                 SummaryProcessedFile spf = new SummaryProcessedFile();
@@ -127,16 +136,21 @@ public class KafkaListenerService {
             });
 
             Map<String, Map<String, String>> errorMap = parseErrorReport(message);
+            logger.info("📑 Parsed error report with {} entries", errorMap.size());
 
             Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
             List<SummaryProcessedFile> processedFiles = buildDetailedProcessedFiles(jobDir, customerMap, errorMap, message);
+            logger.info("📦 Processed {} customer records", processedFiles.size());
 
             List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
+            logger.info("🖨️ Uploaded {} print files", printFiles.size());
 
             SummaryPayload payload = SummaryJsonWriter.buildPayload(message, processedFiles, printFiles, null, accountCustomerMap.size());
             String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
             String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, "summary_" + message.getBatchId() + ".json");
             payload.setSummaryFileURL(decodeUrl(summaryUrl));
+            logger.info("📁 Summary JSON uploaded to: {}", summaryUrl);
+            logger.info("📄 Final Summary Payload: {}", objectMapper.writeValueAsString(payload));
 
             SummaryResponse response = new SummaryResponse();
             response.setBatchID(message.getBatchId());
@@ -148,153 +162,11 @@ public class KafkaListenerService {
 
             kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
                     new ApiResponse("Summary generated", "COMPLETED", response)));
+            logger.info("✅ Kafka output sent for batch {} with response: {}", message.getBatchId(), objectMapper.writeValueAsString(response));
 
         } catch (Exception e) {
             logger.error("❌ Error post-OT summary generation", e);
         }
-    }
-
-    private Map<String, Map<String, String>> parseErrorReport(KafkaMessage msg) {
-        Map<String, Map<String, String>> map = new HashMap<>();
-        Path errorPath = Paths.get(mountPath, "output", msg.getSourceSystem(), msg.getJobName(), "ErrorReport.csv");
-        if (!Files.exists(errorPath)) return map;
-        try (BufferedReader reader = Files.newBufferedReader(errorPath)) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                String[] parts = line.split("\\|");
-                if (parts.length >= 5) {
-                    String acc = parts[0].trim();
-                    String method = parts[2].trim().toUpperCase();
-                    String status = parts[4].trim();
-                    map.computeIfAbsent(acc, k -> new HashMap<>()).put(method, status);
-                }
-            }
-        } catch (Exception e) {
-            logger.warn("Error reading ErrorReport", e);
-        }
-        return map;
-    }
-
-    private List<SummaryProcessedFile> buildDetailedProcessedFiles(Path jobDir, Map<String, SummaryProcessedFile> customerMap, Map<String, Map<String, String>> errorMap, KafkaMessage msg) throws IOException {
-        List<SummaryProcessedFile> result = new ArrayList<>();
-        Set<String> folders = Set.of("email", "archive", "html", "mobstat", "txt");
-
-        for (Map.Entry<String, SummaryProcessedFile> entry : customerMap.entrySet()) {
-            String account = entry.getKey();
-            SummaryProcessedFile spf = entry.getValue();
-
-            for (String folder : folders) {
-                Path folderPath = jobDir.resolve(folder);
-                if (Files.exists(folderPath)) {
-                    Optional<Path> fileOpt = Files.list(folderPath)
-                            .filter(p -> p.getFileName().toString().contains(account))
-                            .findFirst();
-
-                    if (fileOpt.isPresent()) {
-                        Path file = fileOpt.get();
-                        String blobUrl = blobStorageService.uploadFile(file.toFile(), msg.getSourceSystem() + "/" + msg.getBatchId() + "/" + folder + "/" + file.getFileName());
-                        String decoded = decodeUrl(blobUrl);
-
-                        switch (folder) {
-                            case "email" -> {
-                                spf.setPdfEmailFileUrl(decoded);
-                                spf.setPdfEmailStatus("OK");
-                            }
-                            case "archive" -> {
-                                spf.setPdfArchiveFileUrl(decoded);
-                                spf.setPdfArchiveStatus("OK");
-                            }
-                            case "html" -> {
-                                spf.setHtmlEmailFileUrl(decoded);
-                                spf.setHtmlEmailStatus("OK");
-                            }
-                            case "mobstat" -> {
-                                spf.setPdfMobstatFileUrl(decoded);
-                                spf.setPdfMobstatStatus("OK");
-                            }
-                            case "txt" -> {
-                                spf.setTxtEmailFileUrl(decoded);
-                                spf.setTxtEmailStatus("OK");
-                            }
-                        }
-                    } else {
-                        Map<String, String> err = errorMap.get(account);
-                        if (err != null) {
-                            String outputMethod = folder.toUpperCase();
-                            String status = err.getOrDefault(outputMethod, "");
-                            if (status.equalsIgnoreCase("Failed")) {
-                                switch (folder) {
-                                    case "email" -> spf.setPdfEmailStatus("Failed");
-                                    case "archive" -> spf.setPdfArchiveStatus("Failed");
-                                    case "html" -> spf.setHtmlEmailStatus("Failed");
-                                    case "mobstat" -> spf.setPdfMobstatStatus("Failed");
-                                    case "txt" -> spf.setTxtEmailStatus("Failed");
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            boolean hasFailure = Stream.of(
-                    spf.getPdfEmailStatus(), spf.getPdfArchiveStatus(), spf.getHtmlEmailStatus(),
-                    spf.getPdfMobstatStatus(), spf.getTxtEmailStatus()
-            ).anyMatch(s -> "NOT-OK".equalsIgnoreCase(s));
-
-            boolean allNull = Stream.of(
-                    spf.getPdfEmailStatus(), spf.getPdfArchiveStatus(), spf.getHtmlEmailStatus(),
-                    spf.getPdfMobstatStatus(), spf.getTxtEmailStatus()
-            ).allMatch(Objects::isNull);
-
-            if (allNull) {
-                spf.setStatusCode("FAILURE");
-                spf.setStatusDescription("No files processed");
-            } else if (hasFailure) {
-                spf.setStatusCode("PARTIAL");
-                spf.setStatusDescription("Some files missing");
-            } else {
-                spf.setStatusCode("OK");
-                spf.setStatusDescription("Success");
-            }
-
-            result.add(spf);
-        }
-
-        return result;
-    }
-
-    private List<PrintFile> uploadPrintFiles(Path jobDir, KafkaMessage msg) {
-        List<PrintFile> printFiles = new ArrayList<>();
-        Path printDir = jobDir.resolve("print");
-        if (!Files.exists(printDir)) return printFiles;
-        try (Stream<Path> stream = Files.list(printDir)) {
-            stream.filter(Files::isRegularFile).forEach(f -> {
-                try {
-                    String blob = blobStorageService.uploadFile(f.toFile(), msg.getSourceSystem() + "/print/" + f.getFileName());
-                    printFiles.add(new PrintFile(blob));
-                } catch (Exception e) {
-                    logger.warn("Print upload failed", e);
-                }
-            });
-        } catch (IOException ignored) {}
-        return printFiles;
-    }
-
-    private Map<String, String> extractAccountCustomerMapFromDoc(Document doc) {
-        Map<String, String> map = new HashMap<>();
-        NodeList customers = doc.getElementsByTagName("customer");
-        for (int i = 0; i < customers.getLength(); i++) {
-            Element customer = (Element) customers.item(i);
-            NodeList keys = customer.getElementsByTagName("key");
-            String acc = null, cus = null;
-            for (int j = 0; j < keys.getLength(); j++) {
-                Element k = (Element) keys.item(j);
-                if ("AccountNumber".equalsIgnoreCase(k.getAttribute("name"))) acc = k.getTextContent();
-                if ("CISNumber".equalsIgnoreCase(k.getAttribute("name"))) cus = k.getTextContent();
-            }
-            if (acc != null && cus != null) map.put(acc, cus);
-        }
-        return map;
     }
 
     private File waitForXmlFile(String jobId, String id) throws InterruptedException {
@@ -317,6 +189,23 @@ public class KafkaListenerService {
         return null;
     }
 
+    private Map<String, String> extractAccountCustomerMapFromDoc(Document doc) {
+        Map<String, String> map = new HashMap<>();
+        NodeList customers = doc.getElementsByTagName("customer");
+        for (int i = 0; i < customers.getLength(); i++) {
+            Element customer = (Element) customers.item(i);
+            NodeList keys = customer.getElementsByTagName("key");
+            String acc = null, cus = null;
+            for (int j = 0; j < keys.getLength(); j++) {
+                Element k = (Element) keys.item(j);
+                if ("AccountNumber".equalsIgnoreCase(k.getAttribute("name"))) acc = k.getTextContent();
+                if ("CISNumber".equalsIgnoreCase(k.getAttribute("name"))) cus = k.getTextContent();
+            }
+            if (acc != null && cus != null) map.put(acc, cus);
+        }
+        return map;
+    }
+
     private OTResponse callOrchestrationBatchApi(String token, String url, KafkaMessage msg) {
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -324,7 +213,6 @@ public class KafkaListenerService {
             headers.setContentType(MediaType.APPLICATION_JSON);
 
             HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
-
             ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, request, Map.class);
 
             List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get("data");
@@ -353,6 +241,7 @@ public class KafkaListenerService {
 
     @PreDestroy
     public void shutdownExecutor() {
+        logger.info("⚠️ Shutting down executor service");
         executor.shutdown();
     }
 
