@@ -1,100 +1,101 @@
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(Path jobDir,
-                                                                   Map<String, SummaryProcessedFile> customerMap,
-                                                                   Map<String, Map<String, String>> errorMap,
-                                                                   KafkaMessage msg) throws IOException {
-        List<SummaryProcessedFile> result = new ArrayList<>();
-        Set<String> folders = Set.of("email", "archive", "html", "mobstat", "txt");
+private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+        Path jobDir,
+        Map<String, SummaryProcessedFile> customerMap,
+        Map<String, Map<String, String>> errorMap,
+        KafkaMessage msg) throws IOException {
 
-        for (Map.Entry<String, SummaryProcessedFile> entry : customerMap.entrySet()) {
-            String account = entry.getKey();
-            SummaryProcessedFile spf = entry.getValue();
-            boolean hasAnyFile = false;
+    List<SummaryProcessedFile> result = new ArrayList<>();
+    List<String> folders = List.of("email", "archive", "html", "mobstat", "txt");
 
-            for (String folder : folders) {
-                Path folderPath = jobDir.resolve(folder);
-                if (!Files.exists(folderPath)) continue;
+    for (Map.Entry<String, SummaryProcessedFile> entry : customerMap.entrySet()) {
+        String account = entry.getKey();
+        SummaryProcessedFile spf = entry.getValue();
+        boolean hasAnyFile = false;
 
-                Optional<Path> fileOpt = Files.list(folderPath)
+        for (String folder : folders) {
+            Path folderPath = jobDir.resolve(folder);
+
+            Optional<Path> fileOpt = Files.exists(folderPath)
+                    ? Files.list(folderPath)
                         .filter(p -> p.getFileName().toString().startsWith(account))
-                        .findFirst();
+                        .findFirst()
+                    : Optional.empty();
 
-                if (fileOpt.isPresent()) {
-                    Path file = fileOpt.get();
-                    String blobUrl = blobStorageService.uploadFile(
-                            file.toFile(),
-                            msg.getSourceSystem() + "/" + msg.getBatchId() + "/" + folder + "/" + file.getFileName()
-                    );
-                    String decoded = decodeUrl(blobUrl);
+            if (fileOpt.isPresent()) {
+                Path file = fileOpt.get();
+                String blobUrl = blobStorageService.uploadFile(
+                        file.toFile(),
+                        msg.getSourceSystem() + "/" + msg.getBatchId() + "/" + folder + "/" + file.getFileName()
+                );
+                String decoded = decodeUrl(blobUrl);
 
-                    switch (folder) {
-                        case "email" -> {
-                            spf.setPdfEmailFileUrl(decoded);
-                            spf.setPdfEmailStatus("OK");
-                        }
-                        case "archive" -> {
-                            spf.setPdfArchiveFileUrl(decoded);
-                            spf.setPdfArchiveStatus("OK");
-                        }
-                        case "html" -> {
-                            spf.setHtmlEmailFileUrl(decoded);
-                            spf.setHtmlEmailStatus("OK");
-                        }
-                        case "mobstat" -> {
-                            spf.setPdfMobstatFileUrl(decoded);
-                            spf.setPdfMobstatStatus("OK");
-                        }
-                        case "txt" -> {
-                            spf.setTxtEmailFileUrl(decoded);
-                            spf.setTxtEmailStatus("OK");
-                        }
+                switch (folder) {
+                    case "email" -> {
+                        spf.setPdfEmailFileUrl(decoded);
+                        spf.setPdfEmailStatus("OK");
                     }
-                    hasAnyFile = true;
-                } else {
-                    // File not found in folder — check error map
-                    Map<String, String> errorEntry = errorMap.get(account);
-                    if (errorEntry != null) {
-                        String failureStatus = errorEntry.getOrDefault(folder.toUpperCase(), "");
-                        if ("Failed".equalsIgnoreCase(failureStatus)) {
-                            switch (folder) {
-                                case "email" -> spf.setPdfEmailStatus("Failed");
-                                case "archive" -> spf.setPdfArchiveStatus("Failed");
-                                case "html" -> spf.setHtmlEmailStatus("Failed");
-                                case "mobstat" -> spf.setPdfMobstatStatus("Failed");
-                                case "txt" -> spf.setTxtEmailStatus("Failed");
-                            }
-                        }
+                    case "archive" -> {
+                        spf.setPdfArchiveFileUrl(decoded);
+                        spf.setPdfArchiveStatus("OK");
+                    }
+                    case "html" -> {
+                        spf.setHtmlEmailFileUrl(decoded);
+                        spf.setHtmlEmailStatus("OK");
+                    }
+                    case "mobstat" -> {
+                        spf.setPdfMobstatFileUrl(decoded);
+                        spf.setPdfMobstatStatus("OK");
+                    }
+                    case "txt" -> {
+                        spf.setTxtEmailFileUrl(decoded);
+                        spf.setTxtEmailStatus("OK");
+                    }
+                }
+
+                hasAnyFile = true;
+            } else {
+                // File not found — check error map
+                Map<String, String> errorEntry = errorMap.getOrDefault(account, Collections.emptyMap());
+                String failureStatus = errorEntry.getOrDefault(folder.toUpperCase(), "");
+
+                if ("Failed".equalsIgnoreCase(failureStatus)) {
+                    switch (folder) {
+                        case "email" -> spf.setPdfEmailStatus("Failed");
+                        case "archive" -> spf.setPdfArchiveStatus("Failed");
+                        case "html" -> spf.setHtmlEmailStatus("Failed");
+                        case "mobstat" -> spf.setPdfMobstatStatus("Failed");
+                        case "txt" -> spf.setTxtEmailStatus("Failed");
                     }
                 }
             }
-
-            List<String> statuses = Arrays.asList(
-                    Optional.ofNullable(spf.getPdfEmailStatus()).orElse(""),
-                    Optional.ofNullable(spf.getPdfArchiveStatus()).orElse(""),
-                    Optional.ofNullable(spf.getHtmlEmailStatus()).orElse(""),
-                    Optional.ofNullable(spf.getPdfMobstatStatus()).orElse(""),
-                    Optional.ofNullable(spf.getTxtEmailStatus()).orElse("")
-            );
-
-            boolean allNull = statuses.stream().allMatch(Objects::isNull);
-            boolean anyFailed = statuses.stream().anyMatch("Failed"::equalsIgnoreCase);
-            boolean allOk = statuses.stream().filter(Objects::nonNull).allMatch("OK"::equalsIgnoreCase);
-
-            if (allNull) {
-                spf.setStatusCode("FAILURE");
-                spf.setStatusDescription("No files processed");
-            } else if (anyFailed && !allOk) {
-                spf.setStatusCode("PARTIAL");
-                spf.setStatusDescription("Some files missing");
-            } else if (allOk) {
-                spf.setStatusCode("OK");
-                spf.setStatusDescription("Success");
-            } else {
-                spf.setStatusCode("PARTIAL");
-                spf.setStatusDescription("Some files missing");
-            }
-
-            result.add(spf);
         }
 
-        return result;
+        // Determine overall status
+        List<String> statuses = Arrays.asList(
+                spf.getPdfEmailStatus(),
+                spf.getPdfArchiveStatus(),
+                spf.getHtmlEmailStatus(),
+                spf.getPdfMobstatStatus(),
+                spf.getTxtEmailStatus()
+        );
+
+        boolean allNull = statuses.stream().allMatch(Objects::isNull);
+        boolean anyFailed = statuses.stream().anyMatch(s -> "Failed".equalsIgnoreCase(s));
+        boolean allOk = statuses.stream().filter(Objects::nonNull).allMatch(s -> "OK".equalsIgnoreCase(s));
+
+        if (allNull) {
+            spf.setStatusCode("FAILURE");
+            spf.setStatusDescription("No files processed");
+        } else if (allOk) {
+            spf.setStatusCode("OK");
+            spf.setStatusDescription("Success");
+        } else {
+            spf.setStatusCode("PARTIAL");
+            spf.setStatusDescription("Some files missing");
+        }
+
+        result.add(spf);
     }
+
+    return result;
+}
