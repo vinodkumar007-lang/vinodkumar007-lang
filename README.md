@@ -1,111 +1,94 @@
-package com.nedbank.kafka.filemanage.utils;
+private List<SummaryProcessedFile> buildAndUploadProcessedFiles(
+    Path jobDir,
+    Map<String, String> accountCustomerMap,
+    KafkaMessage msg,
+    Set<String> errorReportEntries
+) throws IOException {
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.nedbank.kafka.filemanage.model.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
+    List<SummaryProcessedFile> result = new ArrayList<>();
+    List<String> folders = List.of("archive", "email", "html", "mobstat", "txt");
 
-import java.io.File;
-import java.nio.file.*;
-import java.time.Instant;
-import java.util.*;
+    for (Map.Entry<String, String> entry : accountCustomerMap.entrySet()) {
+        String accountNumber = entry.getKey();
+        String customerId = entry.getValue();
 
-@Component
-public class SummaryJsonWriter {
+        SummaryProcessedFile summary = new SummaryProcessedFile();
+        summary.setCustomerId(customerId);
+        summary.setAccountNumber(accountNumber);
 
-    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+        Map<String, Boolean> folderPresence = new HashMap<>();
 
-    public static String writeSummaryJsonToFile(SummaryPayload payload) {
-        if (payload == null) {
-            logger.error("SummaryPayload is null. Cannot write summary.json.");
-            throw new IllegalArgumentException("SummaryPayload cannot be null");
-        }
+        for (String folder : folders) {
+            String filePrefix = accountNumber + "_";
+            Path folderPath = jobDir.resolve(folder);
 
-        try {
-            String batchId = Optional.ofNullable(payload.getBatchID()).orElse("unknown");
-            String fileName = "summary_" + batchId + ".json";
+            Optional<Path> matchedFile = Files.exists(folderPath)
+                ? Files.list(folderPath)
+                        .filter(Files::isRegularFile)
+                        .filter(f -> f.getFileName().toString().startsWith(filePrefix))
+                        .findFirst()
+                : Optional.empty();
 
-            Path tempDir = Files.createTempDirectory("summaryFiles");
-            Path summaryFilePath = tempDir.resolve(fileName);
+            if (matchedFile.isPresent()) {
+                Path file = matchedFile.get();
+                String url = blobStorageService.uploadBinaryFile(file.toFile(), msg, folder);
 
-            File summaryFile = summaryFilePath.toFile();
-            if (summaryFile.exists()) {
-                Files.delete(summaryFilePath);
-                logger.warn("Existing summary file deleted: {}", summaryFilePath);
+                switch (folder) {
+                    case "archive" -> {
+                        summary.setPdfArchiveFileUrl(url);
+                        summary.setPdfArchiveStatus("OK");
+                    }
+                    case "email" -> {
+                        summary.setPdfEmailFileUrl(url);
+                        summary.setPdfEmailStatus("OK");
+                    }
+                    case "html" -> {
+                        summary.setPdfHtmlFileUrl(url);
+                        summary.setPdfHtmlStatus("OK");
+                    }
+                    case "mobstat" -> {
+                        summary.setPdfMobstatFileUrl(url);
+                        summary.setPdfMobstatStatus("OK");
+                    }
+                    case "txt" -> {
+                        summary.setPdfTxtFileUrl(url);
+                        summary.setPdfTxtStatus("OK");
+                    }
+                }
+
+                folderPresence.put(folder, true);
+            } else {
+                String errorKey = accountNumber + "|" + folder;
+                boolean markedFailed = errorReportEntries.contains(errorKey);
+
+                switch (folder) {
+                    case "archive" -> summary.setPdfArchiveStatus(markedFailed ? "FAILED" : null);
+                    case "email" -> summary.setPdfEmailStatus(markedFailed ? "FAILED" : null);
+                    case "html" -> summary.setPdfHtmlStatus(markedFailed ? "FAILED" : null);
+                    case "mobstat" -> summary.setPdfMobstatStatus(markedFailed ? "FAILED" : null);
+                    case "txt" -> summary.setPdfTxtStatus(markedFailed ? "FAILED" : null);
+                }
+
+                folderPresence.put(folder, false);
             }
-
-            objectMapper.writeValue(summaryFile, payload);
-            logger.info("✅ Summary JSON written at: {}", summaryFilePath);
-
-            return summaryFilePath.toAbsolutePath().toString();
-
-        } catch (Exception e) {
-            logger.error("❌ Failed to write summary.json", e);
-            throw new RuntimeException("Failed to write summary JSON", e);
-        }
-    }
-
-    public static SummaryPayload buildPayload(KafkaMessage message,
-                                              List<SummaryProcessedFile> processedFiles,
-                                              List<PrintFile> printFiles,
-                                              String mobstatTriggerPath,
-                                              int customersProcessed) {
-
-        SummaryPayload payload = new SummaryPayload();
-
-        payload.setBatchID(message.getBatchId());
-        payload.setFileName(message.getBatchId() + ".csv");
-        payload.setMobstatTriggerFile(mobstatTriggerPath);
-
-        // Header block
-        Header header = new Header();
-        header.setTenantCode(message.getTenantCode());
-        header.setChannelID(message.getChannelID());
-        header.setAudienceID(message.getAudienceID());
-        header.setSourceSystem(message.getSourceSystem());
-        header.setProduct(message.getProduct());
-        header.setJobName(message.getJobName());
-
-        // 👇 Don't set root-level timestamp here; will be set in KafkaListenerService
-        header.setTimestamp(Instant.now().toString());
-        payload.setHeader(header);
-
-        // Determine overall status
-        String overallStatus = "Completed";
-        if (processedFiles != null && !processedFiles.isEmpty()) {
-            boolean allFailed = processedFiles.stream().allMatch(f -> "FAILURE".equalsIgnoreCase(f.getStatusCode()));
-            boolean anyFailed = processedFiles.stream().anyMatch(f -> "FAILURE".equalsIgnoreCase(f.getStatusCode()) || "PARTIAL".equalsIgnoreCase(f.getStatusCode()));
-
-            if (allFailed) overallStatus = "Failure";
-            else if (anyFailed) overallStatus = "Partial";
         }
 
-        // Metadata block
-        Metadata metadata = new Metadata();
-        metadata.setTotalFilesProcessed(customersProcessed);
-        metadata.setProcessingStatus(overallStatus);
-        metadata.setEventOutcomeCode("0");
-        metadata.setEventOutcomeDescription("Success");
-        payload.setMetadata(metadata);
+        long total = folders.size();
+        long found = folderPresence.values().stream().filter(Boolean::booleanValue).count();
 
-        // Payload block
-        Payload payloadDetails = new Payload();
-        payloadDetails.setUniqueConsumerRef(message.getUniqueConsumerRef());
-        payloadDetails.setUniqueECPBatchRef(message.getUniqueECPBatchRef());
-        payloadDetails.setRunPriority(message.getRunPriority());
-        payloadDetails.setEventID(message.getEventID());
-        payloadDetails.setEventType(message.getEventType());
-        payloadDetails.setRestartKey(message.getRestartKey());
-        payloadDetails.setFileCount(processedFiles != null ? processedFiles.size() : 0);
-        payload.setPayload(payloadDetails);
+        if (found == total) {
+            summary.setStatusCode("OK");
+            summary.setStatusDescription("All files present");
+        } else if (found == 0) {
+            summary.setStatusCode("FAILED");
+            summary.setStatusDescription("No files found");
+        } else {
+            summary.setStatusCode("PARTIAL");
+            summary.setStatusDescription("Some files missing");
+        }
 
-        // 👇 Optional: include processed and print files in summary.json
-        payload.setProcessedFiles(processedFiles != null ? processedFiles : new ArrayList<>());
-        payload.setPrintFiles(printFiles != null ? printFiles : new ArrayList<>());
-
-        return payload;
+        result.add(summary);
     }
+
+    return result;
 }
