@@ -1,98 +1,111 @@
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(Path jobDir,
-                                                               Map<String, SummaryProcessedFile> customerMap,
-                                                               Map<String, Map<String, String>> errorMap,
-                                                               KafkaMessage msg) throws IOException {
-    List<SummaryProcessedFile> result = new ArrayList<>();
-    Set<String> folders = Set.of("email", "archive", "html", "mobstat", "txt");
+package com.nedbank.kafka.filemanage.utils;
 
-    for (Map.Entry<String, SummaryProcessedFile> entry : customerMap.entrySet()) {
-        String account = entry.getKey();
-        SummaryProcessedFile spf = entry.getValue();
-        boolean hasAnyFile = false;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.nedbank.kafka.filemanage.model.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
-        for (String folder : folders) {
-            Path folderPath = jobDir.resolve(folder);
-            if (Files.exists(folderPath)) {
-                Optional<Path> fileOpt = Files.list(folderPath)
-                        .filter(p -> p.getFileName().toString().contains(account))
-                        .findFirst();
+import java.io.File;
+import java.nio.file.*;
+import java.time.Instant;
+import java.util.*;
 
-                if (fileOpt.isPresent()) {
-                    Path file = fileOpt.get();
-                    String blobUrl = blobStorageService.uploadFile(
-                            file.toFile(),
-                            msg.getSourceSystem() + "/" + msg.getBatchId() + "/" + folder + "/" + file.getFileName()
-                    );
-                    String decoded = decodeUrl(blobUrl);
+@Component
+public class SummaryJsonWriter {
 
-                    switch (folder) {
-                        case "email" -> {
-                            spf.setPdfEmailFileUrl(decoded);
-                            spf.setPdfEmailStatus("OK");
-                        }
-                        case "archive" -> {
-                            spf.setPdfArchiveFileUrl(decoded);
-                            spf.setPdfArchiveStatus("OK");
-                        }
-                        case "html" -> {
-                            spf.setHtmlEmailFileUrl(decoded);
-                            spf.setHtmlEmailStatus("OK");
-                        }
-                        case "mobstat" -> {
-                            spf.setPdfMobstatFileUrl(decoded);
-                            spf.setPdfMobstatStatus("OK");
-                        }
-                        case "txt" -> {
-                            spf.setTxtEmailFileUrl(decoded);
-                            spf.setTxtEmailStatus("OK");
-                        }
-                    }
-                    hasAnyFile = true;
-                } else {
-                    // File not found in folder, check error report
-                    Map<String, String> errorEntry = errorMap.get(account);
-                    if (errorEntry != null) {
-                        String status = errorEntry.getOrDefault(folder.toUpperCase(), "");
-                        if (status.equalsIgnoreCase("Failed")) {
-                            switch (folder) {
-                                case "email" -> spf.setPdfEmailStatus("Failed");
-                                case "archive" -> spf.setPdfArchiveStatus("Failed");
-                                case "html" -> spf.setHtmlEmailStatus("Failed");
-                                case "mobstat" -> spf.setPdfMobstatStatus("Failed");
-                                case "txt" -> spf.setTxtEmailStatus("Failed");
-                            }
-                        }
-                    }
-                }
+    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+
+    public static String writeSummaryJsonToFile(SummaryPayload payload) {
+        if (payload == null) {
+            logger.error("SummaryPayload is null. Cannot write summary.json.");
+            throw new IllegalArgumentException("SummaryPayload cannot be null");
+        }
+
+        try {
+            String batchId = Optional.ofNullable(payload.getBatchID()).orElse("unknown");
+            String fileName = "summary_" + batchId + ".json";
+
+            Path tempDir = Files.createTempDirectory("summaryFiles");
+            Path summaryFilePath = tempDir.resolve(fileName);
+
+            File summaryFile = summaryFilePath.toFile();
+            if (summaryFile.exists()) {
+                Files.delete(summaryFilePath);
+                logger.warn("Existing summary file deleted: {}", summaryFilePath);
             }
+
+            objectMapper.writeValue(summaryFile, payload);
+            logger.info("✅ Summary JSON written at: {}", summaryFilePath);
+
+            return summaryFilePath.toAbsolutePath().toString();
+
+        } catch (Exception e) {
+            logger.error("❌ Failed to write summary.json", e);
+            throw new RuntimeException("Failed to write summary JSON", e);
         }
-
-        // Determine final status for the customer
-        List<String> statuses = List.of(
-                spf.getPdfEmailStatus(), spf.getPdfArchiveStatus(), spf.getHtmlEmailStatus(),
-                spf.getPdfMobstatStatus(), spf.getTxtEmailStatus()
-        );
-
-        boolean allNull = statuses.stream().allMatch(Objects::isNull);
-        boolean anyFailed = statuses.stream().anyMatch("Failed"::equalsIgnoreCase);
-        boolean allOk = statuses.stream().filter(Objects::nonNull).allMatch("OK"::equalsIgnoreCase);
-
-        if (allNull) {
-            spf.setStatusCode("FAILURE");
-            spf.setStatusDescription("No files processed");
-        } else if (anyFailed) {
-            spf.setStatusCode("PARTIAL");
-            spf.setStatusDescription("Some files missing");
-        } else if (allOk) {
-            spf.setStatusCode("OK");
-            spf.setStatusDescription("Success");
-        } else {
-            spf.setStatusCode("PARTIAL");
-            spf.setStatusDescription("Some files missing");
-        }
-
-        result.add(spf);
     }
 
-    return result;
+    public static SummaryPayload buildPayload(KafkaMessage message,
+                                              List<SummaryProcessedFile> processedFiles,
+                                              List<PrintFile> printFiles,
+                                              String mobstatTriggerPath,
+                                              int customersProcessed) {
+
+        SummaryPayload payload = new SummaryPayload();
+
+        payload.setBatchID(message.getBatchId());
+        payload.setFileName(message.getBatchId() + ".csv");
+        payload.setMobstatTriggerFile(mobstatTriggerPath);
+
+        // Header block
+        Header header = new Header();
+        header.setTenantCode(message.getTenantCode());
+        header.setChannelID(message.getChannelID());
+        header.setAudienceID(message.getAudienceID());
+        header.setSourceSystem(message.getSourceSystem());
+        header.setProduct(message.getProduct());
+        header.setJobName(message.getJobName());
+
+        // 👇 Don't set root-level timestamp here; will be set in KafkaListenerService
+        header.setTimestamp(Instant.now().toString());
+        payload.setHeader(header);
+
+        // Determine overall status
+        String overallStatus = "Completed";
+        if (processedFiles != null && !processedFiles.isEmpty()) {
+            boolean allFailed = processedFiles.stream().allMatch(f -> "FAILURE".equalsIgnoreCase(f.getStatusCode()));
+            boolean anyFailed = processedFiles.stream().anyMatch(f -> "FAILURE".equalsIgnoreCase(f.getStatusCode()) || "PARTIAL".equalsIgnoreCase(f.getStatusCode()));
+
+            if (allFailed) overallStatus = "Failure";
+            else if (anyFailed) overallStatus = "Partial";
+        }
+
+        // Metadata block
+        Metadata metadata = new Metadata();
+        metadata.setTotalFilesProcessed(customersProcessed);
+        metadata.setProcessingStatus(overallStatus);
+        metadata.setEventOutcomeCode("0");
+        metadata.setEventOutcomeDescription("Success");
+        payload.setMetadata(metadata);
+
+        // Payload block
+        Payload payloadDetails = new Payload();
+        payloadDetails.setUniqueConsumerRef(message.getUniqueConsumerRef());
+        payloadDetails.setUniqueECPBatchRef(message.getUniqueECPBatchRef());
+        payloadDetails.setRunPriority(message.getRunPriority());
+        payloadDetails.setEventID(message.getEventID());
+        payloadDetails.setEventType(message.getEventType());
+        payloadDetails.setRestartKey(message.getRestartKey());
+        payloadDetails.setFileCount(processedFiles != null ? processedFiles.size() : 0);
+        payload.setPayload(payloadDetails);
+
+        // 👇 Optional: include processed and print files in summary.json
+        payload.setProcessedFiles(processedFiles != null ? processedFiles : new ArrayList<>());
+        payload.setPrintFiles(printFiles != null ? printFiles : new ArrayList<>());
+
+        return payload;
+    }
 }
