@@ -314,7 +314,7 @@ public class KafkaListenerService {
             boolean hasFailure = Stream.of(
                     spf.getPdfEmailStatus(), spf.getPdfArchiveStatus(), spf.getHtmlEmailStatus(),
                     spf.getPdfMobstatStatus(), spf.getTxtEmailStatus()
-            ).anyMatch(s -> "Failed".equalsIgnoreCase(s));
+            ).anyMatch(s -> "NOT-OK".equalsIgnoreCase(s));
 
             boolean allNull = Stream.of(
                     spf.getPdfEmailStatus(), spf.getPdfArchiveStatus(), spf.getHtmlEmailStatus(),
