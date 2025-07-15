@@ -1,49 +1,37 @@
-package com.nedbank.kafka.filemanage.model;
+@Value("${ot.service.mfc.url}")
+private String orchestrationMfcUrl;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.Data;
+String url;
+switch (message.getSourceSystem().toUpperCase()) {
+    case "DEBTMAN" -> url = orchestrationDebtmanUrl;
+    case "MFC" -> url = orchestrationMfcUrl;
+    default -> throw new IllegalArgumentException("Unsupported source system: " + message.getSourceSystem());
+}
 
-@Data
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class SummaryProcessedFile {
-    private String customerId;
-    private String accountNumber;
-    private String firstName;
-    private String lastName;
-    private String email;
-    private String mobileNumber;
-    private String addressLine1;
-    private String addressLine2;
-    private String addressLine3;
-    private String postalCode;
-    private String contactNumber;
-    private String product;
-    private String templateCode;
-    private String templateName;
-    private String balance;
-    private String creditLimit;
-    private String interestRate;
-    private String dueAmount;
-    private String arrears;
-    private String dueDate;
-    private String idNumber;
-    private String accountReference;
-    
-    private String pdfArchiveFileUrl;
-    private String pdfEmailFileUrl;
-    private String htmlEmailFileUrl;
-    private String txtEmailFileUrl;
-    private String pdfMobstatFileUrl;
+OTResponse otResponse = callOrchestrationBatchApi(orchestrationAuthToken, url, message);
 
-    private String pdfEmailStatus;
-    private String pdfArchiveStatus;
-    private String htmlEmailStatus;
-    private String txtEmailStatus;
-    private String pdfMobstatStatus;
+private OTResponse callOrchestrationBatchApi(String token, String url, KafkaMessage msg) {
+    try {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + token);
+        headers.setContentType(MediaType.APPLICATION_JSON);
 
-    private String statusCode;
-    private String statusDescription;
+        HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
 
-    private String fullName;
-    private String blobURL;
+        ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, request, Map.class);
+
+        List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get("data");
+        if (data != null && !data.isEmpty()) {
+            Map<String, Object> item = data.get(0);
+            OTResponse otResponse = new OTResponse();
+            otResponse.setJobId((String) item.get("jobId"));
+            otResponse.setId((String) item.get("id"));
+            return otResponse;
+        } else {
+            logger.error("❌ No data in OT orchestration response");
+        }
+    } catch (Exception e) {
+        logger.error("❌ Failed OT Orchestration call", e);
+    }
+    return null;
 }
