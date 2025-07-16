@@ -1,1 +1,59 @@
-Kafka output sent for batch 2c93525b-42d1-410a-9e26-aa957f19861d with response: {"batchID":"2c93525b-42d1-410a-9e26-aa957f19861d","fileName":"DEBTMAN.csv","header":{"tenantCode":"ZANBL","channelID":null,"audienceID":null,"timestamp":"2025-07-16T05:03:27.502648381Z","sourceSystem":"DEBTMAN","product":"DEBTMAN","jobName":"DEBTMAN"},"metadata":{"totalFilesProcessed":6,"processingStatus":"Partial","eventOutcomeCode":"0","eventOutcomeDescription":"Success"},"payload":{"uniqueConsumerRef":"6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f","uniqueECPBatchRef":null,"runPriority":null,"eventID":null,"eventType":null,"restartKey":null,"fileCount":6},"summaryFileURL":"https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2Fsummary_2c93525b-42d1-410a-9e26-aa957f19861d.json","timestamp":null}
+  private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
+        try {
+            logger.info("⏳ Waiting for XML for jobId={}, id={}", otResponse.getJobId(), otResponse.getId());
+            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
+            if (xmlFile == null) throw new IllegalStateException("XML not found");
+            logger.info("✅ Found XML file: {}", xmlFile);
+
+            Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile);
+            doc.getDocumentElement().normalize();
+
+            Map<String, String> accountCustomerMap = extractAccountCustomerMapFromDoc(doc);
+            logger.info("\uD83D\uDCC4 Extracted {} customers from XML", accountCustomerMap.size());
+
+            Map<String, SummaryProcessedFile> customerMap = new HashMap<>();
+            accountCustomerMap.forEach((acc, cus) -> {
+                SummaryProcessedFile spf = new SummaryProcessedFile();
+                spf.setAccountNumber(acc);
+                spf.setCustomerId(cus);
+                customerMap.put(acc, spf);
+            });
+
+            Map<String, Map<String, String>> errorMap = parseErrorReport(message);
+            logger.info("\uD83D\uDCC1 Parsed error report with {} entries", errorMap.size());
+
+            Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
+            List<SummaryProcessedFile> processedFiles = buildDetailedProcessedFiles(jobDir, customerMap, errorMap, message);
+            logger.info("📦 Processed {} customer records", processedFiles.size());
+
+            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
+            logger.info("🖨️ Uploaded {} print files", printFiles.size());
+
+            String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
+
+            SummaryPayload payload = SummaryJsonWriter.buildPayload(message, processedFiles, printFiles, mobstatTriggerUrl, accountCustomerMap.size());
+            payload.setFileName(message.getBatchFiles().get(0).getFilename());
+            payload.setTimestamp(DateTimeFormatter.ISO_INSTANT.format(Instant.now()));
+            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
+            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, "summary_" + message.getBatchId() + ".json");
+
+            logger.info("📁 Summary JSON uploaded to: {}", summaryUrl);
+            logger.info("📄 Final Summary Payload:\n{}",
+                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
+
+            SummaryResponse response = new SummaryResponse();
+            response.setBatchID(message.getBatchId());
+            response.setFileName(payload.getFileName());
+            response.setHeader(payload.getHeader());
+            response.setMetadata(payload.getMetadata());
+            response.setPayload(payload.getPayload());
+            response.setSummaryFileURL(summaryUrl);
+
+            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
+                    new ApiResponse("Summary generated", "COMPLETED", response)));
+            logger.info("✅ Kafka output sent for batch {} with response: {}", message.getBatchId(), objectMapper.writeValueAsString(response));
+
+        } catch (Exception e) {
+            logger.error("❌ Error post-OT summary generation", e);
+        }
+    }
