@@ -1,44 +1,43 @@
-✅ Step 2: Download File from Kafka Message, Place in Mount Path, Update Message, and Send to OpenText
-📁 Download File and Place in Mount Path
-For each file in the incoming Kafka message:
+⏳ Step 2: Wait & Poll for Output from OT
+Once OT starts processing:
 
-The file is downloaded using blobStorageService.downloadFileContent(blobUrl).
+🔍 FileManager behavior:
+It does not block the Kafka thread. Instead:
 
-The content is stored locally at:
+A background thread (Executor Service) is triggered.
 
-swift
-Copy
-Edit
-{mountPath}/input/{sourceSystem}/{batchId}/{filename}
-Example:
+That thread:
 
-swift
-Copy
-Edit
-/mnt/kafka/input/DEBTMAN/12345/InputFile1.txt
-✏️ Update Kafka Message
-After downloading:
-
-The blobUrl field in each batchFile is updated to point to the local mount path where the file was stored.
-
-java
-Copy
-Edit
-file.setBlobUrl(localPath.toString());
-🚀 Send Updated Kafka Message to OpenText
-The updated message now contains:
-
-Metadata (batchId, sourceSystem, filenames)
-
-Mount path location of downloaded file(s)
-
-Instructions for OpenText to process it.
-
-The service sends this message as a POST request to:
+Polls OT’s job folder periodically:
 
 bash
 Copy
 Edit
-https://dev-exstream.nednet.co.za/orchestration/api/v1/inputs/batch/dev-SA/ECPDebtmanService
-with required authorization headers.
+/mnt/kafka/jobs/{jobId}/{id}/docgen/
+It waits for the _STDDELIVERYFILE.xml file which signals that OT finished processing.
 
+⏱ Polling Strategy:
+Waits up to rpt.max.wait.seconds (configurable).
+
+Polls every rpt.poll.interval.millis milliseconds.
+
+Ensures the XML file is fully written (file size stabilized before using it).
+
+📄 Step 3: Post-OT Processing
+After OT finishes processing and generates output files:
+
+FileManager:
+
+Parses the XML to extract customer + output method mapping.
+
+Matches and uploads all generated output files (EMAIL, PRINT, MOBSTAT, etc.) from the output mount path to Azure Blob.
+
+Generates a detailed summary.json including:
+
+Processed file status and blob URLs.
+
+Print files.
+
+Mobstat trigger file if present.
+
+Uploads the summary.json to Azure Blob.
