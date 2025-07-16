@@ -1,5 +1,6 @@
 package com.nedbank.kafka.filemanage.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.Data;
 
@@ -16,7 +17,10 @@ public class SummaryPayload {
     private List<SummaryProcessedFile> processedFiles;
     private List<PrintFile> printFiles;
     private String mobstatTriggerFile;
-    private String summaryFileURL;
+    
+    @JsonIgnore
+    private String summaryFileURL; // Will not be written to summary.json
+
     private String fileLocation;
     private String timestamp;
 }
