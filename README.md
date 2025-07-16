@@ -1,6 +1,8 @@
 public static List<SummaryProcessedFile> buildDetailedProcessedFiles(List<GeneratedFile> generatedFiles,
-                                                                      List<ErrorReportEntry> errorReportEntries) {
-    Map<String, SummaryProcessedFile> customerMap = new LinkedHashMap<>();
+                                                                      List<ErrorReportEntry> errorReportEntries,
+                                                                      Set<String> uniqueCustomerAccountsOut) {
+    List<SummaryProcessedFile> processedFiles = new ArrayList<>();
+    Set<String> uniqueAccounts = new HashSet<>();
 
     Set<String> failedAccounts = errorReportEntries.stream()
             .map(ErrorReportEntry::getAccountNumber)
@@ -10,8 +12,7 @@ public static List<SummaryProcessedFile> buildDetailedProcessedFiles(List<Genera
         String accountNumber = file.getAccountNumber();
         if (accountNumber == null || accountNumber.isBlank()) continue;
 
-        // ✅ Skip if already added (OpenText includes same customer in multiple queues)
-        if (customerMap.containsKey(accountNumber)) continue;
+        uniqueAccounts.add(accountNumber); // ✅ Count all customers
 
         SummaryProcessedFile summary = new SummaryProcessedFile();
         summary.setAccountNumber(accountNumber);
@@ -27,8 +28,23 @@ public static List<SummaryProcessedFile> buildDetailedProcessedFiles(List<Genera
             summary.setStatus("PROCESSED");
         }
 
-        customerMap.put(accountNumber, summary);
+        processedFiles.add(summary); // 👈 Don't deduplicate
     }
 
-    return new ArrayList<>(customerMap.values());
+    // Pass back unique customer count for `customersProcessed`
+    if (uniqueCustomerAccountsOut != null) {
+        uniqueCustomerAccountsOut.addAll(uniqueAccounts);
+    }
+
+    return processedFiles;
 }
+
+Set<String> uniqueAccounts = new HashSet<>();
+
+List<SummaryProcessedFile> processedFiles = buildDetailedProcessedFiles(
+        generatedFiles,
+        errorReportEntries,
+        uniqueAccounts // 👈 this will now have all 24 customers
+);
+
+summaryPayload.getMetadata().setCustomersProcessed(uniqueAccounts.size());
