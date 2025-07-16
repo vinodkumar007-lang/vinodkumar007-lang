@@ -1,6 +1,6 @@
-2025-07-16T19:55:28.673+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : 🧾 Parsed error report with 0 entries
-2025-07-16T19:55:29.690+02:00 ERROR 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : ❌ Error post-OT summary generation
-java.lang.IllegalStateException: Duplicate key 1001382854 (attempted merging values SummaryProcessedFile(customerId=600002895121, accountNumber=1001382854, firstName=null, lastName=null, email=null, mobileNumber=null, addressLine1=null, addressLine2=null, addressLine3=null, postalCode=null, contactNumber=null, product=null, templateCode=null, templateName=null, balance=null, creditLimit=null, interestRate=null, dueAmount=null, arrears=null, dueDate=null, idNumber=null, accountReference=null, pdfArchiveFileUrl=null, pdfArchiveStatus=null, pdfEmailFileUrl=null, pdfEmailStatus=null, pdfMobstatFileUrl=null, pdfMobstatStatus=null, printFileUrl=null, printStatus=null, statusCode=null, statusDescription=null, fullName=null, blobURL=null) and SummaryProcessedFile(customerId=600002895121, accountNumber=1001382854, firstName=null, lastName=null, email=null, mobileNumber=null, addressLine1=null, addressLine2=null, addressLine3=null, postalCode=null, contactNumber=null, product=null, templateCode=null, templateName=null, balance=null, creditLimit=null, interestRate=null, dueAmount=null, arrears=null, dueDate=null, idNumber=null, accountReference=null, pdfArchiveFileUrl=null, pdfArchiveStatus=null, pdfEmailFileUrl=null, pdfEmailStatus=null, pdfMobstatFileUrl=null, pdfMobstatStatus=null, printFileUrl=null, printStatus=null, statusCode=null, statusDescription=null, fullName=null, blobURL=null))
- at java.base/java.util.stream.Collectors.duplicateKeyException(Collectors.java:135) ~[na:na]
- at java.base/java.util.stream.Collectors.lambda$uniqKeysMapAccumulator$1(Collectors.java:182) ~[na:na]
- at java.bas
+Map<String, SummaryProcessedFile> customerMap = list.stream()
+    .collect(Collectors.toMap(
+        SummaryProcessedFile::getAccountNumber,
+        Function.identity(),
+        (existing, duplicate) -> existing // or keep latest with: duplicate
+    ));
