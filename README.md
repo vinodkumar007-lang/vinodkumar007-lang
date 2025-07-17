@@ -1,3 +1,14 @@
+public class AccountSummary {
+    private String accountNumber;
+    private String statusCode;
+    private String statusDescription;
+    private String pdfEmailStatus;
+    private String pdfArchiveStatus;
+    private String pdfMobstatStatus;
+    private String printStatus;
+    // Getters and setters
+}
+
 package com.nedbank.kafka.filemanage.utils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -88,6 +99,7 @@ public class SummaryJsonWriter {
         metadata.setProcessingStatus(overallStatus);
         metadata.setEventOutcomeCode("0");
         metadata.setEventOutcomeDescription("Success");
+        metadata.setCustomerSummaries(buildCustomerSummaries(processedFiles)); // ✅ added
         payload.setMetadata(metadata);
 
         // Payload block
@@ -98,18 +110,18 @@ public class SummaryJsonWriter {
         payloadDetails.setEventID(message.getEventID());
         payloadDetails.setEventType(message.getEventType());
         payloadDetails.setRestartKey(message.getRestartKey());
-        //payloadDetails.setFileCount(processedFiles != null ? processedFiles.size() : 0);
         payloadDetails.setFileCount(pagesProcessed);
         payload.setPayload(payloadDetails);
 
         // Processed files
         payload.setProcessedFiles(processedFiles != null ? processedFiles : new ArrayList<>());
 
-        // Print files (✅ Make sure included)
-        //payload.setPrintFiles(printFiles != null ? printFiles : new ArrayList<>());
+        // Print files
+        payload.setPrintFiles(printFiles != null ? printFiles : new ArrayList<>());
 
         return payload;
     }
+
     private static List<CustomerSummary> buildCustomerSummaries(List<SummaryProcessedFile> processedFiles) {
         Map<String, CustomerSummary> customerMap = new LinkedHashMap<>();
 
@@ -121,19 +133,26 @@ public class SummaryJsonWriter {
             CustomerSummary customerSummary = customerMap.computeIfAbsent(customerId, id -> {
                 CustomerSummary cs = new CustomerSummary();
                 cs.setCustomerId(id);
+                cs.setAccounts(new ArrayList<>());
                 return cs;
             });
 
-            AccountSummary acc = new AccountSummary();
-            acc.setAccountNumber(account);
-            acc.setStatusCode(file.getStatusCode());
-            acc.setStatusDescription(file.getStatusDescription());
-            acc.setPdfEmailStatus(file.getPdfEmailStatus());
-            acc.setPdfArchiveStatus(file.getPdfArchiveStatus());
-            acc.setPdfMobstatStatus(file.getPdfMobstatStatus());
-            acc.setPrintStatus(file.getPrintStatus());
+            // Check if account already added
+            boolean alreadyAdded = customerSummary.getAccounts().stream()
+                    .anyMatch(a -> account.equals(a.getAccountNumber()));
 
-            customerSummary.getAccounts().add(acc);
+            if (!alreadyAdded) {
+                AccountSummary acc = new AccountSummary();
+                acc.setAccountNumber(account);
+                acc.setStatusCode(file.getStatusCode());
+                acc.setStatusDescription(file.getStatusDescription());
+                acc.setPdfEmailStatus(file.getPdfEmailStatus());
+                acc.setPdfArchiveStatus(file.getPdfArchiveStatus());
+                acc.setPdfMobstatStatus(file.getPdfMobstatStatus());
+                acc.setPrintStatus(file.getPrintStatus());
+
+                customerSummary.getAccounts().add(acc);
+            }
         }
 
         return new ArrayList<>(customerMap.values());
