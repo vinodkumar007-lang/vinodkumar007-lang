@@ -1,71 +1,58 @@
-private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
-    try {
-        logger.info("⏳ Waiting for XML for jobId={}, id={}", otResponse.getJobId(), otResponse.getId());
-        File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
-        if (xmlFile == null) throw new IllegalStateException("XML not found");
-        logger.info("✅ Found XML file: {}", xmlFile);
+private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+        Path jobDir,
+        Map<String, Map<String, String>> errorMap,
+        KafkaMessage message
+) {
+    Map<String, SummaryProcessedFile> customerMap = new LinkedHashMap<>();
+    List<String> folders = List.of("archive", "email", "html", "mobstat", "txt");
 
-        // ✅ Parse error report
-        Map<String, Map<String, String>> errorMap = parseErrorReport(message);
-        logger.info("🧾 Parsed error report with {} entries", errorMap.size());
+    for (String folder : folders) {
+        Path folderPath = jobDir.resolve(folder);
+        if (!Files.exists(folderPath)) continue;
 
-        // ✅ Parse STD XML for customer summaries
-        List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile, errorMap);
-        logger.info("📊 Total customerSummaries parsed: {}", customerSummaries.size());
+        try (Stream<Path> files = Files.walk(folderPath)) {
+            files.filter(Files::isRegularFile).forEach(path -> {
+                try {
+                    String fileName = path.getFileName().toString();
+                    if (!fileName.contains("_")) return;
 
-        // ✅ Build jobDir path
-        Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
+                    // Extract customer and accountNumber
+                    String[] parts = fileName.split("_");
+                    if (parts.length < 2) return;
+                    String customer = parts[0];
+                    String accountNumber = parts[1].split("\\.")[0]; // remove extension
 
-        // ✅ Build processedFiles using fixed method call
-        List<SummaryProcessedFile> processedFiles =
-                buildDetailedProcessedFiles(jobDir, errorMap, message);
-        logger.info("📦 Processed {} customer records", processedFiles.size());
+                    String key = customer + "-" + accountNumber;
 
-        // ✅ Upload print files
-        List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
-        logger.info("🖨️ Uploaded {} print files", printFiles.size());
+                    SummaryProcessedFile entry = customerMap.getOrDefault(key, new SummaryProcessedFile());
+                    entry.setCustomer(customer);
+                    entry.setAccountNumber(accountNumber);
 
-        // ✅ Upload mobstat trigger if present
-        String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
-        String currentTimestamp = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
+                    // Extract error details if present
+                    Map<String, String> errDetails = errorMap.getOrDefault(customer + accountNumber, new HashMap<>());
+                    entry.setStatus(errDetails.getOrDefault("status", "SUCCESS"));
+                    entry.setErrorCode(errDetails.get("errorCode"));
+                    entry.setErrorDescription(errDetails.get("errorDescription"));
 
-        // ✅ Build final payload
-        SummaryPayload payload = SummaryJsonWriter.buildPayload(
-                message, processedFiles, printFiles, mobstatTriggerUrl, processedFiles.size());
+                    // Assign URL to correct delivery type
+                    String blobUrl = blobStorageService.uploadProcessedFile(path.toString(), message);
+                    switch (folder.toLowerCase()) {
+                        case "archive" -> entry.setArchiveURL(blobUrl);
+                        case "email" -> entry.setEmailURL(blobUrl);
+                        case "html" -> entry.setHtmlURL(blobUrl);
+                        case "mobstat" -> entry.setMobstatURL(blobUrl);
+                        case "txt" -> entry.setTxtURL(blobUrl);
+                    }
 
-        payload.setFileName(message.getBatchFiles().get(0).getFilename());
-        payload.setTimestamp(currentTimestamp);
-        if (payload.getHeader() != null) {
-            payload.getHeader().setTimestamp(currentTimestamp);
+                    customerMap.put(key, entry);
+                } catch (Exception e) {
+                    logger.error("⚠️ Failed to process file in {}: {}", folder, path, e);
+                }
+            });
+        } catch (IOException e) {
+            logger.error("⚠️ Failed to walk folder: {}", folderPath, e);
         }
-
-        // ✅ Upload summary.json
-        String fileName = "summary_" + message.getBatchId() + ".json";
-        String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
-        String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, fileName);
-        payload.setSummaryFileURL(decodeUrl(summaryUrl));
-
-        logger.info("📁 Summary JSON uploaded to: {}", decodeUrl(summaryUrl));
-        logger.info("📄 Final Summary Payload:\n{}",
-                objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
-
-        // ✅ Send response to Kafka
-        SummaryResponse response = new SummaryResponse();
-        response.setBatchID(message.getBatchId());
-        response.setFileName(payload.getFileName());
-        response.setHeader(payload.getHeader());
-        response.setMetadata(payload.getMetadata());
-        response.setPayload(payload.getPayload());
-        response.setSummaryFileURL(decodeUrl(summaryUrl));
-        response.setTimestamp(currentTimestamp);
-
-        kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
-                new ApiResponse("Summary generated", "COMPLETED", response)));
-
-        logger.info("✅ Kafka output sent for batch {} with response: {}", message.getBatchId(),
-                objectMapper.writeValueAsString(response));
-
-    } catch (Exception e) {
-        logger.error("❌ Error post-OT summary generation", e);
     }
+
+    return new ArrayList<>(customerMap.values());
 }
