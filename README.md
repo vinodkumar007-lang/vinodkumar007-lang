@@ -1,72 +1,116 @@
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        Path jobDir,
-        Map<String, String> accountCustomerMap,
-        KafkaMessage msg,
-        ErrorReport errorReport
-) throws IOException {
-    Map<String, SummaryProcessedFile> processedMap = new HashMap<>();
+ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+            Path jobDir,
+            List<SummaryProcessedFile> customerList,
+            Map<String, Map<String, String>> errorMap,
+            KafkaMessage msg) throws IOException {
 
-    List<String> folders = List.of("archive", "email", "mobstat", "print");
+        List<String> folders = List.of("email", "archive", "mobstat", "print");
+        Map<String, String> folderToOutputMethod = Map.of(
+                "email", "EMAIL",
+                "archive", "ARCHIVE",
+                "mobstat", "MOBSTAT",
+                "print", "PRINT"
+        );
 
-    for (String folder : folders) {
-        Path folderPath = jobDir.resolve(folder);
-        if (!Files.exists(folderPath)) continue;
+        List<SummaryProcessedFile> resultList = new ArrayList<>();
 
-        try (Stream<Path> fileStream = Files.walk(folderPath)) {
-            fileStream.filter(Files::isRegularFile).forEach(path -> {
-                try {
-                    String fileName = path.getFileName().toString();
+        for (SummaryProcessedFile spf : customerList) {
+            String account = spf.getAccountNumber();
+            String customer = spf.getCustomerId();
+            if (account == null || account.isBlank()) continue;
 
-                    // ✅ Skip mobstat_trigger.txt
-                    if (fileName.equalsIgnoreCase("mobstat_trigger.txt")) return;
+            SummaryProcessedFile updatedSpf = new SummaryProcessedFile();
+            BeanUtils.copyProperties(spf, updatedSpf);
 
-                    String accountNumber = extractAccountNumber(fileName);
-                    String customerNumber = accountCustomerMap.getOrDefault(accountNumber, "");
+            for (String folder : folders) {
+                Path folderPath = jobDir.resolve(folder);
+                Optional<Path> fileOpt;
 
-                    if (accountNumber == null || customerNumber == null || accountNumber.isEmpty() || customerNumber.isEmpty()) {
-                        logger.warn("❌ Could not determine account/customer for file: {}", fileName);
-                        return;
-                    }
+                if (folder.equals("mobstat")) {
+                    fileOpt = Files.exists(folderPath)
+                            ? Files.list(folderPath)
+                            .filter(p -> p.getFileName().toString().toLowerCase().contains("mobstat_trigger") &&
+                                    p.getFileName().toString().contains(account))
+                            .findFirst()
+                            : Optional.empty();
+                } else {
+                    fileOpt = Files.exists(folderPath)
+                            ? Files.list(folderPath)
+                            .filter(p -> p.getFileName().toString().contains(account))
+                            .findFirst()
+                            : Optional.empty();
+                }
 
-                    String key = accountNumber + "_" + customerNumber;
-                    SummaryProcessedFile spf = processedMap.getOrDefault(key, new SummaryProcessedFile());
-                    spf.setAccountNumber(accountNumber);
-                    spf.setCustomerNumber(customerNumber);
+                String outputMethod = folderToOutputMethod.get(folder);
+                Map<String, String> errorEntry = errorMap.getOrDefault(account, Collections.emptyMap());
+                String failureStatus = errorEntry.getOrDefault(outputMethod, "");
 
-                    String blobUrl = blobStorageService.getBlobUrl(msg.getJobId(), folder + "/" + fileName);
+                if (fileOpt.isPresent()) {
+                    Path file = fileOpt.get();
+                    String blobUrl = blobStorageService.uploadFile(
+                            file.toFile(),
+                            msg.getSourceSystem() + "/" + msg.getBatchId() + "/" + folder + "/" + file.getFileName()
+                    );
+                    String decoded = decodeUrl(blobUrl);
 
                     switch (folder) {
-                        case "archive" -> spf.setArchiveFileUrl(blobUrl);
-                        case "email" -> spf.setEmailFileUrl(blobUrl);
-                        case "mobstat" -> spf.setMobstatFileUrl(blobUrl);
-                        case "print" -> spf.setPrintFileUrl(blobUrl);
-                    }
-
-                    // ✅ Status Logic:
-                    // - If file is missing → check errorReport
-                    // - If file in error report → Failed
-                    // - If file not in error report → ""
-
-                    File file = path.toFile();
-                    if (!file.exists()) {
-                        String method = extractMethod(fileName);
-                        if (errorReport != null && errorReport.contains(fileName, method)) {
-                            spf.setStatus("Failed");
-                        } else {
-                            spf.setStatus("");
+                        case "email" -> {
+                            updatedSpf.setPdfEmailFileUrl(decoded);
+                            updatedSpf.setPdfEmailStatus("OK");
                         }
-                    } else {
-                        spf.setStatus("Success");
+                        case "archive" -> {
+                            updatedSpf.setPdfArchiveFileUrl(decoded);
+                            updatedSpf.setPdfArchiveStatus("OK");
+                        }
+                        case "mobstat" -> {
+                            updatedSpf.setPdfMobstatFileUrl(decoded);
+                            updatedSpf.setPdfMobstatStatus("OK");
+                        }
+                        case "print" -> {
+                            updatedSpf.setPrintFileUrl(decoded);
+                            updatedSpf.setPrintStatus("OK");
+                        }
                     }
-
-                    processedMap.put(key, spf);
-
-                } catch (Exception e) {
-                    logger.error("❌ Error processing file in {}: {}", folder, e.getMessage(), e);
+                } else {
+                    boolean isExplicitFail = "Failed".equalsIgnoreCase(failureStatus);
+                    switch (folder) {
+                        case "email" -> updatedSpf.setPdfEmailStatus(isExplicitFail ? "Failed" : "");
+                        case "archive" -> updatedSpf.setPdfArchiveStatus(isExplicitFail ? "Failed" : "");
+                        case "mobstat" -> updatedSpf.setPdfMobstatStatus(isExplicitFail ? "Failed" : "");
+                        case "print" -> updatedSpf.setPrintStatus(isExplicitFail ? "Failed" : "");
+                    }
                 }
-            });
-        }
-    }
+            }
 
-    return new ArrayList<>(processedMap.values());
-}
+            // Check if ALL statuses are blank (no delivery happened)
+            List<String> allStatuses = Arrays.asList(
+                    updatedSpf.getPdfEmailStatus(),
+                    updatedSpf.getPdfArchiveStatus(),
+                    updatedSpf.getPdfMobstatStatus(),
+                    updatedSpf.getPrintStatus()
+            );
+
+            boolean noDelivery = allStatuses.stream().allMatch(s -> s == null || s.isBlank());
+            if (noDelivery) {
+                continue; // No files found at all, skip this customer
+            }
+
+            long failedCount = allStatuses.stream().filter("Failed"::equalsIgnoreCase).count();
+            long okCount = allStatuses.stream().filter("OK"::equalsIgnoreCase).count();
+
+            if (failedCount > 0 && okCount == 0) {
+                updatedSpf.setStatusCode("FAILED");
+                updatedSpf.setStatusDescription("All methods failed");
+            } else if (failedCount > 0) {
+                updatedSpf.setStatusCode("PARTIAL");
+                updatedSpf.setStatusDescription("Some methods failed");
+            } else {
+                updatedSpf.setStatusCode("SUCCESS");
+                updatedSpf.setStatusDescription("Success");
+            }
+
+            resultList.add(updatedSpf);
+        }
+
+        return resultList;
+    }
