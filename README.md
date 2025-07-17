@@ -12,7 +12,6 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             "print", "PRINT"
     );
 
-    // 🔁 Group by accountNumber + customerId
     Map<String, SummaryProcessedFile> groupedMap = new LinkedHashMap<>();
 
     for (SummaryProcessedFile spf : customerList) {
@@ -31,27 +30,25 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             Path folderPath = jobDir.resolve(folder);
             Optional<Path> fileOpt;
 
+            if (!Files.exists(folderPath)) continue;
+
+            Stream<Path> fileStream = Files.list(folderPath)
+                    .filter(p -> p.getFileName().toString().contains(account));
+
+            // For mobstat, exclude trigger files from status check
             if (folder.equals("mobstat")) {
-                fileOpt = Files.exists(folderPath)
-                        ? Files.list(folderPath)
-                        .filter(p -> p.getFileName().toString().toLowerCase().contains("mobstat_trigger") &&
-                                p.getFileName().toString().contains(account))
-                        .findFirst()
-                        : Optional.empty();
-            } else {
-                fileOpt = Files.exists(folderPath)
-                        ? Files.list(folderPath)
-                        .filter(p -> p.getFileName().toString().contains(account))
-                        .findFirst()
-                        : Optional.empty();
+                fileStream = fileStream.filter(p -> !p.getFileName().toString().toLowerCase().endsWith("_trigger.triggr"));
             }
 
-            String outputMethod = folderToOutputMethod.get(folder);
-            Map<String, String> errorEntry = errorMap.getOrDefault(account, Collections.emptyMap());
-            String failureStatus = errorEntry.getOrDefault(outputMethod, "");
+            List<Path> matchingFiles = fileStream.collect(Collectors.toList());
 
-            if (fileOpt.isPresent()) {
-                Path file = fileOpt.get();
+            String outputMethod = folderToOutputMethod.get(folder);
+            String failureStatus = errorMap.getOrDefault(account, Collections.emptyMap())
+                    .getOrDefault(outputMethod, "");
+
+            if (!matchingFiles.isEmpty()) {
+                // Upload first valid file (can be extended to all)
+                Path file = matchingFiles.get(0);
                 String blobUrl = blobStorageService.uploadFile(
                         file.toFile(),
                         msg.getSourceSystem() + "/" + msg.getBatchId() + "/" + folder + "/" + file.getFileName()
@@ -87,20 +84,21 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             }
         }
 
-        // 🛑 Skip customers with no delivery
+        // Skip customers with no delivery
         List<String> statuses = Arrays.asList(
                 existing.getPdfEmailStatus(),
                 existing.getPdfArchiveStatus(),
                 existing.getPdfMobstatStatus(),
                 existing.getPrintStatus()
         );
+
         boolean noDelivery = statuses.stream().allMatch(s -> s == null || s.isBlank());
         if (noDelivery) {
-            groupedMap.remove(key); // remove from result
+            groupedMap.remove(key);
             continue;
         }
 
-        // ✅ Final status
+        // Final status code
         long failed = statuses.stream().filter("Failed"::equalsIgnoreCase).count();
         long success = statuses.stream().filter("OK"::equalsIgnoreCase).count();
 
