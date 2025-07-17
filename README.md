@@ -12,7 +12,6 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             "print", "PRINT"
     );
 
-    // 🔁 Group by accountNumber + customerId
     Map<String, SummaryProcessedFile> groupedMap = new LinkedHashMap<>();
 
     for (SummaryProcessedFile spf : customerList) {
@@ -29,61 +28,63 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 
         for (String folder : folders) {
             Path folderPath = jobDir.resolve(folder);
-            Optional<Path> fileOpt;
+            if (!Files.exists(folderPath)) continue;
 
-            if (folder.equals("mobstat")) {
-                fileOpt = Files.exists(folderPath)
-                        ? Files.list(folderPath)
-                        .filter(p -> p.getFileName().toString().toLowerCase().contains("mobstat_trigger") &&
-                                p.getFileName().toString().contains(account))
-                        .findFirst()
-                        : Optional.empty();
-            } else {
-                fileOpt = Files.exists(folderPath)
-                        ? Files.list(folderPath)
+            try (Stream<Path> files = Files.list(folderPath)) {
+                Optional<Path> fileOpt = files
                         .filter(p -> p.getFileName().toString().contains(account))
-                        .findFirst()
-                        : Optional.empty();
-            }
+                        .filter(p -> {
+                            // ❌ Exclude trigger files in mobstat folder
+                            if (folder.equals("mobstat") &&
+                                    p.getFileName().toString().toLowerCase().contains("trigger")) {
+                                return false;
+                            }
+                            return true;
+                        })
+                        .findFirst();
 
-            String outputMethod = folderToOutputMethod.get(folder);
-            Map<String, String> errorEntry = errorMap.getOrDefault(account, Collections.emptyMap());
-            String failureStatus = errorEntry.getOrDefault(outputMethod, "");
+                String outputMethod = folderToOutputMethod.get(folder);
+                Map<String, String> errorEntry = errorMap.getOrDefault(account, Collections.emptyMap());
+                String failureStatus = errorEntry.getOrDefault(outputMethod, "");
 
-            if (fileOpt.isPresent()) {
-                Path file = fileOpt.get();
-                String blobUrl = blobStorageService.uploadFile(
-                        file.toFile(),
-                        msg.getSourceSystem() + "/" + msg.getBatchId() + "/" + folder + "/" + file.getFileName()
-                );
-                String decoded = decodeUrl(blobUrl);
+                if (fileOpt.isPresent()) {
+                    Path file = fileOpt.get();
+                    String blobUrl = blobStorageService.uploadFile(
+                            file.toFile(),
+                            msg.getSourceSystem() + "/" + msg.getBatchId() + "/" + folder + "/" + file.getFileName()
+                    );
+                    String decoded = decodeUrl(blobUrl);
 
-                switch (folder) {
-                    case "email" -> {
-                        existing.setPdfEmailFileUrl(decoded);
-                        existing.setPdfEmailStatus("OK");
+                    switch (folder) {
+                        case "email" -> {
+                            existing.setPdfEmailFileUrl(decoded);
+                            existing.setPdfEmailStatus("OK");
+                        }
+                        case "archive" -> {
+                            existing.setPdfArchiveFileUrl(decoded);
+                            existing.setPdfArchiveStatus("OK");
+                        }
+                        case "mobstat" -> {
+                            existing.setPdfMobstatFileUrl(decoded);
+                            existing.setPdfMobstatStatus("OK");
+                        }
+                        case "print" -> {
+                            existing.setPrintFileUrl(decoded);
+                            existing.setPrintStatus("OK");
+                        }
                     }
-                    case "archive" -> {
-                        existing.setPdfArchiveFileUrl(decoded);
-                        existing.setPdfArchiveStatus("OK");
-                    }
-                    case "mobstat" -> {
-                        existing.setPdfMobstatFileUrl(decoded);
-                        existing.setPdfMobstatStatus("OK");
-                    }
-                    case "print" -> {
-                        existing.setPrintFileUrl(decoded);
-                        existing.setPrintStatus("OK");
+                } else {
+                    boolean isExplicitFail = "Failed".equalsIgnoreCase(failureStatus);
+                    switch (folder) {
+                        case "email" -> existing.setPdfEmailStatus(isExplicitFail ? "Failed" : "");
+                        case "archive" -> existing.setPdfArchiveStatus(isExplicitFail ? "Failed" : "");
+                        case "mobstat" -> existing.setPdfMobstatStatus(isExplicitFail ? "Failed" : "");
+                        case "print" -> existing.setPrintStatus(isExplicitFail ? "Failed" : "");
                     }
                 }
-            } else {
-                boolean isExplicitFail = "Failed".equalsIgnoreCase(failureStatus);
-                switch (folder) {
-                    case "email" -> existing.setPdfEmailStatus(isExplicitFail ? "Failed" : "");
-                    case "archive" -> existing.setPdfArchiveStatus(isExplicitFail ? "Failed" : "");
-                    case "mobstat" -> existing.setPdfMobstatStatus(isExplicitFail ? "Failed" : "");
-                    case "print" -> existing.setPrintStatus(isExplicitFail ? "Failed" : "");
-                }
+
+            } catch (IOException e) {
+                logger.warn("Could not read folder '{}': {}", folderPath, e.getMessage());
             }
         }
 
@@ -96,7 +97,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         );
         boolean noDelivery = statuses.stream().allMatch(s -> s == null || s.isBlank());
         if (noDelivery) {
-            groupedMap.remove(key); // remove from result
+            groupedMap.remove(key);
             continue;
         }
 
@@ -118,51 +119,3 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 
     return new ArrayList<>(groupedMap.values());
 }
-==========================
-package com.nedbank.kafka.filemanage.model;
-
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.Data;
-
-import java.util.List;
-
-@Data
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class SummaryPayload {
-    private String batchID;
-    private String fileName;
-    private Header header;
-    private Metadata metadata;
-    private Payload payload;
-    private List<SummaryProcessedFile> processedFiles;
-    private List<PrintFile> printFiles;
-    private String mobstatTriggerFile;
-
-    @JsonIgnore
-    private String summaryFileURL; // Will not be written to summary.json
-
-    private String fileLocation;
-    private String timestamp;
-}
-========================
- public String uploadFile(File file, String targetPath) {
-        try {
-            initSecrets();
-            BlobServiceClient blobClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format(azureStorageFormat, accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobClient blob = blobClient.getBlobContainerClient(containerName).getBlobClient(targetPath);
-            try (InputStream inputStream = new FileInputStream(file)) {
-                blob.upload(inputStream, file.length(), true);
-            }
-
-            logger.info("Uploaded binary file to '{}'", blob.getBlobUrl());
-            return blob.getBlobUrl();
-        } catch (Exception e) {
-            logger.error("Upload failed for binary file: {}", e.getMessage(), e);
-            throw new CustomAppException("Binary upload failed", 605, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
-    }
