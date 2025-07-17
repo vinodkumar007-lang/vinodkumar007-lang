@@ -1,6 +1,6 @@
 private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         Path jobDir,
-        Map<String, String> accountCustomerMap,
+        Map<String, Map<String, String>> accountCustomerMap,
         KafkaMessage msg,
         Map<String, Map<String, String>> errorMap
 ) {
@@ -19,18 +19,18 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                 if (!fileName.contains("_")) return;
 
                 String accountNumber = fileName.split("_")[0];
-                String customerId = accountCustomerMap.getOrDefault(accountNumber, "UNKNOWN");
+                String customerId = "UNKNOWN";
+                if (accountCustomerMap.containsKey(accountNumber)) {
+                    customerId = accountCustomerMap.get(accountNumber).getOrDefault("customerId", "UNKNOWN");
+                }
+
                 String key = accountNumber + "_" + customerId;
 
                 SummaryProcessedFile spf = customerFileMap.getOrDefault(key, new SummaryProcessedFile());
                 spf.setAccountNumber(accountNumber);
                 spf.setCustomerId(customerId);
-                spf.getFileUrls().put(folder, msg.getBlobUrl() + "/" + folder + "/" + fileName);
-
-                // Set status only to SUCCESS if at least one file is present
-                if (spf.getStatus() == null || !spf.getStatus().equals("SUCCESS")) {
-                    spf.setStatus("SUCCESS");
-                }
+                spf.getFileUrls().put(folder, msg.getBlobUrl() + "/" + folder + "/" fileName);
+                spf.setStatus("SUCCESS");
 
                 customerFileMap.put(key, spf);
             });
@@ -39,15 +39,19 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         }
     }
 
-    // 🔁 Process errorMap for each account → deliveryType → error status
+    // 🔁 Loop through nested errorMap: account → {deliveryType → status}
     for (Map.Entry<String, Map<String, String>> entry : errorMap.entrySet()) {
         String accountNumber = entry.getKey();
         Map<String, String> deliveryErrors = entry.getValue();
 
-        String customerId = accountCustomerMap.getOrDefault(accountNumber, "UNKNOWN");
-        String key = accountNumber + "_" + customerId;
+        String customerId = "UNKNOWN";
+        if (accountCustomerMap.containsKey(accountNumber)) {
+            customerId = accountCustomerMap.get(accountNumber).getOrDefault("customerId", "UNKNOWN");
+        }
 
-        SummaryProcessedFile spf = customerFileMap.getOrDefault(key, new SummaryProcessedFile());
+        String combinedKey = accountNumber + "_" + customerId;
+
+        SummaryProcessedFile spf = customerFileMap.getOrDefault(combinedKey, new SummaryProcessedFile());
         spf.setAccountNumber(accountNumber);
         spf.setCustomerId(customerId);
 
@@ -55,19 +59,19 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             String deliveryType = deliveryEntry.getKey();
             String status = deliveryEntry.getValue();
 
-            // Only update if file wasn't already added from the file system
+            // Add only if URL for this delivery type is not present
             if (!spf.getFileUrls().containsKey(deliveryType)) {
                 spf.getFileUrls().put(deliveryType, "");
-                spf.setStatus("FAILED"); // Even if other types were success, mark failed if one fails
+                spf.setStatus("FAILED");
             }
         }
 
-        customerFileMap.put(key, spf);
+        customerFileMap.put(combinedKey, spf);
     }
 
     finalList.addAll(customerFileMap.values());
 
-    // ✅ Add mobstat_trigger files as separate entries (not part of customer delivery group)
+    // ✅ Add mobstat_trigger files (excluded from count)
     Path mobstatTriggerPath = jobDir.resolve("mobstat_trigger");
     if (Files.exists(mobstatTriggerPath)) {
         try (Stream<Path> triggerFiles = Files.list(mobstatTriggerPath)) {
