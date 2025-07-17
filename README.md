@@ -1,103 +1,76 @@
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        Path jobDir,
-        Map<String, String> accountCustomerMap,
-        KafkaMessage msg,
-        Map<String, String> errorMap
-) {
-    Map<String, SummaryProcessedFile> customerFileMap = new HashMap<>();
-    List<SummaryProcessedFile> finalList = new ArrayList<>();
+ private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
+        try {
+            logger.info("⏳ Waiting for XML for jobId={}, id={}", otResponse.getJobId(), otResponse.getId());
+            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
+            if (xmlFile == null) throw new IllegalStateException("XML not found");
+            logger.info("✅ Found XML file: {}", xmlFile);
 
-    List<String> folders = List.of("archive", "email", "mobstat", "print");
+            // ✅ Parse error report
+            Map<String, Map<String, String>> errorMap = parseErrorReport(message);
+            logger.info("🧾 Parsed error report with {} entries", errorMap.size());
 
-    for (String folder : folders) {
-        Path folderPath = jobDir.resolve(folder);
-        if (!Files.exists(folderPath)) continue;
+            List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile, errorMap);
+            logger.info("\uD83D\uDCCA Total customerSummaries parsed: {}", customerSummaries.size());
 
-        try (Stream<Path> fileStream = Files.list(folderPath)) {
-            fileStream
-                .filter(Files::isRegularFile)
-                .forEach(file -> {
-                    String fileName = file.getFileName().toString();
-                    if (!fileName.contains("_")) return;
+            List<SummaryProcessedFile> customerList = customerSummaries.stream()
+                    .map(cs -> {
+                        SummaryProcessedFile spf = new SummaryProcessedFile();
+                        spf.setAccountNumber(cs.getAccountNumber());
+                        spf.setCustomerId(cs.getCisNumber());
+                        return spf;
+                    })
+                    .collect(Collectors.toList());
 
-                    String accountNumber = fileName.split("_")[0];
-                    String customerId = accountCustomerMap.getOrDefault(accountNumber, "UNKNOWN");
-                    String key = accountNumber + "_" + customerId;
+            Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
 
-                    // Initialize or retrieve customer record
-                    SummaryProcessedFile spf = customerFileMap.getOrDefault(key, new SummaryProcessedFile());
-                    spf.setAccountNumber(accountNumber);
-                    spf.setCustomerId(customerId);
+            List<SummaryProcessedFile> processedFiles =
+                    buildDetailedProcessedFiles(jobDir, customerList, errorMap, message);
+            logger.info("\uD83D\uDCE6 Processed {} customer records", processedFiles.size());
+            // ✅ Upload print files
+            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
+            logger.info("🖨️ Uploaded {} print files", printFiles.size());
 
-                    // Add delivery channel + URL
-                    spf.getFileUrls().put(folder, msg.getBlobURL() + "/" + folder + "/" + fileName);
+            // ✅ Upload mobstat trigger if present
+            String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
+            String currentTimestamp = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
 
-                    // Set status: SUCCESS if file exists
-                    spf.setStatus("SUCCESS");
+            // ✅ Build final payload
+            SummaryPayload payload = SummaryJsonWriter.buildPayload(
+                    message, processedFiles, printFiles, mobstatTriggerUrl, processedFiles.size());
 
-                    customerFileMap.put(key, spf);
-                });
-        } catch (IOException e) {
-            logger.error("❌ Error reading folder {}: {}", folder, e.getMessage());
+            payload.setFileName(message.getBatchFiles().get(0).getFilename());
+            payload.setTimestamp(currentTimestamp);
+            if (payload.getHeader() != null) {
+                payload.getHeader().setTimestamp(currentTimestamp);
+            }
+
+            // ✅ Upload summary.json
+            String fileName = "summary_" + message.getBatchId() + ".json";
+            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
+            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, fileName);
+            payload.setSummaryFileURL(decodeUrl(summaryUrl));
+
+            logger.info("📁 Summary JSON uploaded to: {}", decodeUrl(summaryUrl));
+            logger.info("📄 Final Summary Payload:\n{}",
+                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
+
+            // ✅ Send response to Kafka
+            SummaryResponse response = new SummaryResponse();
+            response.setBatchID(message.getBatchId());
+            response.setFileName(payload.getFileName());
+            response.setHeader(payload.getHeader());
+            response.setMetadata(payload.getMetadata());
+            response.setPayload(payload.getPayload());
+            response.setSummaryFileURL(decodeUrl(summaryUrl));
+            response.setTimestamp(currentTimestamp);
+
+            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
+                    new ApiResponse("Summary generated", "COMPLETED", response)));
+
+            logger.info("✅ Kafka output sent for batch {} with response: {}", message.getBatchId(),
+                    objectMapper.writeValueAsString(response));
+
+        } catch (Exception e) {
+            logger.error("❌ Error post-OT summary generation", e);
         }
     }
-
-    // Handle missing files from errorMap
-    for (Map.Entry<String, String> entry : errorMap.entrySet()) {
-        String key = entry.getKey(); // e.g. accountNumber_deliveryType
-        String status = entry.getValue();
-
-        String[] parts = key.split("_");
-        if (parts.length != 2) continue;
-
-        String accountNumber = parts[0];
-        String deliveryType = parts[1];
-        String customerId = accountCustomerMap.getOrDefault(accountNumber, "UNKNOWN");
-        String combinedKey = accountNumber + "_" + customerId;
-
-        SummaryProcessedFile spf = customerFileMap.getOrDefault(combinedKey, new SummaryProcessedFile());
-        spf.setAccountNumber(accountNumber);
-        spf.setCustomerId(customerId);
-
-        if (!spf.getFileUrls().containsKey(deliveryType)) {
-            // Only mark as FAILED if file was not already found
-            spf.getFileUrls().put(deliveryType, "");
-            spf.setStatus("FAILED");
-        }
-
-        customerFileMap.put(combinedKey, spf);
-    }
-
-    finalList.addAll(customerFileMap.values());
-
-    // ➕ Add mobstat_trigger separately (but not part of count)
-    Path mobstatTriggerPath = jobDir.resolve("mobstat_trigger");
-    if (Files.exists(mobstatTriggerPath)) {
-        try (Stream<Path> triggerFiles = Files.list(mobstatTriggerPath)) {
-            triggerFiles
-                .filter(Files::isRegularFile)
-                .forEach(file -> {
-                    SummaryProcessedFile trigger = new SummaryProcessedFile();
-                    trigger.setFileType("mobstat_trigger");
-                    trigger.setFileURL(msg.getBlobURL() + "/mobstat_trigger/" + file.getFileName());
-                    finalList.add(trigger);
-                });
-        } catch (IOException e) {
-            logger.error("❌ Error reading mobstat_trigger: {}", e.getMessage());
-        }
-    }
-
-    logger.info("📦 Total unique customer delivery records (excluding trigger): {}", customerFileMap.size());
-    return finalList;
-}
-
-public class SummaryProcessedFile {
-    private String accountNumber;
-    private String customerId;
-    private Map<String, String> fileUrls = new HashMap<>(); // archive, email, mobstat, print
-    private String status; // SUCCESS / FAILED / null
-    private String fileType; // for trigger file
-    private String fileURL;  // for trigger file
-
-    // Getters and setters...
-}
