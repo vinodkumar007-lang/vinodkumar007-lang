@@ -1,118 +1,131 @@
 private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-            Path jobDir,
-            List<SummaryProcessedFile> customerList,
-            Map<String, Map<String, String>> errorMap,
-            KafkaMessage msg) throws IOException {
+        Path jobDir,
+        List<SummaryProcessedFile> customerList,
+        Map<String, Map<String, String>> errorMap,
+        KafkaMessage msg) throws IOException {
 
-        List<String> folders = List.of("email", "archive", "mobstat", "print");
-        Map<String, String> folderToOutputMethod = Map.of(
-                "email", "EMAIL",
-                "archive", "ARCHIVE",
-                "mobstat", "MOBSTAT",
-                "print", "PRINT"
-        );
+    List<String> folders = List.of("email", "archive", "mobstat", "print");
+    Map<String, String> folderToOutputMethod = Map.of(
+            "email", "EMAIL",
+            "archive", "ARCHIVE",
+            "mobstat", "MOBSTAT",
+            "print", "PRINT"
+    );
 
-        Map<String, SummaryProcessedFile> groupedMap = new LinkedHashMap<>();
+    Map<String, SummaryProcessedFile> outputMap = new LinkedHashMap<>();
 
-        for (SummaryProcessedFile spf : customerList) {
-            String account = spf.getAccountNumber();
-            String customer = spf.getCustomerId();
-            if (account == null || account.isBlank()) continue;
+    for (SummaryProcessedFile spf : customerList) {
+        String account = spf.getAccountNumber();
+        String customer = spf.getCustomerId();
+        if (account == null || account.isBlank()) continue;
 
-            String key = account + "::" + customer;
-            SummaryProcessedFile existing = groupedMap.computeIfAbsent(key, k -> {
-                SummaryProcessedFile newSpf = new SummaryProcessedFile();
-                BeanUtils.copyProperties(spf, newSpf);
-                return newSpf;
-            });
+        for (String folder : folders) {
+            String outputMethod = folderToOutputMethod.get(folder);
+            String key = customer + "::" + account + "::" + outputMethod;
 
-            for (String folder : folders) {
-                Path folderPath = jobDir.resolve(folder);
-                if (!Files.exists(folderPath)) continue;
+            SummaryProcessedFile entry = new SummaryProcessedFile();
+            BeanUtils.copyProperties(spf, entry);
 
+            Path folderPath = jobDir.resolve(folder);
+            Path matchedFile = null;
+            if (Files.exists(folderPath)) {
                 try (Stream<Path> files = Files.list(folderPath)) {
-                    List<Path> matchedFiles = files
+                    matchedFile = files
                             .filter(p -> p.getFileName().toString().contains(account))
                             .filter(p -> !(folder.equals("mobstat") && p.getFileName().toString().toLowerCase().contains("trigger")))
-                            .collect(Collectors.toList());
-
-                    String outputMethod = folderToOutputMethod.get(folder);
-                    Map<String, String> errorEntry = errorMap.getOrDefault(account, Collections.emptyMap());
-                    String failureStatus = errorEntry.getOrDefault(outputMethod, "");
-
-                    if (!matchedFiles.isEmpty()) {
-                        for (Path file : matchedFiles) {
-                            String blobUrl = blobStorageService.uploadFile(
-                                    file.toFile(),
-                                    msg.getSourceSystem() + "/" + msg.getBatchId() + "/" + folder + "/" + file.getFileName()
-                            );
-                            String decoded = decodeUrl(blobUrl);
-
-                            switch (folder) {
-                                case "email" -> {
-                                    existing.setPdfEmailFileUrl(decoded);
-                                    existing.setPdfEmailStatus("OK");
-                                }
-                                case "archive" -> {
-                                    existing.setPdfArchiveFileUrl(decoded);
-                                    existing.setPdfArchiveStatus("OK");
-                                }
-                                case "mobstat" -> {
-                                    existing.setPdfMobstatFileUrl(decoded);
-                                    existing.setPdfMobstatStatus("OK");
-                                }
-                                case "print" -> {
-                                    existing.setPrintFileUrl(decoded);
-                                    existing.setPrintStatus("OK");
-                                }
-                            }
-                        }
-                    } else {
-                        boolean isExplicitFail = "Failed".equalsIgnoreCase(failureStatus);
-                        switch (folder) {
-                            case "email" -> existing.setPdfEmailStatus(isExplicitFail ? "Failed" : "");
-                            case "archive" -> existing.setPdfArchiveStatus(isExplicitFail ? "Failed" : "");
-                            case "mobstat" -> existing.setPdfMobstatStatus(isExplicitFail ? "Failed" : "");
-                            case "print" -> existing.setPrintStatus(isExplicitFail ? "Failed" : "");
-                        }
-                    }
-
+                            .findFirst()
+                            .orElse(null);
                 } catch (IOException e) {
-                    logger.warn("Could not read folder '{}': {}", folderPath, e.getMessage());
+                    logger.warn("Could not scan folder '{}': {}", folder, e.getMessage());
                 }
             }
 
-            // ✅ Skip if no delivery at all
-            List<String> statuses = Arrays.asList(
-                    existing.getPdfEmailStatus(),
-                    existing.getPdfArchiveStatus(),
-                    existing.getPdfMobstatStatus(),
-                    existing.getPrintStatus()
-            );
-            boolean noDelivery = statuses.stream().allMatch(s -> s == null || s.isBlank());
-            if (noDelivery) {
-                groupedMap.remove(key);
-                continue;
+            String failureStatus = errorMap.getOrDefault(account, Collections.emptyMap()).getOrDefault(outputMethod, "");
+
+            if (matchedFile != null) {
+                String blobUrl = blobStorageService.uploadFile(
+                        matchedFile.toFile(),
+                        msg.getSourceSystem() + "/" + msg.getBatchId() + "/" + folder + "/" + matchedFile.getFileName()
+                );
+                String decoded = decodeUrl(blobUrl);
+                switch (folder) {
+                    case "email" -> {
+                        entry.setPdfEmailFileUrl(decoded);
+                        entry.setPdfEmailStatus("OK");
+                    }
+                    case "archive" -> {
+                        entry.setPdfArchiveFileUrl(decoded);
+                        entry.setPdfArchiveStatus("OK");
+                    }
+                    case "mobstat" -> {
+                        entry.setPdfMobstatFileUrl(decoded);
+                        entry.setPdfMobstatStatus("OK");
+                    }
+                    case "print" -> {
+                        entry.setPrintFileUrl(decoded);
+                        entry.setPrintStatus("OK");
+                    }
+                }
+            } else {
+                // File not found
+                boolean isExplicitFail = "Failed".equalsIgnoreCase(failureStatus);
+                switch (folder) {
+                    case "email" -> entry.setPdfEmailStatus(isExplicitFail ? "Failed" : "Skipped");
+                    case "archive" -> entry.setPdfArchiveStatus(isExplicitFail ? "Failed" : "Skipped");
+                    case "mobstat" -> entry.setPdfMobstatStatus(isExplicitFail ? "Failed" : "Skipped");
+                    case "print" -> entry.setPrintStatus(isExplicitFail ? "Failed" : "Skipped");
+                }
             }
 
-            // ✅ Final status
+            // Final status
+            List<String> statuses = List.of(
+                    entry.getPdfEmailStatus(),
+                    entry.getPdfArchiveStatus(),
+                    entry.getPdfMobstatStatus(),
+                    entry.getPrintStatus()
+            );
             long failed = statuses.stream().filter("Failed"::equalsIgnoreCase).count();
+            long skipped = statuses.stream().filter("Skipped"::equalsIgnoreCase).count();
             long success = statuses.stream().filter("OK"::equalsIgnoreCase).count();
 
-            if (failed > 0 && success == 0) {
-                existing.setStatusCode("FAILED");
-                existing.setStatusDescription("All methods failed");
-            } else if (failed > 0) {
-                existing.setStatusCode("PARTIAL");
-                existing.setStatusDescription("Some methods failed");
+            if (success > 0 && (failed > 0 || skipped > 0)) {
+                entry.setStatusCode("PARTIAL");
+                entry.setStatusDescription("Some methods failed or skipped");
+            } else if (failed > 0 && success == 0) {
+                entry.setStatusCode("FAILED");
+                entry.setStatusDescription("All methods failed");
+            } else if (success == 0 && skipped > 0) {
+                entry.setStatusCode("SKIPPED");
+                entry.setStatusDescription("Files not found");
             } else {
-                existing.setStatusCode("SUCCESS");
-                existing.setStatusDescription("Success");
+                entry.setStatusCode("SUCCESS");
+                entry.setStatusDescription("Success");
             }
-        }
 
-        return new ArrayList<>(groupedMap.values());
+            outputMap.put(key, entry);
+        }
     }
 
-    1001179722|191749661002|CASA|error|Failed
-5898460774023071|600006709118|CreditCard|error|Failed
+    // Also include records ONLY present in errorMap (if not already added)
+    for (String account : errorMap.keySet()) {
+        for (String outputMethod : errorMap.get(account).keySet()) {
+            boolean exists = outputMap.keySet().stream().anyMatch(k -> k.contains(account) && k.endsWith("::" + outputMethod));
+            if (!exists) {
+                SummaryProcessedFile err = new SummaryProcessedFile();
+                err.setAccountNumber(account);
+                err.setCustomerId("UNKNOWN"); // fallback
+                switch (outputMethod) {
+                    case "EMAIL" -> err.setPdfEmailStatus("Failed");
+                    case "ARCHIVE" -> err.setPdfArchiveStatus("Failed");
+                    case "MOBSTAT" -> err.setPdfMobstatStatus("Failed");
+                    case "PRINT" -> err.setPrintStatus("Failed");
+                }
+                err.setStatusCode("FAILED");
+                err.setStatusDescription("Failed due to error report");
+                outputMap.put("error::" + account + "::" + outputMethod, err);
+            }
+        }
+    }
+
+    return new ArrayList<>(outputMap.values());
+}
