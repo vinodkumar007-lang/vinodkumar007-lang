@@ -1,14 +1,15 @@
 public static SummaryPayload buildPayload(KafkaMessage message,
                                           List<SummaryProcessedFile> processedFiles,
                                           int pagesProcessed,
-                                          String mobstatTriggerPath,
+                                          List<PrintFile> printFiles, // ✅ kept
+                                          String mobstatTriggerPath,  // ✅ kept
                                           int customersProcessed) {
 
     SummaryPayload payload = new SummaryPayload();
 
     payload.setBatchID(message.getBatchId());
     payload.setFileName(message.getBatchId() + ".csv");
-    payload.setMobstatTriggerFile(mobstatTriggerPath);
+    payload.setMobstatTriggerFile(mobstatTriggerPath); // ✅ set
 
     // Header block
     Header header = new Header();
@@ -21,12 +22,12 @@ public static SummaryPayload buildPayload(KafkaMessage message,
     header.setTimestamp(Instant.now().toString());
     payload.setHeader(header);
 
-    // Determine overall status
+    // Status logic
     String overallStatus = "Completed";
     if (processedFiles != null && !processedFiles.isEmpty()) {
         boolean allFailed = processedFiles.stream().allMatch(f -> "FAILURE".equalsIgnoreCase(f.getStatusCode()));
-        boolean anyFailed = processedFiles.stream().anyMatch(f -> "FAILURE".equalsIgnoreCase(f.getStatusCode()) || "PARTIAL".equalsIgnoreCase(f.getStatusCode()));
-
+        boolean anyFailed = processedFiles.stream().anyMatch(f ->
+                "FAILURE".equalsIgnoreCase(f.getStatusCode()) || "PARTIAL".equalsIgnoreCase(f.getStatusCode()));
         if (allFailed) overallStatus = "Failure";
         else if (anyFailed) overallStatus = "Partial";
     }
@@ -50,9 +51,12 @@ public static SummaryPayload buildPayload(KafkaMessage message,
     payloadDetails.setFileCount(pagesProcessed);
     payload.setPayload(payloadDetails);
 
-    // ✅ Grouped Customer Summaries (24 customers → 38 records grouped)
+    // Grouped customer summaries
     List<CustomerSummary> customerSummaries = buildCustomerSummaries(processedFiles);
     payload.setCustomerSummaries(customerSummaries);
+
+    // ✅ NOT setting printFiles for now — but you can include if needed:
+    // payload.setPrintFiles(printFiles);
 
     return payload;
 }
