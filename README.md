@@ -1,91 +1,83 @@
 private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-    Path jobDir,
-    Map<String, String> errorMap,
-    KafkaMessage message
-) {
-    List<SummaryProcessedFile> mergedList = new ArrayList<>();
-    Map<String, SummaryProcessedFile> customerMap = new HashMap<>();
+            Path jobDir,
+            Map<String, String> accountCustomerMap,
+            KafkaMessage msg,
+            Map<String, String> errorMap
+    ) {
+        Map<String, SummaryProcessedFile> customerFileMap = new HashMap<>();
+        List<SummaryProcessedFile> finalList = new ArrayList<>();
 
-    List<String> folders = List.of("archive", "email", "html", "mobstat", "print");
+        List<String> folders = List.of("archive", "email", "mobstat", "print");
 
-    for (String folder : folders) {
-        Path folderPath = jobDir.resolve(folder);
-        if (!Files.exists(folderPath)) continue;
+        for (String folder : folders) {
+            Path folderPath = jobDir.resolve(folder);
+            if (!Files.exists(folderPath)) continue;
 
-        try (Stream<Path> files = Files.list(folderPath)) {
-            files.filter(Files::isRegularFile).forEach(file -> {
-                try {
+            try (Stream<Path> fileStream = Files.list(folderPath)) {
+                fileStream.filter(Files::isRegularFile).forEach(file -> {
                     String fileName = file.getFileName().toString();
+                    if (!fileName.contains("_")) return;
 
-                    if (fileName.equalsIgnoreCase("mobstat_trigger.txt")) {
-                        // skip this file
-                        return;
-                    }
+                    String accountNumber = fileName.split("_")[0];
+                    String customerId = accountCustomerMap.getOrDefault(accountNumber, "UNKNOWN");
+                    String key = accountNumber + "_" + customerId;
 
-                    // Extract account number and customer number from filename
-                    String[] parts = fileName.split("_");
-                    if (parts.length < 2) return;
+                    SummaryProcessedFile spf = customerFileMap.getOrDefault(key, new SummaryProcessedFile());
+                    spf.setAccountNumber(accountNumber);
+                    spf.setCustomerId(customerId);
+                    spf.getFileUrls().put(folder, msg.getBlobUrl() + "/" + folder + "/" + fileName);
+                    spf.setStatus("SUCCESS");
 
-                    String accountNumber = parts[0];
-                    String customerNumber = parts[1].replaceAll("\\D", ""); // remove extension or symbols
-
-                    String key = accountNumber + "_" + customerNumber;
-
-                    SummaryProcessedFile processedFile = customerMap.getOrDefault(key, new SummaryProcessedFile());
-                    processedFile.setAccountNumber(accountNumber);
-                    processedFile.setCustomerNumber(customerNumber);
-
-                    // Get blob URL
-                    String blobUrl = "https://" + storageAccount + ".blob.core.windows.net/" +
-                            containerName + "/" + message.getJobId() + "/" + folder + "/" + fileName;
-
-                    // Set status: default is "SUCCESS"
-                    String status = "SUCCESS";
-                    String errorKey = key + "_" + folder;
-
-                    if (!Files.exists(file)) {
-                        if (errorMap.containsKey(errorKey)) {
-                            status = "FAILED";
-                        } else {
-                            status = "";
-                        }
-                    }
-
-                    // Add URL to the corresponding list
-                    switch (folder.toLowerCase()) {
-                        case "archive" -> {
-                            processedFile.setArchiveURL(blobUrl);
-                            processedFile.setArchiveStatus(status);
-                        }
-                        case "email" -> {
-                            processedFile.setEmailURL(blobUrl);
-                            processedFile.setEmailStatus(status);
-                        }
-                        case "html" -> {
-                            processedFile.setHtmlURL(blobUrl);
-                            processedFile.setHtmlStatus(status);
-                        }
-                        case "mobstat" -> {
-                            processedFile.setMobstatURL(blobUrl);
-                            processedFile.setMobstatStatus(status);
-                        }
-                        case "print" -> {
-                            processedFile.setPrintURL(blobUrl);
-                            processedFile.setPrintStatus(status);
-                        }
-                    }
-
-                    customerMap.put(key, processedFile);
-
-                } catch (Exception e) {
-                    logger.error("❌ Error processing file in folder {}: {}", folder, e.getMessage());
-                }
-            });
-        } catch (IOException e) {
-            logger.error("❌ Failed to read folder {}: {}", folder, e.getMessage());
+                    customerFileMap.put(key, spf);
+                });
+            } catch (IOException e) {
+                logger.error("❌ Error reading folder {}: {}", folder, e.getMessage());
+            }
         }
-    }
 
-    mergedList.addAll(customerMap.values());
-    return mergedList;
-}
+        // Handle missing files from errorMap
+        for (Map.Entry<String, String> entry : errorMap.entrySet()) {
+            String key = entry.getKey(); // accountNumber_deliveryType
+            String status = entry.getValue();
+
+            String[] parts = key.split("_");
+            if (parts.length != 2) continue;
+
+            String accountNumber = parts[0];
+            String deliveryType = parts[1];
+            String customerId = accountCustomerMap.getOrDefault(accountNumber, "UNKNOWN");
+            String combinedKey = accountNumber + "_" + customerId;
+
+            SummaryProcessedFile spf = customerFileMap.getOrDefault(combinedKey, new SummaryProcessedFile());
+            spf.setAccountNumber(accountNumber);
+            spf.setCustomerId(customerId);
+
+            // Only add delivery type with empty URL if not already present
+            if (!spf.getFileUrls().containsKey(deliveryType)) {
+                spf.getFileUrls().put(deliveryType, "");
+                spf.setStatus("FAILED");
+            }
+
+            customerFileMap.put(combinedKey, spf);
+        }
+
+        finalList.addAll(customerFileMap.values());
+
+        // Add mobstat_trigger separately (excluded from count)
+        Path mobstatTriggerPath = jobDir.resolve("mobstat_trigger");
+        if (Files.exists(mobstatTriggerPath)) {
+            try (Stream<Path> triggerFiles = Files.list(mobstatTriggerPath)) {
+                triggerFiles.filter(Files::isRegularFile).forEach(file -> {
+                    SummaryProcessedFile trigger = new SummaryProcessedFile();
+                    trigger.setFileType("mobstat_trigger");
+                    trigger.setFileURL(msg.getBlobUrl() + "/mobstat_trigger/" + file.getFileName());
+                    finalList.add(trigger); // Not added to customerFileMap, hence won't affect count
+                });
+            } catch (IOException e) {
+                logger.error("❌ Error reading mobstat_trigger folder: {}", e.getMessage());
+            }
+        }
+
+        logger.info("✅ Total unique customer delivery records (excluding trigger): {}", customerFileMap.size());
+        return finalList;
+    }
