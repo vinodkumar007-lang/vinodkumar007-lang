@@ -12,11 +12,15 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             "print", "PRINT"
     );
 
-    Map<String, SummaryProcessedFile> resultMap = new LinkedHashMap<>();
+    List<SummaryProcessedFile> resultList = new ArrayList<>();
 
     for (SummaryProcessedFile spf : customerList) {
         String account = spf.getAccountNumber();
+        String customer = spf.getCustomerNumber();
         if (account == null || account.isBlank()) continue;
+
+        SummaryProcessedFile updatedSpf = new SummaryProcessedFile();
+        BeanUtils.copyProperties(spf, updatedSpf); // Ensure we work on a copy
 
         for (String folder : folders) {
             Path folderPath = jobDir.resolve(folder);
@@ -30,9 +34,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             Map<String, String> errorEntry = errorMap.getOrDefault(account, Collections.emptyMap());
             String failureStatus = errorEntry.getOrDefault(outputMethod, "");
 
-            boolean fileFound = fileOpt.isPresent();
-
-            if (fileFound) {
+            if (fileOpt.isPresent()) {
                 Path file = fileOpt.get();
                 String blobUrl = blobStorageService.uploadFile(
                         file.toFile(),
@@ -42,59 +44,59 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 
                 switch (folder) {
                     case "email" -> {
-                        spf.setPdfEmailFileUrl(decoded);
-                        spf.setPdfEmailStatus("OK");
+                        updatedSpf.setPdfEmailFileUrl(decoded);
+                        updatedSpf.setPdfEmailStatus("OK");
                     }
                     case "archive" -> {
-                        spf.setPdfArchiveFileUrl(decoded);
-                        spf.setPdfArchiveStatus("OK");
+                        updatedSpf.setPdfArchiveFileUrl(decoded);
+                        updatedSpf.setPdfArchiveStatus("OK");
                     }
                     case "mobstat" -> {
-                        spf.setPdfMobstatFileUrl(decoded);
-                        spf.setPdfMobstatStatus("OK");
+                        updatedSpf.setPdfMobstatFileUrl(decoded);
+                        updatedSpf.setPdfMobstatStatus("OK");
                     }
-                    case "print" -> spf.setPrintFileUrl(decoded);
+                    case "print" -> updatedSpf.setPrintFileUrl(decoded);
                 }
             } else {
                 boolean isExplicitlyFailed = "Failed".equalsIgnoreCase(failureStatus);
                 if (isExplicitlyFailed) {
                     switch (folder) {
-                        case "email" -> spf.setPdfEmailStatus("Failed");
-                        case "archive" -> spf.setPdfArchiveStatus("Failed");
-                        case "mobstat" -> spf.setPdfMobstatStatus("Failed");
+                        case "email" -> updatedSpf.setPdfEmailStatus("Failed");
+                        case "archive" -> updatedSpf.setPdfArchiveStatus("Failed");
+                        case "mobstat" -> updatedSpf.setPdfMobstatStatus("Failed");
                     }
                 } else {
                     switch (folder) {
-                        case "email" -> spf.setPdfEmailStatus("");
-                        case "archive" -> spf.setPdfArchiveStatus("");
-                        case "mobstat" -> spf.setPdfMobstatStatus("");
+                        case "email" -> updatedSpf.setPdfEmailStatus("");
+                        case "archive" -> updatedSpf.setPdfArchiveStatus("");
+                        case "mobstat" -> updatedSpf.setPdfMobstatStatus("");
                     }
                 }
             }
         }
 
         List<String> statuses = Arrays.asList(
-                spf.getPdfEmailStatus(),
-                spf.getPdfArchiveStatus(),
-                spf.getPdfMobstatStatus()
+                updatedSpf.getPdfEmailStatus(),
+                updatedSpf.getPdfArchiveStatus(),
+                updatedSpf.getPdfMobstatStatus()
         );
 
         long failedCount = statuses.stream().filter("Failed"::equalsIgnoreCase).count();
         long knownCount = statuses.stream().filter(s -> s != null && !s.isBlank()).count();
 
         if (failedCount == knownCount && knownCount > 0) {
-            spf.setStatusCode("FAILED");
-            spf.setStatusDescription("All methods failed");
+            updatedSpf.setStatusCode("FAILED");
+            updatedSpf.setStatusDescription("All methods failed");
         } else if (failedCount > 0) {
-            spf.setStatusCode("PARTIAL");
-            spf.setStatusDescription("Some methods failed");
+            updatedSpf.setStatusCode("PARTIAL");
+            updatedSpf.setStatusDescription("Some methods failed");
         } else {
-            spf.setStatusCode("SUCCESS");
-            spf.setStatusDescription("Success");
+            updatedSpf.setStatusCode("SUCCESS");
+            updatedSpf.setStatusDescription("Success");
         }
 
-        resultMap.merge(account, spf, this::mergeFiles);
+        resultList.add(updatedSpf);
     }
 
-    return new ArrayList<>(resultMap.values());
+    return resultList;
 }
