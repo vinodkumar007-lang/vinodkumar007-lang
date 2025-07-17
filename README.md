@@ -82,21 +82,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             }
         }
 
-        // Exclude from count if only mobstat was found
-        List<String> statuses = Arrays.asList(
-                updatedSpf.getPdfEmailStatus(),
-                updatedSpf.getPdfArchiveStatus(),
-                updatedSpf.getPrintStatus()  // intentionally excluding mobstat
-        );
-
-        boolean allBlank = statuses.stream().allMatch(s -> s == null || s.isBlank());
-        boolean allFailed = statuses.stream().allMatch("Failed"::equalsIgnoreCase);
-
-        if (allBlank || allFailed) {
-            continue;
-        }
-
-        // Status check on all delivery types including mobstat
+        // Check if ALL statuses are blank (no delivery happened)
         List<String> allStatuses = Arrays.asList(
                 updatedSpf.getPdfEmailStatus(),
                 updatedSpf.getPdfArchiveStatus(),
@@ -104,13 +90,18 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                 updatedSpf.getPrintStatus()
         );
 
-        long failed = allStatuses.stream().filter("Failed"::equalsIgnoreCase).count();
-        long ok = allStatuses.stream().filter("OK"::equalsIgnoreCase).count();
+        boolean noDelivery = allStatuses.stream().allMatch(s -> s == null || s.isBlank());
+        if (noDelivery) {
+            continue; // No files found at all, skip this customer
+        }
 
-        if (failed > 0 && ok == 0) {
+        long failedCount = allStatuses.stream().filter("Failed"::equalsIgnoreCase).count();
+        long okCount = allStatuses.stream().filter("OK"::equalsIgnoreCase).count();
+
+        if (failedCount > 0 && okCount == 0) {
             updatedSpf.setStatusCode("FAILED");
             updatedSpf.setStatusDescription("All methods failed");
-        } else if (failed > 0) {
+        } else if (failedCount > 0) {
             updatedSpf.setStatusCode("PARTIAL");
             updatedSpf.setStatusDescription("Some methods failed");
         } else {
