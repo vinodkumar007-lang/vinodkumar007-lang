@@ -1,115 +1,111 @@
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        Path jobDir,
-        List<SummaryProcessedFile> customerList,
-        Map<String, Map<String, String>> errorMap,
-        KafkaMessage msg) throws IOException {
+package com.nedbank.kafka.filemanage.utils;
 
-    List<String> folders = List.of("email", "archive", "mobstat", "print");
-    Map<String, String> folderToOutputMethod = Map.of(
-            "email", "EMAIL",
-            "archive", "ARCHIVE",
-            "mobstat", "MOBSTAT",
-            "print", "PRINT"
-    );
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.nedbank.kafka.filemanage.model.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
-    Map<String, SummaryProcessedFile> groupedMap = new LinkedHashMap<>();
+import java.io.File;
+import java.nio.file.*;
+import java.time.Instant;
+import java.util.*;
 
-    for (SummaryProcessedFile spf : customerList) {
-        String account = spf.getAccountNumber();
-        String customer = spf.getCustomerId();
-        if (account == null || account.isBlank()) continue;
+@Component
+public class SummaryJsonWriter {
 
-        String key = account + "::" + customer;
-        SummaryProcessedFile existing = groupedMap.computeIfAbsent(key, k -> {
-            SummaryProcessedFile newSpf = new SummaryProcessedFile();
-            BeanUtils.copyProperties(spf, newSpf);
-            return newSpf;
-        });
+    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 
-        for (String folder : folders) {
-            Path folderPath = jobDir.resolve(folder);
-            if (!Files.exists(folderPath)) continue;
+    public static String writeSummaryJsonToFile(SummaryPayload payload) {
+        if (payload == null) {
+            logger.error("SummaryPayload is null. Cannot write summary.json.");
+            throw new IllegalArgumentException("SummaryPayload cannot be null");
+        }
 
-            try (Stream<Path> files = Files.list(folderPath)) {
-                List<Path> matchedFiles = files
-                        .filter(p -> p.getFileName().toString().contains(account))
-                        .filter(p -> !(folder.equals("mobstat") && p.getFileName().toString().toLowerCase().contains("trigger")))
-                        .collect(Collectors.toList());
+        try {
+            String batchId = Optional.ofNullable(payload.getBatchID()).orElse("unknown");
+            String fileName = "summary_" + batchId + ".json";
 
-                String outputMethod = folderToOutputMethod.get(folder);
-                Map<String, String> errorEntry = errorMap.getOrDefault(account, Collections.emptyMap());
-                String failureStatus = errorEntry.getOrDefault(outputMethod, "");
+            Path tempDir = Files.createTempDirectory("summaryFiles");
+            Path summaryFilePath = tempDir.resolve(fileName);
 
-                if (!matchedFiles.isEmpty()) {
-                    for (Path file : matchedFiles) {
-                        String blobUrl = blobStorageService.uploadFile(
-                                file.toFile(),
-                                msg.getSourceSystem() + "/" + msg.getBatchId() + "/" + folder + "/" + file.getFileName()
-                        );
-                        String decoded = decodeUrl(blobUrl);
-
-                        switch (folder) {
-                            case "email" -> {
-                                existing.setPdfEmailFileUrl(decoded);
-                                existing.setPdfEmailStatus("OK");
-                            }
-                            case "archive" -> {
-                                existing.setPdfArchiveFileUrl(decoded);
-                                existing.setPdfArchiveStatus("OK");
-                            }
-                            case "mobstat" -> {
-                                existing.setPdfMobstatFileUrl(decoded);
-                                existing.setPdfMobstatStatus("OK");
-                            }
-                            case "print" -> {
-                                existing.setPrintFileUrl(decoded);
-                                existing.setPrintStatus("OK");
-                            }
-                        }
-                    }
-                } else {
-                    boolean isExplicitFail = "Failed".equalsIgnoreCase(failureStatus);
-                    switch (folder) {
-                        case "email" -> existing.setPdfEmailStatus(isExplicitFail ? "Failed" : "");
-                        case "archive" -> existing.setPdfArchiveStatus(isExplicitFail ? "Failed" : "");
-                        case "mobstat" -> existing.setPdfMobstatStatus(isExplicitFail ? "Failed" : "");
-                        case "print" -> existing.setPrintStatus(isExplicitFail ? "Failed" : "");
-                    }
-                }
-
-            } catch (IOException e) {
-                logger.warn("Could not read folder '{}': {}", folderPath, e.getMessage());
+            File summaryFile = summaryFilePath.toFile();
+            if (summaryFile.exists()) {
+                Files.delete(summaryFilePath);
+                logger.warn("Existing summary file deleted: {}", summaryFilePath);
             }
-        }
 
-        // ✅ Skip if no delivery at all
-        List<String> statuses = Arrays.asList(
-                existing.getPdfEmailStatus(),
-                existing.getPdfArchiveStatus(),
-                existing.getPdfMobstatStatus(),
-                existing.getPrintStatus()
-        );
-        boolean noDelivery = statuses.stream().allMatch(s -> s == null || s.isBlank());
-        if (noDelivery) {
-            groupedMap.remove(key);
-            continue;
-        }
+            objectMapper.writeValue(summaryFile, payload);
+            logger.info("✅ Summary JSON written at: {}", summaryFilePath);
 
-        // ✅ Final status
-        long failed = statuses.stream().filter("Failed"::equalsIgnoreCase).count();
-        long success = statuses.stream().filter("OK"::equalsIgnoreCase).count();
+            return summaryFilePath.toAbsolutePath().toString();
 
-        if (failed > 0 && success == 0) {
-            existing.setStatusCode("FAILED");
-            existing.setStatusDescription("All methods failed");
-        } else if (failed > 0) {
-            existing.setStatusCode("PARTIAL");
-            existing.setStatusDescription("Some methods failed");
-        } else {
-            existing.setStatusCode("SUCCESS");
-            existing.setStatusDescription("Success");
+        } catch (Exception e) {
+            logger.error("❌ Failed to write summary.json", e);
+            throw new RuntimeException("Failed to write summary JSON", e);
         }
     }
 
-    return new ArrayList<>(groupedMap.values());
+    public static SummaryPayload buildPayload(KafkaMessage message,
+                                              List<SummaryProcessedFile> processedFiles,
+                                              List<PrintFile> printFiles,
+                                              String mobstatTriggerPath,
+                                              int customersProcessed) {
+
+        SummaryPayload payload = new SummaryPayload();
+
+        payload.setBatchID(message.getBatchId());
+        payload.setFileName(message.getBatchId() + ".csv");
+        payload.setMobstatTriggerFile(mobstatTriggerPath);
+
+        // Header block
+        Header header = new Header();
+        header.setTenantCode(message.getTenantCode());
+        header.setChannelID(message.getChannelID());
+        header.setAudienceID(message.getAudienceID());
+        header.setSourceSystem(message.getSourceSystem());
+        header.setProduct(message.getProduct());
+        header.setJobName(message.getJobName());
+
+        // 👇 Don't set root-level timestamp here; will be set in KafkaListenerService
+        header.setTimestamp(Instant.now().toString());
+        payload.setHeader(header);
+
+        // Determine overall status
+        String overallStatus = "Completed";
+        if (processedFiles != null && !processedFiles.isEmpty()) {
+            boolean allFailed = processedFiles.stream().allMatch(f -> "FAILURE".equalsIgnoreCase(f.getStatusCode()));
+            boolean anyFailed = processedFiles.stream().anyMatch(f -> "FAILURE".equalsIgnoreCase(f.getStatusCode()) || "PARTIAL".equalsIgnoreCase(f.getStatusCode()));
+
+            if (allFailed) overallStatus = "Failure";
+            else if (anyFailed) overallStatus = "Partial";
+        }
+
+        // Metadata block
+        Metadata metadata = new Metadata();
+        metadata.setTotalFilesProcessed(customersProcessed);
+        metadata.setProcessingStatus(overallStatus);
+        metadata.setEventOutcomeCode("0");
+        metadata.setEventOutcomeDescription("Success");
+        payload.setMetadata(metadata);
+
+        // Payload block
+        Payload payloadDetails = new Payload();
+        payloadDetails.setUniqueConsumerRef(message.getUniqueConsumerRef());
+        payloadDetails.setUniqueECPBatchRef(message.getUniqueECPBatchRef());
+        payloadDetails.setRunPriority(message.getRunPriority());
+        payloadDetails.setEventID(message.getEventID());
+        payloadDetails.setEventType(message.getEventType());
+        payloadDetails.setRestartKey(message.getRestartKey());
+        payloadDetails.setFileCount(processedFiles != null ? processedFiles.size() : 0);
+        payload.setPayload(payloadDetails);
+
+        // 👇 Optional: include processed and print files in summary.json
+        payload.setProcessedFiles(processedFiles != null ? processedFiles : new ArrayList<>());
+        //payload.setPrintFiles(printFiles != null ? printFiles : new ArrayList<>());
+
+        return payload;
+    }
 }
