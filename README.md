@@ -12,6 +12,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             "print", "PRINT"
     );
 
+    // 🔁 Group by accountNumber + customerId
     Map<String, SummaryProcessedFile> groupedMap = new LinkedHashMap<>();
 
     for (SummaryProcessedFile spf : customerList) {
@@ -30,25 +31,27 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             Path folderPath = jobDir.resolve(folder);
             Optional<Path> fileOpt;
 
-            if (!Files.exists(folderPath)) continue;
-
-            Stream<Path> fileStream = Files.list(folderPath)
-                    .filter(p -> p.getFileName().toString().contains(account));
-
-            // For mobstat, exclude trigger files from status check
             if (folder.equals("mobstat")) {
-                fileStream = fileStream.filter(p -> !p.getFileName().toString().toLowerCase().endsWith("_trigger.triggr"));
+                fileOpt = Files.exists(folderPath)
+                        ? Files.list(folderPath)
+                        .filter(p -> p.getFileName().toString().toLowerCase().contains("mobstat_trigger") &&
+                                p.getFileName().toString().contains(account))
+                        .findFirst()
+                        : Optional.empty();
+            } else {
+                fileOpt = Files.exists(folderPath)
+                        ? Files.list(folderPath)
+                        .filter(p -> p.getFileName().toString().contains(account))
+                        .findFirst()
+                        : Optional.empty();
             }
 
-            List<Path> matchingFiles = fileStream.collect(Collectors.toList());
-
             String outputMethod = folderToOutputMethod.get(folder);
-            String failureStatus = errorMap.getOrDefault(account, Collections.emptyMap())
-                    .getOrDefault(outputMethod, "");
+            Map<String, String> errorEntry = errorMap.getOrDefault(account, Collections.emptyMap());
+            String failureStatus = errorEntry.getOrDefault(outputMethod, "");
 
-            if (!matchingFiles.isEmpty()) {
-                // Upload first valid file (can be extended to all)
-                Path file = matchingFiles.get(0);
+            if (fileOpt.isPresent()) {
+                Path file = fileOpt.get();
                 String blobUrl = blobStorageService.uploadFile(
                         file.toFile(),
                         msg.getSourceSystem() + "/" + msg.getBatchId() + "/" + folder + "/" + file.getFileName()
@@ -84,21 +87,20 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             }
         }
 
-        // Skip customers with no delivery
+        // 🛑 Skip customers with no delivery
         List<String> statuses = Arrays.asList(
                 existing.getPdfEmailStatus(),
                 existing.getPdfArchiveStatus(),
                 existing.getPdfMobstatStatus(),
                 existing.getPrintStatus()
         );
-
         boolean noDelivery = statuses.stream().allMatch(s -> s == null || s.isBlank());
         if (noDelivery) {
-            groupedMap.remove(key);
+            groupedMap.remove(key); // remove from result
             continue;
         }
 
-        // Final status code
+        // ✅ Final status
         long failed = statuses.stream().filter("Failed"::equalsIgnoreCase).count();
         long success = statuses.stream().filter("OK"::equalsIgnoreCase).count();
 
@@ -116,3 +118,51 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 
     return new ArrayList<>(groupedMap.values());
 }
+==========================
+package com.nedbank.kafka.filemanage.model;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.Data;
+
+import java.util.List;
+
+@Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class SummaryPayload {
+    private String batchID;
+    private String fileName;
+    private Header header;
+    private Metadata metadata;
+    private Payload payload;
+    private List<SummaryProcessedFile> processedFiles;
+    private List<PrintFile> printFiles;
+    private String mobstatTriggerFile;
+
+    @JsonIgnore
+    private String summaryFileURL; // Will not be written to summary.json
+
+    private String fileLocation;
+    private String timestamp;
+}
+========================
+ public String uploadFile(File file, String targetPath) {
+        try {
+            initSecrets();
+            BlobServiceClient blobClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format(azureStorageFormat, accountName))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+                    .buildClient();
+
+            BlobClient blob = blobClient.getBlobContainerClient(containerName).getBlobClient(targetPath);
+            try (InputStream inputStream = new FileInputStream(file)) {
+                blob.upload(inputStream, file.length(), true);
+            }
+
+            logger.info("Uploaded binary file to '{}'", blob.getBlobUrl());
+            return blob.getBlobUrl();
+        } catch (Exception e) {
+            logger.error("Upload failed for binary file: {}", e.getMessage(), e);
+            throw new CustomAppException("Binary upload failed", 605, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
