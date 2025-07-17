@@ -1,4 +1,4 @@
- private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             Path jobDir,
             List<SummaryProcessedFile> customerList,
             Map<String, Map<String, String>> errorMap,
@@ -78,7 +78,7 @@
                 }
 
                 // Final status
-                List<String> statuses = List.of(
+                List<String> statuses = Arrays.asList(
                         entry.getPdfEmailStatus(),
                         entry.getPdfArchiveStatus(),
                         entry.getPdfMobstatStatus(),
