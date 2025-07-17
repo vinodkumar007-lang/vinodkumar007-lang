@@ -1,91 +1,71 @@
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        Path jobDir,
-        Map<String, Map<String, String>> accountCustomerMap,
-        KafkaMessage msg,
-        Map<String, Map<String, String>> errorMap
-) {
-    Map<String, SummaryProcessedFile> customerFileMap = new HashMap<>();
-    List<SummaryProcessedFile> finalList = new ArrayList<>();
+private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
+        try {
+            logger.info("⏳ Waiting for XML for jobId={}, id={}", otResponse.getJobId(), otResponse.getId());
+            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
+            if (xmlFile == null) throw new IllegalStateException("XML not found");
+            logger.info("✅ Found XML file: {}", xmlFile);
 
-    List<String> folders = List.of("archive", "email", "mobstat", "print");
+            // ✅ Parse error report
+            Map<String, Map<String, String>> errorMap = parseErrorReport(message);
+            logger.info("🧾 Parsed error report with {} entries", errorMap.size());
 
-    for (String folder : folders) {
-        Path folderPath = jobDir.resolve(folder);
-        if (!Files.exists(folderPath)) continue;
+            // ✅ Parse STD XML for customer summaries
+            List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile, errorMap);
+            logger.info("📊 Total customerSummaries parsed: {}", customerSummaries.size());
 
-        try (Stream<Path> fileStream = Files.list(folderPath)) {
-            fileStream.filter(Files::isRegularFile).forEach(file -> {
-                String fileName = file.getFileName().toString();
-                if (!fileName.contains("_")) return;
+            // ✅ Build jobDir path
+            Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
 
-                String accountNumber = fileName.split("_")[0];
-                String customerId = "UNKNOWN";
-                if (accountCustomerMap.containsKey(accountNumber)) {
-                    customerId = accountCustomerMap.get(accountNumber).getOrDefault("customerId", "UNKNOWN");
-                }
+            // ✅ Build processedFiles using fixed method call
+            List<SummaryProcessedFile> processedFiles =
+                    buildDetailedProcessedFiles(jobDir, errorMap, message);
+            logger.info("📦 Processed {} customer records", processedFiles.size());
 
-                String key = accountNumber + "_" + customerId;
+            // ✅ Upload print files
+            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
+            logger.info("🖨️ Uploaded {} print files", printFiles.size());
 
-                SummaryProcessedFile spf = customerFileMap.getOrDefault(key, new SummaryProcessedFile());
-                spf.setAccountNumber(accountNumber);
-                spf.setCustomerId(customerId);
-                spf.getFileUrls().put(folder, msg.getBlobUrl() + "/" + folder + "/" fileName);
-                spf.setStatus("SUCCESS");
+            // ✅ Upload mobstat trigger if present
+            String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
+            String currentTimestamp = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
 
-                customerFileMap.put(key, spf);
-            });
-        } catch (IOException e) {
-            logger.error("❌ Error reading folder {}: {}", folder, e.getMessage());
-        }
-    }
+            // ✅ Build final payload
+            SummaryPayload payload = SummaryJsonWriter.buildPayload(
+                    message, processedFiles, printFiles, mobstatTriggerUrl, processedFiles.size());
 
-    // 🔁 Loop through nested errorMap: account → {deliveryType → status}
-    for (Map.Entry<String, Map<String, String>> entry : errorMap.entrySet()) {
-        String accountNumber = entry.getKey();
-        Map<String, String> deliveryErrors = entry.getValue();
-
-        String customerId = "UNKNOWN";
-        if (accountCustomerMap.containsKey(accountNumber)) {
-            customerId = accountCustomerMap.get(accountNumber).getOrDefault("customerId", "UNKNOWN");
-        }
-
-        String combinedKey = accountNumber + "_" + customerId;
-
-        SummaryProcessedFile spf = customerFileMap.getOrDefault(combinedKey, new SummaryProcessedFile());
-        spf.setAccountNumber(accountNumber);
-        spf.setCustomerId(customerId);
-
-        for (Map.Entry<String, String> deliveryEntry : deliveryErrors.entrySet()) {
-            String deliveryType = deliveryEntry.getKey();
-            String status = deliveryEntry.getValue();
-
-            // Add only if URL for this delivery type is not present
-            if (!spf.getFileUrls().containsKey(deliveryType)) {
-                spf.getFileUrls().put(deliveryType, "");
-                spf.setStatus("FAILED");
+            payload.setFileName(message.getBatchFiles().get(0).getFilename());
+            payload.setTimestamp(currentTimestamp);
+            if (payload.getHeader() != null) {
+                payload.getHeader().setTimestamp(currentTimestamp);
             }
+
+            // ✅ Upload summary.json
+            String fileName = "summary_" + message.getBatchId() + ".json";
+            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
+            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, fileName);
+            payload.setSummaryFileURL(decodeUrl(summaryUrl));
+
+            logger.info("📁 Summary JSON uploaded to: {}", decodeUrl(summaryUrl));
+            logger.info("📄 Final Summary Payload:\n{}",
+                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
+
+            // ✅ Send response to Kafka
+            SummaryResponse response = new SummaryResponse();
+            response.setBatchID(message.getBatchId());
+            response.setFileName(payload.getFileName());
+            response.setHeader(payload.getHeader());
+            response.setMetadata(payload.getMetadata());
+            response.setPayload(payload.getPayload());
+            response.setSummaryFileURL(decodeUrl(summaryUrl));
+            response.setTimestamp(currentTimestamp);
+
+            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
+                    new ApiResponse("Summary generated", "COMPLETED", response)));
+
+            logger.info("✅ Kafka output sent for batch {} with response: {}", message.getBatchId(),
+                    objectMapper.writeValueAsString(response));
+
+        } catch (Exception e) {
+            logger.error("❌ Error post-OT summary generation", e);
         }
-
-        customerFileMap.put(combinedKey, spf);
     }
-
-    finalList.addAll(customerFileMap.values());
-
-    // ✅ Add mobstat_trigger files (excluded from count)
-    Path mobstatTriggerPath = jobDir.resolve("mobstat_trigger");
-    if (Files.exists(mobstatTriggerPath)) {
-        try (Stream<Path> triggerFiles = Files.list(mobstatTriggerPath)) {
-            triggerFiles.filter(Files::isRegularFile).forEach(file -> {
-                SummaryProcessedFile trigger = new SummaryProcessedFile();
-                trigger.setFileType("mobstat_trigger");
-                trigger.setFileURL(msg.getBlobUrl() + "/mobstat_trigger/" + file.getFileName());
-                finalList.add(trigger);
-            });
-        } catch (IOException e) {
-            logger.error("❌ Error reading mobstat_trigger folder: {}", e.getMessage());
-        }
-    }
-
-    logger.info("✅ Total unique customer delivery records (excluding trigger): {}", customerFileMap.size());
-    return finalList;
-}
