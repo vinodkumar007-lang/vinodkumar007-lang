@@ -9,27 +9,17 @@ private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
         Map<String, Map<String, String>> errorMap = parseErrorReport(message);
         logger.info("🧾 Parsed error report with {} entries", errorMap.size());
 
-        // ✅ Parse STD XML to get initial customer list
+        // ✅ Parse STD XML for customer summaries
         List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile, errorMap);
         logger.info("📊 Total customerSummaries parsed: {}", customerSummaries.size());
 
-        // ✅ Prepare unique customer+account list to track
-        Map<String, SummaryProcessedFile> customerMap = new HashMap<>();
-        for (CustomerSummary cs : customerSummaries) {
-            String key = cs.getCisNumber() + "_" + cs.getAccountNumber();
-            SummaryProcessedFile spf = new SummaryProcessedFile();
-            spf.setCustomerId(cs.getCisNumber());
-            spf.setAccountNumber(cs.getAccountNumber());
-            customerMap.put(key, spf);
-        }
-
+        // ✅ Build jobDir path
         Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
 
-        // ✅ Build processedFiles with merged folder URLs (archive/email/mobstat)
+        // ✅ Build processedFiles using fixed method call
         List<SummaryProcessedFile> processedFiles =
-                buildDetailedProcessedFiles(jobDir, new ArrayList<>(customerMap.values()), errorMap, message);
-
-        logger.info("📦 Processed {} merged customer records", processedFiles.size());
+                buildDetailedProcessedFiles(jobDir, errorMap, message);
+        logger.info("📦 Processed {} customer records", processedFiles.size());
 
         // ✅ Upload print files
         List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
@@ -37,16 +27,11 @@ private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
 
         // ✅ Upload mobstat trigger if present
         String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
-        if (mobstatTriggerUrl != null) {
-            logger.info("📤 Uploaded mobstat trigger file: {}", mobstatTriggerUrl);
-        }
-
         String currentTimestamp = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
 
-        // ✅ Build final summary payload (exclude mobstat trigger in processed count)
-        int actualCustomerCount = processedFiles.size();
+        // ✅ Build final payload
         SummaryPayload payload = SummaryJsonWriter.buildPayload(
-                message, processedFiles, printFiles, mobstatTriggerUrl, actualCustomerCount);
+                message, processedFiles, printFiles, mobstatTriggerUrl, processedFiles.size());
 
         payload.setFileName(message.getBatchFiles().get(0).getFilename());
         payload.setTimestamp(currentTimestamp);
@@ -64,7 +49,7 @@ private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
         logger.info("📄 Final Summary Payload:\n{}",
                 objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
 
-        // ✅ Send final response to Kafka
+        // ✅ Send response to Kafka
         SummaryResponse response = new SummaryResponse();
         response.setBatchID(message.getBatchId());
         response.setFileName(payload.getFileName());
