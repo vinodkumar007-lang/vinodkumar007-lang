@@ -20,15 +20,28 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         if (account == null || account.isBlank()) continue;
 
         SummaryProcessedFile updatedSpf = new SummaryProcessedFile();
-        BeanUtils.copyProperties(spf, updatedSpf); // Ensure we work on a copy
+        BeanUtils.copyProperties(spf, updatedSpf);
+
+        int successCount = 0;
 
         for (String folder : folders) {
             Path folderPath = jobDir.resolve(folder);
-            Optional<Path> fileOpt = Files.exists(folderPath)
-                    ? Files.list(folderPath)
-                    .filter(p -> p.getFileName().toString().contains(account))
-                    .findFirst()
-                    : Optional.empty();
+            Optional<Path> fileOpt;
+
+            if (folder.equals("mobstat")) {
+                fileOpt = Files.exists(folderPath)
+                        ? Files.list(folderPath)
+                        .filter(p -> p.getFileName().toString().toLowerCase().contains("mobstat_trigger") &&
+                                     p.getFileName().toString().contains(account))
+                        .findFirst()
+                        : Optional.empty();
+            } else {
+                fileOpt = Files.exists(folderPath)
+                        ? Files.list(folderPath)
+                        .filter(p -> p.getFileName().toString().contains(account))
+                        .findFirst()
+                        : Optional.empty();
+            }
 
             String outputMethod = folderToOutputMethod.get(folder);
             Map<String, String> errorEntry = errorMap.getOrDefault(account, Collections.emptyMap());
@@ -55,39 +68,46 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                         updatedSpf.setPdfMobstatFileUrl(decoded);
                         updatedSpf.setPdfMobstatStatus("OK");
                     }
-                    case "print" -> updatedSpf.setPrintFileUrl(decoded);
+                    case "print" -> {
+                        updatedSpf.setPrintFileUrl(decoded);
+                        updatedSpf.setPrintStatus("OK");
+                    }
                 }
+                successCount++;
             } else {
-                boolean isExplicitlyFailed = "Failed".equalsIgnoreCase(failureStatus);
-                if (isExplicitlyFailed) {
-                    switch (folder) {
-                        case "email" -> updatedSpf.setPdfEmailStatus("Failed");
-                        case "archive" -> updatedSpf.setPdfArchiveStatus("Failed");
-                        case "mobstat" -> updatedSpf.setPdfMobstatStatus("Failed");
-                    }
-                } else {
-                    switch (folder) {
-                        case "email" -> updatedSpf.setPdfEmailStatus("");
-                        case "archive" -> updatedSpf.setPdfArchiveStatus("");
-                        case "mobstat" -> updatedSpf.setPdfMobstatStatus("");
-                    }
+                boolean isExplicitFail = "Failed".equalsIgnoreCase(failureStatus);
+                switch (folder) {
+                    case "email" -> updatedSpf.setPdfEmailStatus(isExplicitFail ? "Failed" : "");
+                    case "archive" -> updatedSpf.setPdfArchiveStatus(isExplicitFail ? "Failed" : "");
+                    case "mobstat" -> updatedSpf.setPdfMobstatStatus(isExplicitFail ? "Failed" : "");
+                    case "print" -> updatedSpf.setPrintStatus(isExplicitFail ? "Failed" : "");
                 }
             }
         }
 
+        // 🔴 Skip adding to resultList if all statuses are empty or all are "Failed"
         List<String> statuses = Arrays.asList(
                 updatedSpf.getPdfEmailStatus(),
                 updatedSpf.getPdfArchiveStatus(),
-                updatedSpf.getPdfMobstatStatus()
+                updatedSpf.getPdfMobstatStatus(),
+                updatedSpf.getPrintStatus()
         );
 
-        long failedCount = statuses.stream().filter("Failed"::equalsIgnoreCase).count();
-        long knownCount = statuses.stream().filter(s -> s != null && !s.isBlank()).count();
+        boolean allBlank = statuses.stream().allMatch(s -> s == null || s.isBlank());
+        boolean allFailed = statuses.stream().allMatch("Failed"::equalsIgnoreCase);
 
-        if (failedCount == knownCount && knownCount > 0) {
+        if (allBlank || allFailed) {
+            continue; // skip this account+customer from final list
+        }
+
+        // ✅ Status classification
+        long failed = statuses.stream().filter("Failed"::equalsIgnoreCase).count();
+        long ok = statuses.stream().filter("OK"::equalsIgnoreCase).count();
+
+        if (failed > 0 && ok == 0) {
             updatedSpf.setStatusCode("FAILED");
             updatedSpf.setStatusDescription("All methods failed");
-        } else if (failedCount > 0) {
+        } else if (failed > 0) {
             updatedSpf.setStatusCode("PARTIAL");
             updatedSpf.setStatusDescription("Some methods failed");
         } else {
