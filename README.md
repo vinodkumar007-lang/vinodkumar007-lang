@@ -22,8 +22,6 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         SummaryProcessedFile updatedSpf = new SummaryProcessedFile();
         BeanUtils.copyProperties(spf, updatedSpf);
 
-        int successCount = 0;
-
         for (String folder : folders) {
             Path folderPath = jobDir.resolve(folder);
             Optional<Path> fileOpt;
@@ -73,7 +71,6 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                         updatedSpf.setPrintStatus("OK");
                     }
                 }
-                successCount++;
             } else {
                 boolean isExplicitFail = "Failed".equalsIgnoreCase(failureStatus);
                 switch (folder) {
@@ -85,24 +82,30 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             }
         }
 
-        // 🔴 Skip adding to resultList if all statuses are empty or all are "Failed"
+        // Exclude from count if only mobstat was found
         List<String> statuses = Arrays.asList(
                 updatedSpf.getPdfEmailStatus(),
                 updatedSpf.getPdfArchiveStatus(),
-                updatedSpf.getPdfMobstatStatus(),
-                updatedSpf.getPrintStatus()
+                updatedSpf.getPrintStatus()  // intentionally excluding mobstat
         );
 
         boolean allBlank = statuses.stream().allMatch(s -> s == null || s.isBlank());
         boolean allFailed = statuses.stream().allMatch("Failed"::equalsIgnoreCase);
 
         if (allBlank || allFailed) {
-            continue; // skip this account+customer from final list
+            continue;
         }
 
-        // ✅ Status classification
-        long failed = statuses.stream().filter("Failed"::equalsIgnoreCase).count();
-        long ok = statuses.stream().filter("OK"::equalsIgnoreCase).count();
+        // Status check on all delivery types including mobstat
+        List<String> allStatuses = Arrays.asList(
+                updatedSpf.getPdfEmailStatus(),
+                updatedSpf.getPdfArchiveStatus(),
+                updatedSpf.getPdfMobstatStatus(),
+                updatedSpf.getPrintStatus()
+        );
+
+        long failed = allStatuses.stream().filter("Failed"::equalsIgnoreCase).count();
+        long ok = allStatuses.stream().filter("OK"::equalsIgnoreCase).count();
 
         if (failed > 0 && ok == 0) {
             updatedSpf.setStatusCode("FAILED");
