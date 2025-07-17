@@ -1,12 +1,21 @@
-public class CustomerSummary {
+package com.nedbank.kafka.filemanage.model;
+
+import lombok.Data;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@Data
+public class CustomerSum{
 
     private String accountNumber;
     private String cisNumber;
     private String customerId;
     private Map<String, String> deliveryStatus = new HashMap<>();
     private String status;
+    private 
 
-    public CustomerSummary() {}
+    public void CustomerSummary() {}
 
     public String getAccountNumber() {
         return accountNumber;
