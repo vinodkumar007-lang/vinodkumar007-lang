@@ -1,95 +1,43 @@
-public static void buildPayload(
-        SummaryPayload payload,
-        List<SummaryProcessedFile> processedFiles,
-        KafkaMessage message,
-        String fileName,
-        String summaryBlobUrl
-) {
-    payload.setBatchID(message.getBatchID());
-    payload.setFileName(fileName);
-    payload.setSummaryFileURL(summaryBlobUrl);
-
-    // Set header
-    SummaryHeader header = new SummaryHeader();
-    header.setTenantCode(message.getTenantCode());
-    header.setChannelID(message.getChannelID());
-    header.setAudienceID(message.getAudienceID());
-    header.setCampaignID(message.getCampaignID());
-    header.setProcessReference(message.getProcessReference());
-    header.setSourceSystem(message.getSourceSystem());
-    header.setTimestamp(Instant.now().toString());
-    payload.setHeader(header);
-
-    // Group by customerId
-    Map<String, List<SummaryProcessedFile>> grouped = processedFiles.stream()
-            .filter(spf -> !"TRIGGER".equalsIgnoreCase(spf.getFileType())) // skip trigger
-            .collect(Collectors.groupingBy(SummaryProcessedFile::getCustomerId));
-
-    List<SummaryProcessedRecord> summaryProcessedRecords = new ArrayList<>();
-
-    for (Map.Entry<String, List<SummaryProcessedFile>> entry : grouped.entrySet()) {
-        String customerId = entry.getKey();
-        List<SummaryProcessedFile> customerFiles = entry.getValue();
-
-        SummaryProcessedRecord record = new SummaryProcessedRecord();
-        record.setCustomerId(customerId);
-        record.setAccountNumber(customerFiles.get(0).getAccountNumber());
-
-        List<ProcessedFileGroup> processedFileGroups = new ArrayList<>();
-
-        // Group by output type (email/archive/print/mobstat)
-        Map<String, List<SummaryProcessedFile>> typeMap = customerFiles.stream()
-                .collect(Collectors.groupingBy(spf -> {
-                    String url = Optional.ofNullable(spf.getBlobUrl()).orElse("").toLowerCase();
-                    if (url.contains("email")) return "EMAIL";
-                    else if (url.contains("archive")) return "ARCHIVE";
-                    else if (url.contains("print")) return "PRINT";
-                    else if (url.contains("mobstat")) return "MOBSTAT";
-                    else return "UNKNOWN";
-                }));
-
-        for (Map.Entry<String, List<SummaryProcessedFile>> typeEntry : typeMap.entrySet()) {
-            String type = typeEntry.getKey();
-            List<SummaryProcessedFile> filesByType = typeEntry.getValue();
-
-            ProcessedFileGroup group = new ProcessedFileGroup();
-            group.setType(type);
-            group.setFiles(filesByType);
-
-            // Determine group status
-            boolean allSuccess = filesByType.stream().allMatch(f -> "SUCCESS".equalsIgnoreCase(f.getStatus()));
-            boolean anyFailed = filesByType.stream().anyMatch(f -> "FAILED".equalsIgnoreCase(f.getStatus()));
-
-            String status = allSuccess ? "SUCCESS" : (anyFailed ? "FAILED" : "NOT_FOUND");
-            group.setStatus(status);
-
-            processedFileGroups.add(group);
-        }
-
-        // Set overall status for customer
-        boolean anyFailed = customerFiles.stream().anyMatch(f -> "FAILED".equalsIgnoreCase(f.getStatus()));
-        boolean anySuccess = customerFiles.stream().anyMatch(f -> "SUCCESS".equalsIgnoreCase(f.getStatus()));
-        String overallStatus = anyFailed ? "PARTIAL" : (anySuccess ? "SUCCESS" : "NOT_FOUND");
-
-        record.setOverallStatus(overallStatus);
-        record.setProcessedFileGroups(processedFileGroups);
-        summaryProcessedRecords.add(record);
-    }
-
-    payload.setProcessedList(summaryProcessedRecords);
-}
-
-public class SummaryProcessedRecord {
-    private String customerId;
-    private String accountNumber;
-    private String overallStatus;
-    private List<ProcessedFileGroup> processedFileGroups;
-    // Getters and setters
-}
-
-public class ProcessedFileGroup {
-    private String type; // email/archive/mobstat/print
-    private String status; // SUCCESS / FAILED / NOT_FOUND
-    private List<SummaryProcessedFile> files;
-    // Getters and setters
+{
+  "batchID" : "2c93525b-42d1-410a-9e26-aa957f19861d",
+  "fileName" : "DEBTMAN.csv",
+  "header" : {
+    "tenantCode" : "ZANBL",
+    "channelID" : null,
+    "audienceID" : null,
+    "timestamp" : "1970-01-21T05:39:11.245Z",
+    "sourceSystem" : "DEBTMAN",
+    "product" : "DEBTMAN",
+    "jobName" : "DEBTMAN"
+  },
+  "metadata" : {
+    "totalFilesProcessed" : 11,
+    "processingStatus" : "Completed",
+    "eventOutcomeCode" : "0",
+    "eventOutcomeDescription" : "Success"
+  },
+  "payload" : {
+    "uniqueConsumerRef" : "6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f",
+    "uniqueECPBatchRef" : null,
+    "runPriority" : null,
+    "eventID" : null,
+    "eventType" : null,
+    "restartKey" : null,
+    "fileCount" : 11
+  },
+  "processedFiles" : [ {
+    "customerId" : "110543680509",
+    "accountNumber" : "3768000010607501",
+    "pdfArchiveFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F1970-01-21%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2FDEBTMAN%2Farchive%2F110543680509_12485337728657340876.pdf",
+    "pdfEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F1970-01-21%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2FDEBTMAN%2Femail%2F110543680509_12485337728657340876.pdf",
+    "htmlEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F1970-01-21%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2FDEBTMAN%2Fhtml%2F110543680509_15674937613143496857.html",
+    "txtEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F1970-01-21%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2FDEBTMAN%2Ftxt%2F110543680509_4155712775909391580.txt",
+    "pdfMobstatFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F1970-01-21%2F2c93525b-42d1-410a-9e26-aa957f19861d%2F6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f%2FDEBTMAN%2Fmobstat%2F110543680509_3101796713995731386.mobstat",
+    "statusCode" : "OK",
+    "statusDescription" : "Success"
+  } ],
+  "printFiles" : [ {
+    "printFileURL" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN/1970-01-21/2c93525b-42d1-410a-9e26-aa957f19861d/6dd4dba1-8635-4bb5-8eb4-69c2aa8ccd7f/DEBTMAN/print/2c93525b-42d1-410a-9e26-aa957f19861d_printfile.pdf"
+  } ],
+  "mobstatTriggerFile" : "/main/nedcor/dia/ecm-batch/testfolder/azurebloblocation/output/mobstat/DropData.trigger"
 }
