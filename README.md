@@ -1,54 +1,119 @@
 public static SummaryPayload buildPayload(
-            KafkaMessage kafkaMessage,
-            List<SummaryProcessedFile> processedList,
-            String summaryBlobUrl,
-            String fileName,
-            String batchId,
-            String timestamp
-    ) {
-        SummaryPayload payload = new SummaryPayload();
-        payload.setBatchID(batchId);
-        payload.setFileName(fileName);
-        payload.setTimestamp(timestamp);
-        payload.setSummaryFileURL(summaryBlobUrl);
+        KafkaMessage kafkaMessage,
+        List<SummaryProcessedFile> processedList,
+        String summaryBlobUrl,
+        String fileName,
+        String batchId,
+        String timestamp
+) {
+    SummaryPayload payload = new SummaryPayload();
+    payload.setBatchID(batchId);
+    payload.setFileName(fileName);
+    payload.setTimestamp(timestamp);
+    payload.setSummaryFileURL(summaryBlobUrl);
 
-        // Header section from Kafka
-        Header header = new Header();
-        header.setTenantCode(kafkaMessage.getTenantCode());
-        header.setChannelID(kafkaMessage.getChannelID());
-        header.setAudienceID(kafkaMessage.getAudienceID());
-        header.setSourceSystem(kafkaMessage.getSourceSystem());
-        //header.setConsumerReference(kafkaMessage.getConsumerReference());
-        //header.setProcessReference(kafkaMessage.getProcessReference());
-        payload.setHeader(header);
+    // HEADER
+    Header header = new Header();
+    header.setTenantCode(kafkaMessage.getTenantCode());
+    header.setChannelID(kafkaMessage.getChannelID());
+    header.setAudienceID(kafkaMessage.getAudienceID());
+    header.setTimestamp(timestamp);
+    header.setSourceSystem(kafkaMessage.getSourceSystem());
+    header.setProduct(kafkaMessage.getSourceSystem());
+    header.setJobName(kafkaMessage.getSourceSystem());
+    payload.setHeader(header);
 
-        // Metadata grouping processed files by customerId
-        Metadata metadata = new Metadata();
-        payload.setCustomerSummaries(groupProcessedFilesByCustomerId(processedList));
-        payload.setMetadata(metadata);
+    // METADATA
+    Metadata metadata = new Metadata();
+    metadata.setTotalFilesProcessed(processedList.size());
+    metadata.setProcessingStatus("Completed");
+    metadata.setEventOutcomeCode("0");
+    metadata.setEventOutcomeDescription("Success");
+    payload.setMetadata(metadata);
 
-        // Flat processed list also set
-        //payload.setProcessedList(processedList);
+    // PAYLOAD BLOCK
+    Payload payloadInfo = new Payload();
+    payloadInfo.setUniqueConsumerRef(kafkaMessage.getConsumerReference());
+    payloadInfo.setUniqueECPBatchRef(null);
+    payloadInfo.setRunPriority(null);
+    payloadInfo.setEventID(null);
+    payloadInfo.setEventType(null);
+    payloadInfo.setRestartKey(null);
+    payloadInfo.setFileCount(processedList.size());
+    payload.setPayload(payloadInfo);
 
-        return payload;
-    }
+    // PROCESSED FILES
+    List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
+    payload.setProcessedFiles(processedFileEntries);
 
-    private static List<CustomerSummary> groupProcessedFilesByCustomerId(List<SummaryProcessedFile> processedList) {
-        Map<String, CustomerSummary> customerMap = new LinkedHashMap<>();
+    // TRIGGER FILE URL IF ANY
+    payload.setMobstatTriggerFile(buildMobstatTrigger(processedList));
 
-        for (SummaryProcessedFile file : processedList) {
-            String customerId = file.getCustomerId();
-            if (customerId == null || customerId.isBlank()) continue;
+    return payload;
+}
 
-            CustomerSummary summary = customerMap.computeIfAbsent(customerId, id -> {
-                CustomerSummary cs = new CustomerSummary();
-                cs.setCustomerId(id);
-                cs.setFiles(new ArrayList<>());
-                return cs;
-            });
+private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> inputList) {
+    Map<String, ProcessedFileEntry> customerMap = new LinkedHashMap<>();
 
-            summary.getSummaryProcessedFileList().add(file);
+    for (SummaryProcessedFile spf : inputList) {
+        String key = spf.getCustomerId() + "::" + spf.getAccountNumber();
+        ProcessedFileEntry entry = customerMap.computeIfAbsent(key, k -> {
+            ProcessedFileEntry pfe = new ProcessedFileEntry();
+            pfe.setCustomerId(spf.getCustomerId());
+            pfe.setAccountNumber(spf.getAccountNumber());
+            return pfe;
+        });
+
+        // Map fileType → URL & Status
+        String url = spf.getBlobFileURL();
+        String status = spf.getStatus() != null ? spf.getStatus() : "UNKNOWN";
+
+        if (url != null && url.contains("/archive/")) {
+            entry.setPdfArchiveFileUrl(url);
+            entry.setPdfArchiveFileUrlStatus(status);
+        } else if (url != null && url.contains("/email/")) {
+            entry.setPdfEmailFileUrl(url);
+            entry.setPdfEmailFileUrlStatus(status);
+        } else if (url != null && url.contains("/html/")) {
+            entry.setPrintFileUrl(url);
+            entry.setPrintFileUrlStatus(status);
+        } else if (url != null && url.contains("/mobstat/")) {
+            entry.setPdfMobstatFileUrl(url);
+            entry.setPdfMobstatFileUrlStatus(status);
         }
 
-        return new ArrayList<>(customerMap.values());
+        // Overall statusCode and statusDescription
+        entry.setStatusCode("OK");
+        entry.setStatusDescription("Success");
     }
+
+    return new ArrayList<>(customerMap.values());
+}
+private static String buildMobstatTrigger(List<SummaryProcessedFile> list) {
+    return list.stream()
+        .map(SummaryProcessedFile::getBlobFileURL)
+        .filter(url -> url != null && url.contains("/mobstat/DropData.trigger"))
+        .findFirst()
+        .orElse(null);
+}
+
+@Data
+public class ProcessedFileEntry {
+    private String customerId;
+    private String accountNumber;
+
+    private String pdfArchiveFileUrl;
+    private String pdfArchiveFileUrlStatus;
+
+    private String pdfEmailFileUrl;
+    private String pdfEmailFileUrlStatus;
+
+    private String printFileUrl;
+    private String printFileUrlStatus;
+
+    private String pdfMobstatFileUrl;
+    private String pdfMobstatFileUrlStatus;
+
+    private String statusCode;
+    private String statusDescription;
+}
