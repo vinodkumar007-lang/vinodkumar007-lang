@@ -1,148 +1,149 @@
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        Path jobDir,
-        List<SummaryProcessedFile> customerList,
-        KafkaMessage msg) throws IOException {
+package com.nedbank.kafka.filemanage.utils;
 
-    List<String> folders = List.of("email", "archive", "mobstat", "print");
-    Map<String, SummaryProcessedFile> outputMap = new HashMap<>();
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.nedbank.kafka.filemanage.model.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
-    Set<String> validFolders = new HashSet<>();
-    AtomicReference<String> triggerBlobUrl = new AtomicReference<>();
+import java.io.File;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.time.Instant;
+import java.util.*;
 
-    // Upload .trigger file if found
-    try (Stream<Path> allFiles = Files.walk(jobDir)) {
-        allFiles.filter(Files::isRegularFile).forEach(path -> {
-            String fileName = path.getFileName().toString();
-            if (fileName.endsWith(".trigger")) {
-                try {
-                    String targetPath = String.format(
-                            "%s/%s/%s/%s",                     // sourceSystem/batchId/guid/filename
-                            msg.getSourceSystem(),
-                            msg.getBatchId(),
-                            msg.getUniqueConsumerRef(),
-                            fileName
-                    );
-                    byte[] content = Files.readAllBytes(path);
-                    triggerBlobUrl.set(blobStorageService.uploadFile(content, targetPath));
-                    logger.info("📎 Trigger file uploaded: {}", triggerBlobUrl);
-                } catch (Exception e) {
-                    logger.error("❌ Failed to upload trigger file: {}", e.getMessage());
-                }
+@Component
+public class SummaryJsonWriter {
+
+    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
+    private static final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+
+    public static String writeSummaryJsonToFile(SummaryPayload payload) {
+        if (payload == null) {
+            logger.error("SummaryPayload is null. Cannot write summary.json.");
+            throw new IllegalArgumentException("SummaryPayload cannot be null");
+        }
+
+        try {
+            String batchId = Optional.ofNullable(payload.getBatchID()).orElse("unknown");
+            String fileName = "summary_" + batchId + ".json";
+
+            Path tempDir = Files.createTempDirectory("summaryFiles");
+            Path summaryFilePath = tempDir.resolve(fileName);
+
+            File summaryFile = summaryFilePath.toFile();
+            if (summaryFile.exists()) {
+                Files.delete(summaryFilePath);
+                logger.warn("Existing summary file deleted: {}", summaryFilePath);
             }
-        });
+
+            objectMapper.writeValue(summaryFile, payload);
+            logger.info("✅ Summary JSON written at: {}", summaryFilePath);
+
+            return summaryFilePath.toAbsolutePath().toString();
+
+        } catch (Exception e) {
+            logger.error("❌ Failed to write summary.json", e);
+            throw new RuntimeException("Failed to write summary JSON", e);
+        }
     }
 
-    // Upload actual folder files first
-    for (String folder : folders) {
-        Path folderPath = jobDir.resolve(folder);
-        if (!Files.exists(folderPath)) continue;
+    public static SummaryPayload buildPayload(
+            KafkaMessage kafkaMessage,
+            List<SummaryProcessedFile> processedList,
+            String summaryBlobUrl,
+            String fileName,
+            String batchId,
+            String timestamp
+    ) {
+        SummaryPayload payload = new SummaryPayload();
+        payload.setBatchID(batchId);
+        payload.setFileName(fileName);
+        payload.setTimestamp(timestamp);
+        payload.setSummaryFileURL(summaryBlobUrl);
 
-        validFolders.add(folder);
-        try (Stream<Path> files = Files.list(folderPath)) {
-            for (Path filePath : files.collect(Collectors.toList())) {
-                String fileName = filePath.getFileName().toString();
-                if (fileName.endsWith(".trigger")) continue; // skip
+        // HEADER
+        Header header = new Header();
+        header.setTenantCode(kafkaMessage.getTenantCode());
+        header.setChannelID(kafkaMessage.getChannelID());
+        header.setAudienceID(kafkaMessage.getAudienceID());
+        header.setTimestamp(timestamp);
+        header.setSourceSystem(kafkaMessage.getSourceSystem());
+        header.setProduct(kafkaMessage.getSourceSystem());
+        header.setJobName(kafkaMessage.getSourceSystem());
+        payload.setHeader(header);
 
-                for (SummaryProcessedFile customer : customerList) {
-                    String accountNumber = customer.getAccountNumber();
-                    String customerId = customer.getCustomerId();
-                    String outputMethod = customer.getOutputMethod();
-                    String key = customerId + "::" + accountNumber + "::" + outputMethod;
+        // METADATA
+        Metadata metadata = new Metadata();
+        metadata.setTotalFilesProcessed(processedList.size());
+        metadata.setProcessingStatus("Completed");
+        metadata.setEventOutcomeCode("0");
+        metadata.setEventOutcomeDescription("Success");
+        payload.setMetadata(metadata);
 
-                    if (outputMap.containsKey(key)) continue;
+        // PAYLOAD BLOCK
+        Payload payloadInfo = new Payload();
+        payloadInfo.setUniqueECPBatchRef(null);
+        payloadInfo.setRunPriority(null);
+        payloadInfo.setEventID(null);
+        payloadInfo.setEventType(null);
+        payloadInfo.setRestartKey(null);
+        payloadInfo.setFileCount(processedList.size());
+        payload.setPayload(payloadInfo);
 
-                    if (fileName.contains(accountNumber)) {
-                        try {
-                            SummaryProcessedFile entry = buildCopy(customer);
-                            String blobPath = String.format(
-                                    "%s/%s/%s/%s/%s",
-                                    msg.getSourceSystem(),
-                                    msg.getBatchId(),
-                                    msg.getUniqueConsumerRef(),
-                                    folder,
-                                    fileName
-                            );
-                            byte[] content = Files.readAllBytes(filePath);
-                            String blobUrl = blobStorageService.uploadFile(content, blobPath);
-                            entry.setBlobURL(decodeUrl(blobUrl));
-                            entry.setStatus("SUCCESS");
-                            outputMap.put(key, entry);
-                        } catch (Exception e) {
-                            logger.error("❌ Error uploading file: {}", e.getMessage());
-                        }
-                        break;
-                    }
-                }
+        // ✅ PROCESSED FILE LIST (grouped by customer + account)
+        List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
+        payload.setProcessedFileList(processedFileEntries);
+
+        // ✅ TRIGGER FILE
+        payload.setMobstatTriggerFile(buildMobstatTrigger(processedList));
+
+        return payload;
+    }
+
+    private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
+        Map<String, ProcessedFileEntry> entryMap = new LinkedHashMap<>();
+
+        for (SummaryProcessedFile file : processedList) {
+            if (file.getCustomerId() == null || file.getAccountNumber() == null) continue;
+
+            String key = file.getCustomerId() + "::" + file.getAccountNumber();
+            ProcessedFileEntry entry = entryMap.computeIfAbsent(key, k -> {
+                ProcessedFileEntry e = new ProcessedFileEntry();
+                e.setCustomerId(file.getCustomerId());
+                e.setAccountNumber(file.getAccountNumber());
+                return e;
+            });
+
+            String url = URLDecoder.decode(file.getBlobURL(), StandardCharsets.UTF_8);
+            if (url == null) continue;
+
+            if (url.contains("/email/")) {
+                entry.setPdfEmailFileUrl(url);
+                entry.setPdfEmailFileUrlStatus("Success");
+            } else if (url.contains("/archive/")) {
+                entry.setPdfArchiveFileUrl(url);
+                entry.setPdfArchiveFileUrlStatus("Success");
+            } else if (url.contains("/mobstat/")) {
+                entry.setPdfMobstatFileUrl(url);
+                entry.setPdfMobstatFileUrlStatus("Success");
+            } else if (url.contains("/print/")) {
+                entry.setPrintFileUrl(url);
+                entry.setPrintFileUrlStatus("Success");
             }
         }
+
+        return new ArrayList<>(entryMap.values());
     }
 
-    // Process ErrorReport
-    Path reportDir = jobDir.resolve("report");
-    Optional<Path> errorReportPath = Files.exists(reportDir)
-            ? Files.list(reportDir).filter(p -> p.getFileName().toString().contains("ErrorReport")).findFirst()
-            : Optional.empty();
-
-    Map<String, Map<String, String>> errorMap = new HashMap<>();
-    String errorBlobUrl = null;
-
-    if (errorReportPath.isPresent()) {
-        String content = Files.readString(errorReportPath.get());
-        String errorReportBlobPath = String.format(
-                "%s/%s/%s/report/ErrorReport.txt",
-                msg.getSourceSystem(),
-                msg.getBatchId(),
-                msg.getUniqueConsumerRef()
-        );
-        errorBlobUrl = blobStorageService.uploadFile(content, errorReportBlobPath);
-        logger.info("📄 ErrorReport uploaded: {}", errorBlobUrl);
-        errorMap = parseErrorReport(content);
+    private static String buildMobstatTrigger(List<SummaryProcessedFile> list) {
+        return list.stream()
+                .map(SummaryProcessedFile::getBlobURL)
+                .filter(url -> url != null && url.contains("/DropData.trigger"))
+                .findFirst()
+                .orElse(null);
     }
 
-    // Final pass to ensure all customers handled
-    for (SummaryProcessedFile customer : customerList) {
-        String customerId = customer.getCustomerId();
-        String accountNumber = customer.getAccountNumber();
-        String outputMethod = customer.getOutputMethod();
-        String key = customerId + "::" + accountNumber + "::" + outputMethod;
-
-        if (outputMap.containsKey(key)) continue;
-
-        SummaryProcessedFile entry = buildCopy(customer);
-
-        boolean matchedError = errorMap.containsKey(customerId)
-                && errorMap.get(customerId).get("account").equals(accountNumber)
-                && errorMap.get(customerId).get("method").equalsIgnoreCase(outputMethod);
-
-        if (matchedError) {
-            entry.setStatus("FAILED");
-            entry.setStatusDescription("Marked as failed from ErrorReport");
-            entry.setBlobURL(errorBlobUrl);
-        } else if (validFolders.contains(outputMethod.toLowerCase())) {
-            entry.setStatus("NOT_FOUND");
-            entry.setStatusDescription("File not found in expected folder");
-        } else {
-            entry.setStatus("NOT_FOUND");
-            entry.setStatusDescription("Output method folder not generated");
-        }
-
-        outputMap.put(key, entry);
-    }
-
-    // Set overallStatus
-    outputMap.values().forEach(entry -> {
-        String status = entry.getStatus();
-        switch (status) {
-            case "SUCCESS":
-                entry.setOverallStatus("SUCCESS");
-                break;
-            case "FAILED":
-                entry.setOverallStatus("FAILURE");
-                break;
-            default:
-                entry.setOverallStatus("NOT_FOUND");
-        }
-    });
-
-    return new ArrayList<>(outputMap.values());
 }
