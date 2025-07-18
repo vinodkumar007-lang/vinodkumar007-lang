@@ -1,59 +1,69 @@
-package com.nedbank.kafka.filemanage.model;
+private SummaryPayload buildPayload(List<SummaryProcessedFile> processedList, KafkaMessage message) {
+    SummaryPayload payload = new SummaryPayload();
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.Data;
+    // ⛳ Header (from Kafka message)
+    SummaryHeader header = new SummaryHeader();
+    header.setTenantCode(message.getTenantCode());
+    header.setBatchID(message.getBatchId());
+    header.setChannelID(message.getChannelId());
+    header.setAudienceID(message.getAudienceId());
+    header.setSourceSystem(message.getSourceSystem());
+    header.setConsumerReference(message.getConsumerReference());
+    header.setProcessReference(message.getProcessReference());
+    header.setMessageID(message.getMessageId());
+    payload.setHeader(header);
 
-import java.util.HashMap;
-import java.util.Map;
+    // 📁 FileName from Kafka
+    payload.setFileName(message.getFileName());
 
-@Data
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class SummaryProcessedFile {
-    private String customerId;
-    private String accountNumber;
-    private String firstName;
-    private String lastName;
-    private String email;
-    private String mobileNumber;
-    private String addressLine1;
-    private String addressLine2;
-    private String addressLine3;
-    private String postalCode;
-    private String contactNumber;
-    private String product;
-    private String templateCode;
-    private String templateName;
-    private String balance;
-    private String creditLimit;
-    private String interestRate;
-    private String dueAmount;
-    private String arrears;
-    private String dueDate;
-    private String idNumber;
-    private String accountReference;
+    // ⏱ Timestamp
+    payload.setTimestamp(LocalDateTime.now().toString());
 
-    private String pdfArchiveFileUrl;
-    private String pdfArchiveStatus;
-    private String pdfEmailFileUrl;
-    private String pdfEmailStatus;
-    private String pdfMobstatFileUrl;
-    private String pdfMobstatStatus;
-    private String printFileUrl;
-    private String printStatus;
+    // ✅ Group processed files by customerId + accountNumber
+    List<SummaryProcessedFileGroup> groups = new ArrayList<>();
+    Map<String, SummaryProcessedFileGroup> groupMap = new LinkedHashMap<>();
 
-    private String statusCode;
-    private String statusDescription;
+    for (SummaryProcessedFile file : processedList) {
+        if (file.getCustomerId() == null || file.getAccountNumber() == null) continue;
 
-    private String fullName;
-    private String blobURL;
+        String key = file.getCustomerId() + "::" + file.getAccountNumber();
+        SummaryProcessedFileGroup group = groupMap.computeIfAbsent(key, k -> {
+            SummaryProcessedFileGroup g = new SummaryProcessedFileGroup();
+            g.setCustomerId(file.getCustomerId());
+            g.setAccountNumber(file.getAccountNumber());
+            return g;
+        });
 
-    //private Map<String, String> fileUrls = new HashMap<>(); // archive, email, mobstat, print
-    private String status; // SUCCESS / FAILED / null
-    private String fileType; // for trigger file
-    private String fileURL;  // for trigger file
+        String url = file.getBlobURL();
+        if (url == null) continue;
 
-    private String outputMethod; // ✅ fixed name
+        String decodedUrl = URLDecoder.decode(url, StandardCharsets.UTF_8);
+        String status = file.getStatus();
 
-    private String overallStatus;
+        if (decodedUrl.contains("/email/")) {
+            group.setPdfEmailFileUrl(decodedUrl);
+            group.setPdfEmailFileUrlStatus(status);
+        } else if (decodedUrl.contains("/archive/")) {
+            group.setPdfArchiveFileUrl(decodedUrl);
+            group.setPdfArchiveFileUrlStatus(status);
+        } else if (decodedUrl.contains("/mobstat/")) {
+            group.setPdfMobstatFileUrl(decodedUrl);
+            group.setPdfMobstatFileUrlStatus(status);
+        } else if (decodedUrl.contains("/print/")) {
+            group.setPrintFileUrl(decodedUrl);
+            group.setPrintFileUrlStatus(status);
+        }
 
+        // Set overall status once
+        if (group.getOverallStatus() == null) {
+            group.setOverallStatus(file.getOverallStatus());
+        }
+    }
+
+    groups.addAll(groupMap.values());
+
+    // 🔁 Add to payload
+    payload.setProcessedFiles(groups);
+
+    return payload;
 }
