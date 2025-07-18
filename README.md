@@ -1,143 +1,95 @@
-    private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-            Path jobDir,
-            List<SummaryProcessedFile> customerList,
-            KafkaMessage msg) throws IOException {
+public static void buildPayload(
+        SummaryPayload payload,
+        List<SummaryProcessedFile> processedFiles,
+        KafkaMessage message,
+        String fileName,
+        String summaryBlobUrl
+) {
+    payload.setBatchID(message.getBatchID());
+    payload.setFileName(fileName);
+    payload.setSummaryFileURL(summaryBlobUrl);
 
-        List<String> folders = List.of("email", "archive", "mobstat", "print");
-        Map<String, SummaryProcessedFile> outputMap = new HashMap<>();
+    // Set header
+    SummaryHeader header = new SummaryHeader();
+    header.setTenantCode(message.getTenantCode());
+    header.setChannelID(message.getChannelID());
+    header.setAudienceID(message.getAudienceID());
+    header.setCampaignID(message.getCampaignID());
+    header.setProcessReference(message.getProcessReference());
+    header.setSourceSystem(message.getSourceSystem());
+    header.setTimestamp(Instant.now().toString());
+    payload.setHeader(header);
 
-        Set<String> validFolders = new HashSet<>();
-        Map<String, Path> folderFileMap = new HashMap<>();
-        AtomicReference<String> triggerBlobUrl = new AtomicReference<>();
+    // Group by customerId
+    Map<String, List<SummaryProcessedFile>> grouped = processedFiles.stream()
+            .filter(spf -> !"TRIGGER".equalsIgnoreCase(spf.getFileType())) // skip trigger
+            .collect(Collectors.groupingBy(SummaryProcessedFile::getCustomerId));
 
-        // Upload .trigger file if found
-        try (Stream<Path> allFiles = Files.walk(jobDir)) {
-            allFiles.filter(Files::isRegularFile).forEach(path -> {
-                String fileName = path.getFileName().toString();
-                if (fileName.endsWith(".trigger")) {
-                    try {
-                        String targetPath = String.format("out/%s/%s", msg.getBatchId(), fileName);
-                        byte[] content = Files.readAllBytes(path);
-                        triggerBlobUrl.set(blobStorageService.uploadFile(content, targetPath));
-                        logger.info("📎 Trigger file uploaded: {}", triggerBlobUrl);
-                    } catch (Exception e) {
-                        logger.error("❌ Failed to upload trigger file: {}", e.getMessage());
-                    }
-                }
-            });
+    List<SummaryProcessedRecord> summaryProcessedRecords = new ArrayList<>();
+
+    for (Map.Entry<String, List<SummaryProcessedFile>> entry : grouped.entrySet()) {
+        String customerId = entry.getKey();
+        List<SummaryProcessedFile> customerFiles = entry.getValue();
+
+        SummaryProcessedRecord record = new SummaryProcessedRecord();
+        record.setCustomerId(customerId);
+        record.setAccountNumber(customerFiles.get(0).getAccountNumber());
+
+        List<ProcessedFileGroup> processedFileGroups = new ArrayList<>();
+
+        // Group by output type (email/archive/print/mobstat)
+        Map<String, List<SummaryProcessedFile>> typeMap = customerFiles.stream()
+                .collect(Collectors.groupingBy(spf -> {
+                    String url = Optional.ofNullable(spf.getBlobUrl()).orElse("").toLowerCase();
+                    if (url.contains("email")) return "EMAIL";
+                    else if (url.contains("archive")) return "ARCHIVE";
+                    else if (url.contains("print")) return "PRINT";
+                    else if (url.contains("mobstat")) return "MOBSTAT";
+                    else return "UNKNOWN";
+                }));
+
+        for (Map.Entry<String, List<SummaryProcessedFile>> typeEntry : typeMap.entrySet()) {
+            String type = typeEntry.getKey();
+            List<SummaryProcessedFile> filesByType = typeEntry.getValue();
+
+            ProcessedFileGroup group = new ProcessedFileGroup();
+            group.setType(type);
+            group.setFiles(filesByType);
+
+            // Determine group status
+            boolean allSuccess = filesByType.stream().allMatch(f -> "SUCCESS".equalsIgnoreCase(f.getStatus()));
+            boolean anyFailed = filesByType.stream().anyMatch(f -> "FAILED".equalsIgnoreCase(f.getStatus()));
+
+            String status = allSuccess ? "SUCCESS" : (anyFailed ? "FAILED" : "NOT_FOUND");
+            group.setStatus(status);
+
+            processedFileGroups.add(group);
         }
 
-        // Upload actual folder files first
-        for (String folder : folders) {
-            Path folderPath = jobDir.resolve(folder);
-            if (!Files.exists(folderPath)) continue;
+        // Set overall status for customer
+        boolean anyFailed = customerFiles.stream().anyMatch(f -> "FAILED".equalsIgnoreCase(f.getStatus()));
+        boolean anySuccess = customerFiles.stream().anyMatch(f -> "SUCCESS".equalsIgnoreCase(f.getStatus()));
+        String overallStatus = anyFailed ? "PARTIAL" : (anySuccess ? "SUCCESS" : "NOT_FOUND");
 
-            validFolders.add(folder);
-            try (Stream<Path> files = Files.list(folderPath)) {
-                for (Path filePath : files.collect(Collectors.toList())) {
-                    String fileName = filePath.getFileName().toString();
-                    if (fileName.endsWith(".trigger")) continue; // skip
-
-                    for (SummaryProcessedFile customer : customerList) {
-                        String accountNumber = customer.getAccountNumber();
-                        String customerId = customer.getCustomerId();
-                        String outputMethod = customer.getOutputMethod();
-                        String key = customerId + "::" + accountNumber + "::" + outputMethod;
-
-                        if (outputMap.containsKey(key)) continue;
-
-                        if (!isNumeric(accountNumber) || !isNumeric(customerId)) {
-                            SummaryProcessedFile failedEntry = buildCopy(customer);
-                            failedEntry.setStatus("FAILED");
-                            failedEntry.setStatusDescription("Invalid account or customer number");
-                            outputMap.put(key, failedEntry);
-                            continue;
-                        }
-
-                        if (fileName.contains(accountNumber)) {
-                            try {
-                                SummaryProcessedFile entry = buildCopy(customer);
-                                String targetPath = String.format("out/%s/%s/%s", msg.getBatchId(), folder, fileName);
-                                byte[] content = Files.readAllBytes(filePath);
-                                String blobUrl = blobStorageService.uploadFile(content, targetPath);
-                                entry.setBlobURL(blobUrl);
-                                entry.setStatus("SUCCESS");
-                                outputMap.put(key, entry);
-                            } catch (Exception e) {
-                                logger.error("❌ Error uploading file: {}", e.getMessage());
-                            }
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Process ErrorReport
-        Path reportDir = jobDir.resolve("report");
-        Optional<Path> errorReportPath = Files.exists(reportDir)
-                ? Files.list(reportDir).filter(p -> p.getFileName().toString().contains("ErrorReport")).findFirst()
-                : Optional.empty();
-
-        Map<String, Map<String, String>> errorMap = new HashMap<>();
-        String errorBlobUrl = null;
-
-        if (errorReportPath.isPresent()) {
-            String content = Files.readString(errorReportPath.get());
-            String errorReportBlobPath = String.format("out/%s/report/ErrorReport.txt", msg.getBatchId());
-            errorBlobUrl = blobStorageService.uploadFile(content, errorReportBlobPath);
-            logger.info("📄 ErrorReport uploaded: {}", errorBlobUrl);
-            errorMap = parseErrorReport(content);
-        }
-
-        // Final pass to ensure all customers handled
-        for (SummaryProcessedFile customer : customerList) {
-            String customerId = customer.getCustomerId();
-            String accountNumber = customer.getAccountNumber();
-            String outputMethod = customer.getOutputMethod();
-            String key = customerId + "::" + accountNumber + "::" + outputMethod;
-
-            if (outputMap.containsKey(key)) continue;
-
-            SummaryProcessedFile entry = buildCopy(customer);
-
-            if (!isNumeric(accountNumber) || !isNumeric(customerId)) {
-                entry.setStatus("FAILED");
-                entry.setStatusDescription("Invalid account or customer number");
-                outputMap.put(key, entry);
-                continue;
-            }
-
-            boolean matchedError = errorMap.containsKey(customerId)
-                    && errorMap.get(customerId).get("account").equals(accountNumber)
-                    && errorMap.get(customerId).get("method").equalsIgnoreCase(outputMethod);
-
-            if (matchedError) {
-                entry.setStatus("FAILED");
-                entry.setStatusDescription("Marked as failed from ErrorReport");
-                entry.setBlobURL(errorBlobUrl);
-            } else if (validFolders.contains(outputMethod.toLowerCase())) {
-                entry.setStatus("NOT_FOUND");
-                entry.setStatusDescription("File not found in expected folder");
-            } else {
-                entry.setStatus("NOT_FOUND");
-                entry.setStatusDescription("Output method folder not generated");
-            }
-
-            outputMap.put(key, entry);
-        }
-
-        // Set overallStatus
-        outputMap.values().forEach(entry -> {
-            String status = entry.getStatus();
-            if ("FAILED".equals(status)) {
-                entry.setOverallStatus("PARTIAL");
-            } else if ("SUCCESS".equals(status)) {
-                entry.setOverallStatus("SUCCESS");
-            } else {
-                entry.setOverallStatus("NOT_FOUND");
-            }
-        });
-
-        return new ArrayList<>(outputMap.values());
+        record.setOverallStatus(overallStatus);
+        record.setProcessedFileGroups(processedFileGroups);
+        summaryProcessedRecords.add(record);
     }
+
+    payload.setProcessedList(summaryProcessedRecords);
+}
+
+public class SummaryProcessedRecord {
+    private String customerId;
+    private String accountNumber;
+    private String overallStatus;
+    private List<ProcessedFileGroup> processedFileGroups;
+    // Getters and setters
+}
+
+public class ProcessedFileGroup {
+    private String type; // email/archive/mobstat/print
+    private String status; // SUCCESS / FAILED / NOT_FOUND
+    private List<SummaryProcessedFile> files;
+    // Getters and setters
+}
