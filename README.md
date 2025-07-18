@@ -1,63 +1,53 @@
-private SummaryPayload buildPayload(
-        String batchId,
-        String fileName,
-        KafkaMessage kafkaMessage,
-        List<SummaryProcessedFile> processedList,
-        List<PrintFileEntry> printFiles
-) {
-    SummaryPayload payload = new SummaryPayload();
+ public static SummaryPayload buildPayload(
+            KafkaMessage kafkaMessage,
+            List<SummaryProcessedFile> processedList,
+            String summaryBlobUrl,
+            String fileName,
+            String batchId,
+            String timestamp
+    ) {
+        SummaryPayload payload = new SummaryPayload();
+        payload.setBatchID(batchId);
+        payload.setFileName(fileName);
+        payload.setTimestamp(timestamp);
+        payload.setSummaryFileURL(summaryBlobUrl);
 
-    // ⛳ 1. Set header
-    SummaryHeader header = new SummaryHeader();
-    header.setTenantCode(kafkaMessage.getTenantCode());
-    header.setChannelId(kafkaMessage.getChannelId());
-    header.setAudienceId(kafkaMessage.getAudienceId());
-    header.setBatchId(batchId);
-    header.setFileName(fileName);
-    payload.setHeader(header);
+        // HEADER
+        Header header = new Header();
+        header.setTenantCode(kafkaMessage.getTenantCode());
+        header.setChannelID(kafkaMessage.getChannelID());
+        header.setAudienceID(kafkaMessage.getAudienceID());
+        header.setTimestamp(timestamp);
+        header.setSourceSystem(kafkaMessage.getSourceSystem());
+        header.setProduct(kafkaMessage.getSourceSystem());
+        header.setJobName(kafkaMessage.getSourceSystem());
+        payload.setHeader(header);
 
-    // 🧾 2. Group per customer + account and map URLs/statuses
-    Map<String, ProcessedFileEntry> outputMap = new LinkedHashMap<>();
+        // METADATA
+        Metadata metadata = new Metadata();
+        metadata.setTotalFilesProcessed(processedList.size());
+        metadata.setProcessingStatus("Completed");
+        metadata.setEventOutcomeCode("0");
+        metadata.setEventOutcomeDescription("Success");
+        payload.setMetadata(metadata);
 
-    for (SummaryProcessedFile spf : processedList) {
-        String customer = spf.getCustomerId();
-        String account = spf.getAccountNumber();
-        String key = customer + "::" + account;
+        // PAYLOAD BLOCK
+        Payload payloadInfo = new Payload();
+        //payloadInfo.setUniqueConsumerRef(kafkaMessage.getConsumerReference());
+        payloadInfo.setUniqueECPBatchRef(null);
+        payloadInfo.setRunPriority(null);
+        payloadInfo.setEventID(null);
+        payloadInfo.setEventType(null);
+        payloadInfo.setRestartKey(null);
+        payloadInfo.setFileCount(processedList.size());
+        payload.setPayload(payloadInfo);
 
-        ProcessedFileEntry entry = outputMap.computeIfAbsent(key, k -> {
-            ProcessedFileEntry e = new ProcessedFileEntry();
-            e.setCustomerId(customer);
-            e.setAccountNumber(account);
-            return e;
-        });
+        // PROCESSED FILES
+        List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
+        //payload.setProcessedFiles(processedFileEntries);
+        payload.setProcessedFileList(processedFileEntries);
+        // TRIGGER FILE URL IF ANY
+        payload.setMobstatTriggerFile(buildMobstatTrigger(processedList));
 
-        String url = spf.getBlobFileURL();
-        if (url == null) continue;
-
-        if (url.contains("/archive/")) {
-            entry.setPdfArchiveFileUrl(url);
-            entry.setPdfArchiveFileUrlStatus(spf.getStatus());
-        } else if (url.contains("/email/")) {
-            entry.setPdfEmailFileUrl(url);
-            entry.setPdfEmailFileUrlStatus(spf.getStatus());
-        } else if (url.contains("/mobstat/")) {
-            entry.setPdfMobstatFileUrl(url);
-            entry.setPdfMobstatFileUrlStatus(spf.getStatus());
-        } else if (url.contains("/print/")) {
-            entry.setPrintFileUrl(url);
-            entry.setPrintFileUrlStatus(spf.getStatus());
-        }
-
-        // Optional: Update overall status (can be improved to compute best overall)
-        entry.setStatusCode(spf.getStatus());
-        entry.setStatusDescription("SUCCESS".equalsIgnoreCase(spf.getStatus()) ? "Processed Successfully" : "Failed");
+        return payload;
     }
-
-    // ✅ 3. Set payload (customer-level entries)
-    payload.setPayload(new ArrayList<>(outputMap.values()));
-
-    // ✅ 4. Set printFiles block
-    payload.setPrintFiles(printFiles != null ? printFiles : Collections.emptyList());
-
-    return payload;
-}
