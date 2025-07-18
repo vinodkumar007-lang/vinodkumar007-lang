@@ -1,73 +1,154 @@
- private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-            Path jobDir,
-            List<SummaryProcessedFile> customerList,
-            KafkaMessage msg) throws IOException {
+private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+        Path jobDir,
+        List<SummaryProcessedFile> customerList,
+        KafkaMessage msg) throws IOException {
 
-        List<String> folders = List.of("email", "archive", "mobstat", "print");
+    List<String> folders = List.of("email", "archive", "mobstat", "print");
+    Map<String, SummaryProcessedFile> outputMap = new HashMap<>();
 
-        Map<String, SummaryProcessedFile> outputMap = new HashMap<>();
+    Set<String> validFolders = new HashSet<>();
+    Map<String, Path> folderFileMap = new HashMap<>();
+    String triggerBlobUrl = null;
 
-        for (String folder : folders) {
-            Path folderPath = jobDir.resolve(folder);
-            if (!Files.exists(folderPath)) continue;
+    // Upload .trigger file if found
+    try (Stream<Path> allFiles = Files.walk(jobDir)) {
+        allFiles.filter(Files::isRegularFile).forEach(path -> {
+            String fileName = path.getFileName().toString();
+            if (fileName.endsWith(".trigger")) {
+                try {
+                    String targetPath = String.format("out/%s/%s", msg.getBatchId(), fileName);
+                    byte[] content = Files.readAllBytes(path);
+                    triggerBlobUrl = blobStorageService.uploadFile(content, targetPath);
+                    logger.info("📎 Trigger file uploaded: {}", triggerBlobUrl);
+                } catch (Exception e) {
+                    logger.error("❌ Failed to upload trigger file: {}", e.getMessage());
+                }
+            }
+        });
+    }
 
-            try (Stream<Path> files = Files.list(folderPath)) {
-                for (Path filePath : files.collect(Collectors.toList())) {
-                    String fileName = filePath.getFileName().toString();
+    // Upload actual folder files first
+    for (String folder : folders) {
+        Path folderPath = jobDir.resolve(folder);
+        if (!Files.exists(folderPath)) continue;
 
-                    for (SummaryProcessedFile customer : customerList) {
-                        String accountNumber = customer.getAccountNumber();
-                        if (fileName.contains(accountNumber)) {
-                            try {
-                                SummaryProcessedFile entry = new SummaryProcessedFile();
-                                BeanUtils.copyProperties(customer, entry);
+        validFolders.add(folder);
+        try (Stream<Path> files = Files.list(folderPath)) {
+            for (Path filePath : files.collect(Collectors.toList())) {
+                String fileName = filePath.getFileName().toString();
+                if (fileName.endsWith(".trigger")) continue; // skip
 
-                                String key = customer.getCustomerId() + "::" + accountNumber + "::" + customer.getOutputMethod();
-                                String targetPath = String.format("out/%s/%s/%s", msg.getBatchId(), folder, fileName);
-                                byte[] content = Files.readAllBytes(filePath);
-                                String blobUrl = blobStorageService.uploadFile(content, targetPath);
-                                //String blobUrl = blobStorageService.uploadFile(Files.readString(filePath), targetPath);
+                for (SummaryProcessedFile customer : customerList) {
+                    String accountNumber = customer.getAccountNumber();
+                    String customerId = customer.getCustomerId();
+                    String outputMethod = customer.getOutputMethod();
+                    String key = customerId + "::" + accountNumber + "::" + outputMethod;
 
-                                entry.setBlobURL(blobUrl);
-                                entry.setStatus("SUCCESS");
-                                outputMap.put(key, entry);
-                                break; // stop once matched
-                            } catch (Exception e) {
-                                logger.error("❌ Error uploading file: {}", e.getMessage(), e);
-                            }
+                    if (outputMap.containsKey(key)) continue;
+
+                    if (!isNumeric(accountNumber) || !isNumeric(customerId)) {
+                        SummaryProcessedFile failedEntry = buildCopy(customer);
+                        failedEntry.setStatus("FAILED");
+                        failedEntry.setDescription("Invalid account or customer number");
+                        outputMap.put(key, failedEntry);
+                        continue;
+                    }
+
+                    if (fileName.contains(accountNumber)) {
+                        try {
+                            SummaryProcessedFile entry = buildCopy(customer);
+                            String targetPath = String.format("out/%s/%s/%s", msg.getBatchId(), folder, fileName);
+                            byte[] content = Files.readAllBytes(filePath);
+                            String blobUrl = blobStorageService.uploadFile(content, targetPath);
+                            entry.setBlobURL(blobUrl);
+                            entry.setStatus("SUCCESS");
+                            outputMap.put(key, entry);
+                        } catch (Exception e) {
+                            logger.error("❌ Error uploading file: {}", e.getMessage());
                         }
+                        break;
                     }
                 }
             }
         }
+    }
 
-        // Process ErrorReport
-        Path reportDir = jobDir.resolve("report");
-        Optional<Path> errorReportPath = Files.exists(reportDir)
-                ? Files.list(reportDir).filter(p -> p.getFileName().toString().contains("ErrorReport")).findFirst()
-                : Optional.empty();
+    // Process ErrorReport
+    Path reportDir = jobDir.resolve("report");
+    Optional<Path> errorReportPath = Files.exists(reportDir)
+            ? Files.list(reportDir).filter(p -> p.getFileName().toString().contains("ErrorReport")).findFirst()
+            : Optional.empty();
 
-        if (errorReportPath.isPresent()) {
-            String content = Files.readString(errorReportPath.get());
-            String errorReportBlobPath = String.format("out/%s/report/ErrorReport.txt", msg.getBatchId());
-            String errorBlobUrl = blobStorageService.uploadFile(content, errorReportBlobPath);
-            logger.info("📄 ErrorReport uploaded: {}", errorBlobUrl);
+    Map<String, Map<String, String>> errorMap = new HashMap<>();
+    String errorBlobUrl = null;
 
-            Map<String, Map<String, String>> errorMap = parseErrorReport(content);
+    if (errorReportPath.isPresent()) {
+        String content = Files.readString(errorReportPath.get());
+        String errorReportBlobPath = String.format("out/%s/report/ErrorReport.txt", msg.getBatchId());
+        errorBlobUrl = blobStorageService.uploadFile(content, errorReportBlobPath);
+        logger.info("📄 ErrorReport uploaded: {}", errorBlobUrl);
+        errorMap = parseErrorReport(content);
+    }
 
-            errorMap.forEach((cust, errorInfo) -> {
-                String account = errorInfo.get("account");
-                String method = errorInfo.get("method");
+    // Final pass to ensure all customers handled
+    for (SummaryProcessedFile customer : customerList) {
+        String customerId = customer.getCustomerId();
+        String accountNumber = customer.getAccountNumber();
+        String outputMethod = customer.getOutputMethod();
+        String key = customerId + "::" + accountNumber + "::" + outputMethod;
 
-                String key = cust + "::" + account + "::" + method;
-                if (outputMap.containsKey(key)) {
-                    SummaryProcessedFile file = outputMap.get(key);
-                    file.setStatus("FAILED");
-                    file.setBlobURL(errorBlobUrl);
-                    logger.info("❗ ErrorReport matched - updated entry for {}", key);
-                }
-            });
+        if (outputMap.containsKey(key)) continue;
+
+        SummaryProcessedFile entry = buildCopy(customer);
+
+        if (!isNumeric(accountNumber) || !isNumeric(customerId)) {
+            entry.setStatus("FAILED");
+            entry.setDescription("Invalid account or customer number");
+            outputMap.put(key, entry);
+            continue;
         }
 
-        return new ArrayList<>(outputMap.values());
+        boolean matchedError = errorMap.containsKey(customerId)
+                && errorMap.get(customerId).get("account").equals(accountNumber)
+                && errorMap.get(customerId).get("method").equalsIgnoreCase(outputMethod);
+
+        if (matchedError) {
+            entry.setStatus("FAILED");
+            entry.setDescription("Marked as failed from ErrorReport");
+            entry.setBlobURL(errorBlobUrl);
+        } else if (validFolders.contains(outputMethod.toLowerCase())) {
+            entry.setStatus("NOT_FOUND");
+            entry.setDescription("File not found in expected folder");
+        } else {
+            entry.setStatus("NOT_FOUND");
+            entry.setDescription("Output method folder not generated");
+        }
+
+        outputMap.put(key, entry);
     }
+
+    // Set overallStatus
+    outputMap.values().forEach(entry -> {
+        String status = entry.getStatus();
+        if ("FAILED".equals(status)) {
+            entry.setOverallStatus("PARTIAL");
+        } else if ("SUCCESS".equals(status)) {
+            entry.setOverallStatus("SUCCESS");
+        } else {
+            entry.setOverallStatus("NOT_FOUND");
+        }
+    });
+
+    return new ArrayList<>(outputMap.values());
+}
+
+// Helper methods
+private boolean isNumeric(String str) {
+    return str != null && str.matches("\\d+");
+}
+
+private SummaryProcessedFile buildCopy(SummaryProcessedFile original) {
+    SummaryProcessedFile copy = new SummaryProcessedFile();
+    BeanUtils.copyProperties(original, copy);
+    return copy;
+}
