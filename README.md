@@ -11,7 +11,6 @@ import java.io.File;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.time.Instant;
 import java.util.*;
 
 @Component
@@ -93,11 +92,11 @@ public class SummaryJsonWriter {
         payloadInfo.setFileCount(processedList.size());
         payload.setPayload(payloadInfo);
 
-        // ✅ PROCESSED FILE LIST (grouped by customer + account)
+        // ✅ Final Processed Entries
         List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
         payload.setProcessedFileList(processedFileEntries);
 
-        // ✅ TRIGGER FILE
+        // ✅ Trigger
         payload.setMobstatTriggerFile(buildMobstatTrigger(processedList));
 
         return payload;
@@ -117,21 +116,28 @@ public class SummaryJsonWriter {
                 return e;
             });
 
-            String url = URLDecoder.decode(file.getBlobURL(), StandardCharsets.UTF_8);
+            String url = file.getBlobURL();
             if (url == null) continue;
 
-            if (url.contains("/email/")) {
-                entry.setPdfEmailFileUrl(url);
-                entry.setPdfEmailFileUrlStatus("Success");
-            } else if (url.contains("/archive/")) {
-                entry.setPdfArchiveFileUrl(url);
-                entry.setPdfArchiveFileUrlStatus("Success");
-            } else if (url.contains("/mobstat/")) {
-                entry.setPdfMobstatFileUrl(url);
-                entry.setPdfMobstatFileUrlStatus("Success");
-            } else if (url.contains("/print/")) {
-                entry.setPrintFileUrl(url);
-                entry.setPrintFileUrlStatus("Success");
+            String decodedUrl = URLDecoder.decode(url, StandardCharsets.UTF_8);
+
+            if (decodedUrl.contains("/email/")) {
+                entry.setPdfEmailFileUrl(decodedUrl);
+                entry.setPdfEmailFileUrlStatus(file.getStatus());
+            } else if (decodedUrl.contains("/archive/")) {
+                entry.setPdfArchiveFileUrl(decodedUrl);
+                entry.setPdfArchiveFileUrlStatus(file.getStatus());
+            } else if (decodedUrl.contains("/mobstat/")) {
+                entry.setPdfMobstatFileUrl(decodedUrl);
+                entry.setPdfMobstatFileUrlStatus(file.getStatus());
+            } else if (decodedUrl.contains("/print/")) {
+                entry.setPrintFileUrl(decodedUrl);
+                entry.setPrintFileUrlStatus(file.getStatus());
+            }
+
+            // Set overallStatus only if not already set
+            if (entry.getOverallStatus() == null && file.getOverallStatus() != null) {
+                entry.setOverallStatus(file.getOverallStatus());
             }
         }
 
@@ -145,5 +151,4 @@ public class SummaryJsonWriter {
                 .findFirst()
                 .orElse(null);
     }
-
 }
