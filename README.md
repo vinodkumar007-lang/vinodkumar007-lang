@@ -1,272 +1,178 @@
+public static SummaryPayload buildPayload(
+        KafkaMessage kafkaMessage,
+        List<SummaryProcessedFile> processedList,
+        String summaryBlobUrl,
+        String fileName,
+        String batchId,
+        String timestamp
+) {
+    SummaryPayload payload = new SummaryPayload();
+    payload.setBatchID(batchId);
+    payload.setFileName(fileName);
+    payload.setTimestamp(timestamp);
+    payload.setSummaryFileURL(summaryBlobUrl);
+
+    // HEADER
+    Header header = new Header();
+    header.setTenantCode(kafkaMessage.getTenantCode());
+    header.setChannelID(kafkaMessage.getChannelID());
+    header.setAudienceID(kafkaMessage.getAudienceID());
+    header.setTimestamp(timestamp);
+    header.setSourceSystem(kafkaMessage.getSourceSystem());
+    header.setProduct(kafkaMessage.getSourceSystem());
+    header.setJobName(kafkaMessage.getSourceSystem());
+    payload.setHeader(header);
+
+    // ✅ Final Processed Entries
+    List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
+    payload.setProcessedFileList(processedFileEntries);
+
+    // ✅ Dynamically count total non-null URLs (files actually added to summary)
+    int totalFileUrls = processedFileEntries.stream()
+            .mapToInt(entry -> {
+                int count = 0;
+                if (entry.getPdfEmailFileUrl() != null && !entry.getPdfEmailFileUrl().isBlank()) count++;
+                if (entry.getPdfArchiveFileUrl() != null && !entry.getPdfArchiveFileUrl().isBlank()) count++;
+                if (entry.getPdfMobstatFileUrl() != null && !entry.getPdfMobstatFileUrl().isBlank()) count++;
+                if (entry.getPrintFileUrl() != null && !entry.getPrintFileUrl().isBlank()) count++;
+                return count;
+            })
+            .sum();
+
+    // PAYLOAD BLOCK
+    Payload payloadInfo = new Payload();
+    payloadInfo.setUniqueECPBatchRef(kafkaMessage.getUniqueECPBatchRef());
+    payloadInfo.setRunPriority(kafkaMessage.getRunPriority());
+    payloadInfo.setEventID(kafkaMessage.getEventID());
+    payloadInfo.setEventType(kafkaMessage.getEventType());
+    payloadInfo.setRestartKey(kafkaMessage.getRestartKey());
+    payloadInfo.setFileCount(totalFileUrls);
+    payload.setPayload(payloadInfo);
+
+    // METADATA
+    Metadata metadata = new Metadata();
+    metadata.setTotalCustomersProcessed((int) processedFileEntries.stream()
+            .map(pf -> pf.getCustomerId() + "::" + pf.getAccountNumber())
+            .distinct()
+            .count());
+
+    // ✅ Determine overall status (Success / Partial / Failure)
+    long total = processedFileEntries.size();
+    long success = processedFileEntries.stream()
+            .filter(entry -> "SUCCESS".equalsIgnoreCase(entry.getOverAllStatusCode()))
+            .count();
+    long failure = processedFileEntries.stream()
+            .filter(entry -> "FAILURE".equalsIgnoreCase(entry.getOverAllStatusCode()))
+            .count();
+
+    String overallStatus;
+    if (success == total) {
+        overallStatus = "SUCCESS";
+    } else if (failure == total) {
+        overallStatus = "FAILURE";
+    } else {
+        overallStatus = "PARTIAL";
+    }
+
+    metadata.setProcessingStatus(overallStatus);
+    metadata.setEventOutcomeCode("0");
+    metadata.setEventOutcomeDescription("Summary generation " + overallStatus.toLowerCase());
+    payload.setMetadata(metadata);
+
+    return payload;
+}
+
 private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-            Path jobDir,
-            List<SummaryProcessedFile> customerList,
-            KafkaMessage msg) throws IOException {
+        Path jobDir,
+        List<SummaryProcessedFile> customerList,
+        Map<String, Map<String, String>> errorMap,
+        KafkaMessage msg) throws IOException {
 
-        List<String> folders = List.of("email", "archive", "mobstat", "print");
-        Map<String, List<SummaryProcessedFile>> groupedMap = new LinkedHashMap<>();
-        Set<String> validFolders = new HashSet<>();
-        AtomicReference<String> triggerBlobUrl = new AtomicReference<>();
+    List<String> folders = List.of("email", "archive", "mobstat", "print");
+    Map<String, String> folderToOutputMethod = Map.of(
+            "email", "EMAIL",
+            "archive", "ARCHIVE",
+            "mobstat", "MOBSTAT",
+            "print", "PRINT"
+    );
 
-        // Upload .trigger file if found
-        try (Stream<Path> allFiles = Files.walk(jobDir)) {
-            allFiles.filter(Files::isRegularFile).forEach(path -> {
-                String fileName = path.getFileName().toString();
-                if (fileName.endsWith(".trigger")) {
-                    try {
-                        String targetPath = String.format("%s/%s/%s/%s",
-                                msg.getSourceSystem(),
-                                msg.getBatchId(),
-                                msg.getUniqueConsumerRef(),
-                                fileName);
-                        byte[] content = Files.readAllBytes(path);
-                        triggerBlobUrl.set(blobStorageService.uploadFile(content, targetPath));
-                        logger.info("📎 Trigger file uploaded: {}", triggerBlobUrl);
-                    } catch (Exception e) {
-                        logger.error("❌ Failed to upload trigger file: {}", e.getMessage());
-                    }
-                }
-            });
-        }
+    Map<String, List<SummaryProcessedFile>> groupedMap = new LinkedHashMap<>();
 
-        // Process files per available folder
-        for (String folder : folders) {
-            Path folderPath = jobDir.resolve(folder);
-            if (!Files.exists(folderPath)) continue;
+    // Track which folders are actually present
+    Set<String> availableFolders = folders.stream()
+            .filter(folder -> Files.exists(jobDir.resolve(folder)))
+            .collect(Collectors.toSet());
 
-            validFolders.add(folder);
-            try (Stream<Path> files = Files.list(folderPath)) {
-                for (Path filePath : files.toList()) {
-                    String fileName = filePath.getFileName().toString();
-                    if (fileName.endsWith(".trigger")) continue;
+    for (String folder : availableFolders) {
+        Path folderPath = jobDir.resolve(folder);
 
-                    for (SummaryProcessedFile customer : customerList) {
-                        String customerId = customer.getCustomerId();
-                        String accountNumber = customer.getAccountNumber();
-                        String key = customerId + "::" + accountNumber;
+        List<Path> files = Files.list(folderPath)
+                .filter(Files::isRegularFile)
+                .collect(Collectors.toList());
 
-                        if (!fileName.contains(accountNumber)) continue;
+        for (Path file : files) {
+            String fileName = file.getFileName().toString();
 
-                        try {
-                            SummaryProcessedFile entry = buildCopy(customer);
-                            String blobPath = String.format("%s/%s/%s/%s/%s",
-                                    msg.getSourceSystem(),
-                                    msg.getBatchId(),
-                                    msg.getUniqueConsumerRef(),
-                                    folder,
-                                    fileName);
+            for (SummaryProcessedFile customer : customerList) {
+                String customerId = customer.getCustomerId();
+                String accountNumber = customer.getAccountNumber();
 
-                            byte[] content = Files.readAllBytes(filePath);
-                            String blobUrl = blobStorageService.uploadFile(content, blobPath);
+                if (fileName.contains(customerId) && fileName.contains(accountNumber)) {
+                    String key = customerId + "::" + accountNumber;
 
-                            entry.setBlobURL(decodeUrl(blobUrl));
-                            entry.setStatus("SUCCESS");
-                            entry.setOutputMethod(folder); // Important to retain type
+                    SummaryProcessedFile entry = buildCopy(customer);
+                    entry.setFileName(fileName);
+                    entry.setOutputMethod(folderToOutputMethod.get(folder));
+                    entry.setStatus("SUCCESS");
+                    entry.setStatusDescription("Processed successfully");
+                    entry.setBlobURL("https://" + msg.getTargetContainer() + "/" + msg.getTargetDirectory() + "/" + folder + "/" + fileName);
 
-                            groupedMap.computeIfAbsent(key, k -> new ArrayList<>()).add(entry);
-                        } catch (Exception e) {
-                            logger.error("❌ Error uploading file for {}: {}", fileName, e.getMessage());
-                        }
-                    }
+                    groupedMap.computeIfAbsent(key, k -> new ArrayList<>()).add(entry);
+                    break;
                 }
             }
         }
+    }
 
-        // Error report handling
-        Path reportDir = jobDir.resolve("report");
-        Optional<Path> errorReportPath = Files.exists(reportDir)
-                ? Files.list(reportDir).filter(p -> p.getFileName().toString().contains("ErrorReport")).findFirst()
-                : Optional.empty();
+    // Add FAILED for missing files in available folders only
+    for (SummaryProcessedFile customer : customerList) {
+        String customerId = customer.getCustomerId();
+        String accountNumber = customer.getAccountNumber();
+        String key = customerId + "::" + accountNumber;
 
-        Map<String, Map<String, String>> errorMap = new HashMap<>();
-        String errorBlobUrl = null;
+        List<SummaryProcessedFile> files = groupedMap.getOrDefault(key, new ArrayList<>());
+        Set<String> existingMethods = files.stream()
+                .map(SummaryProcessedFile::getOutputMethod)
+                .collect(Collectors.toSet());
 
-        if (errorReportPath.isPresent()) {
-            String content = Files.readString(errorReportPath.get());
-            String errorReportBlobPath = String.format("%s/%s/%s/report/ErrorReport.txt",
-                    msg.getSourceSystem(), msg.getBatchId(), msg.getUniqueConsumerRef());
-            errorBlobUrl = blobStorageService.uploadFile(content, errorReportBlobPath);
-            logger.info("📄 ErrorReport uploaded: {}", errorBlobUrl);
-            errorMap = parseErrorReport(content);
-        }
+        for (String folder : availableFolders) {
+            String method = folderToOutputMethod.get(folder);
 
-        // Final pass: add missing/failure cases
-        for (SummaryProcessedFile customer : customerList) {
-            String customerId = customer.getCustomerId();
-            String accountNumber = customer.getAccountNumber();
-            String key = customerId + "::" + accountNumber;
-
-            List<SummaryProcessedFile> files = groupedMap.getOrDefault(key, new ArrayList<>());
-
-            // If no files found at all
-            if (files.isEmpty()) {
+            if (!existingMethods.contains(method)) {
                 SummaryProcessedFile entry = buildCopy(customer);
+                entry.setOutputMethod(method);
+                entry.setBlobURL(null);
+                entry.setStatus("FAILED");
+                entry.setStatusDescription("File not found for method: " + method);
 
-                boolean matchedError = errorMap.containsKey(customerId)
-                        && errorMap.get(customerId).get("account").equals(accountNumber)
-                        && errorMap.get(customerId).get("method").equalsIgnoreCase(customer.getOutputMethod());
-
-                if (matchedError) {
-                    entry.setStatus("FAILED");
-                    entry.setStatusDescription("Marked as failed from ErrorReport");
-                    entry.setBlobURL(errorBlobUrl);
-                    files.add(entry);
-                } else {
-                    entry.setStatus("NOT_FOUND");
-                    entry.setStatusDescription("No matching files found");
-                    files.add(entry);
+                // Use errorMap if matches
+                if (errorMap.containsKey(customerId)) {
+                    Map<String, String> error = errorMap.get(customerId);
+                    if (accountNumber.equals(error.get("account")) && method.equalsIgnoreCase(error.get("method"))) {
+                        entry.setStatusDescription("Marked as failed from ErrorReport");
+                        entry.setBlobURL(error.get("errorBlobUrl"));
+                    }
                 }
 
-                groupedMap.put(key, files);
+                files.add(entry);
             }
         }
 
-        // Set overall status
-        groupedMap.values().forEach(list -> list.forEach(entry -> {
-            switch (entry.getStatus()) {
-                case "SUCCESS" -> entry.setOverallStatus("SUCCESS");
-                case "FAILED" -> entry.setOverallStatus("FAILURE");
-                default -> entry.setOverallStatus("NOT_FOUND");
-            }
-        }));
-
-        // Flatten final list
-        return groupedMap.values().stream().flatMap(List::stream).toList();
+        groupedMap.put(key, files);
     }
 
-
-     public static SummaryPayload buildPayload(
-            KafkaMessage kafkaMessage,
-            List<SummaryProcessedFile> processedList,
-            String summaryBlobUrl,
-            String fileName,
-            String batchId,
-            String timestamp
-    ) {
-        SummaryPayload payload = new SummaryPayload();
-        payload.setBatchID(batchId);
-        payload.setFileName(fileName);
-        payload.setTimestamp(timestamp);
-        payload.setSummaryFileURL(summaryBlobUrl);
-
-        // HEADER
-        Header header = new Header();
-        header.setTenantCode(kafkaMessage.getTenantCode());
-        header.setChannelID(kafkaMessage.getChannelID());
-        header.setAudienceID(kafkaMessage.getAudienceID());
-        header.setTimestamp(timestamp);
-        header.setSourceSystem(kafkaMessage.getSourceSystem());
-        header.setProduct(kafkaMessage.getSourceSystem());
-        header.setJobName(kafkaMessage.getSourceSystem());
-        payload.setHeader(header);
-
-        // METADATA
-        Metadata metadata = new Metadata();
-        metadata.setTotalCustomersProcessed((int) processedList.stream()
-                .map(pf -> pf.getCustomerId() + "::" + pf.getAccountNumber())
-                .distinct()
-                .count());
-        metadata.setProcessingStatus("Completed");
-        metadata.setEventOutcomeCode("0");
-        metadata.setEventOutcomeDescription("Success");
-        payload.setMetadata(metadata);
-
-        // PAYLOAD BLOCK
-        Payload payloadInfo = new Payload();
-        payloadInfo.setUniqueECPBatchRef(kafkaMessage.getUniqueECPBatchRef());
-        payloadInfo.setRunPriority(kafkaMessage.getRunPriority());
-        payloadInfo.setEventID(kafkaMessage.getEventID());
-        payloadInfo.setEventType(kafkaMessage.getEventType());
-        payloadInfo.setRestartKey(kafkaMessage.getRestartKey());
-
-        // ✅ Final Processed Entries
-        List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
-        payload.setProcessedFileList(processedFileEntries);
-
-        // ✅ Dynamically count total non-null URLs (files actually added to summary)
-        int totalFileUrls = processedFileEntries.stream()
-                .mapToInt(entry -> {
-                    int count = 0;
-                    if (entry.getPdfEmailFileUrl() != null && !entry.getPdfEmailFileUrl().isBlank()) count++;
-                    if (entry.getPdfArchiveFileUrl() != null && !entry.getPdfArchiveFileUrl().isBlank()) count++;
-                    if (entry.getPdfMobstatFileUrl() != null && !entry.getPdfMobstatFileUrl().isBlank()) count++;
-                    if (entry.getPrintFileUrl() != null && !entry.getPrintFileUrl().isBlank()) count++;
-                    return count;
-                })
-                .sum();
-
-        payloadInfo.setFileCount(totalFileUrls);
-        payload.setPayload(payloadInfo);
-
-        return payload;
-    }
-
-    private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
-        Map<String, ProcessedFileEntry> entryMap = new LinkedHashMap<>();
-        Map<String, List<String>> statusTracker = new HashMap<>();
-
-        for (SummaryProcessedFile file : processedList) {
-            String customerId = file.getCustomerId();
-            String accountNumber = file.getAccountNumber();
-            String blobURL = file.getBlobURL();
-            String status = file.getStatus() != null ? file.getStatus() : "UNKNOWN";
-
-            // Skip if both URL and status are null or status is NOT_FOUND
-            if ((blobURL == null && !"FAILED".equalsIgnoreCase(status)) ||
-                    customerId == null || accountNumber == null) {
-                continue;
-            }
-
-            String key = customerId + "::" + accountNumber;
-
-            ProcessedFileEntry entry = entryMap.computeIfAbsent(key, k -> {
-                ProcessedFileEntry e = new ProcessedFileEntry();
-                e.setCustomerId(customerId);
-                e.setAccountNumber(accountNumber);
-                return e;
-            });
-
-            // Track status for overallStatus computation
-            statusTracker.computeIfAbsent(key, k -> new ArrayList<>()).add(status);
-
-            String lowerUrl = blobURL != null ? URLDecoder.decode(blobURL, StandardCharsets.UTF_8).toLowerCase() : "";
-
-            if (lowerUrl.contains("/email/")) {
-                entry.setPdfEmailFileUrl(blobURL);
-                entry.setPdfEmailFileUrlStatus(status);
-            } else if (lowerUrl.contains("/archive/")) {
-                entry.setPdfArchiveFileUrl(blobURL);
-                entry.setPdfArchiveFileUrlStatus(status);
-            } else if (lowerUrl.contains("/mobstat/")) {
-                entry.setPdfMobstatFileUrl(blobURL);
-                entry.setPdfMobstatFileUrlStatus(status);
-            } else if (lowerUrl.contains("/print/")) {
-                entry.setPrintFileUrl(blobURL);
-                entry.setPrintFileUrlStatus(status);
-            } else {
-                // If URL is null but status is FAILED (e.g., generation failure), track placeholder
-                if ("FAILED".equalsIgnoreCase(status)) {
-                    entry.setPdfArchiveFileUrl(null); // or skip setting fileUrl
-                    entry.setPdfArchiveFileUrlStatus("FAILED");
-                }
-            }
-        }
-
-        // Set overallStatus per customer-account group
-        for (Map.Entry<String, ProcessedFileEntry> groupedEntry : entryMap.entrySet()) {
-            List<String> statuses = statusTracker.getOrDefault(groupedEntry.getKey(), List.of());
-
-            String overallStatus;
-            if (statuses.stream().allMatch(s -> "SUCCESS".equalsIgnoreCase(s))) {
-                overallStatus = "SUCCESS";
-            } else if (statuses.stream().anyMatch(s -> "FAILED".equalsIgnoreCase(s))) {
-                overallStatus = "PARTIAL";
-            } else {
-                overallStatus = "UNKNOWN";
-            }
-
-            groupedEntry.getValue().setOverAllStatusCode(overallStatus);
-        }
-
-        return new ArrayList<>(entryMap.values());
-    }
+    // Flatten
+    return groupedMap.values().stream()
+            .flatMap(List::stream)
+            .collect(Collectors.toList());
+}
