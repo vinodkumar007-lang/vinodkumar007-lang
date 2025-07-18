@@ -1,10 +1,5 @@
-// METADATA
-Metadata metadata = new Metadata();
-metadata.setTotalFilesProcessed((int) processedList.stream()
-        .map(pf -> pf.getCustomerId() + "::" + pf.getAccountNumber())
-        .distinct()
-        .count());
-metadata.setProcessingStatus("Completed");
-metadata.setEventOutcomeCode("0");
-metadata.setEventOutcomeDescription("Success");
-payload.setMetadata(metadata);
+List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
+payload.setProcessedFileList(processedFileEntries);
+
+// ✅ Set final file count as number of entries added to summary
+payloadInfo.setFileCount(processedFileEntries.size());
