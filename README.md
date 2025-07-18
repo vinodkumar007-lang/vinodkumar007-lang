@@ -1,149 +1,59 @@
-package com.nedbank.kafka.filemanage.utils;
+package com.nedbank.kafka.filemanage.model;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.nedbank.kafka.filemanage.model.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.Data;
 
-import java.io.File;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
-import java.time.Instant;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
 
-@Component
-public class SummaryJsonWriter {
+@Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class SummaryProcessedFile {
+    private String customerId;
+    private String accountNumber;
+    private String firstName;
+    private String lastName;
+    private String email;
+    private String mobileNumber;
+    private String addressLine1;
+    private String addressLine2;
+    private String addressLine3;
+    private String postalCode;
+    private String contactNumber;
+    private String product;
+    private String templateCode;
+    private String templateName;
+    private String balance;
+    private String creditLimit;
+    private String interestRate;
+    private String dueAmount;
+    private String arrears;
+    private String dueDate;
+    private String idNumber;
+    private String accountReference;
 
-    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+    private String pdfArchiveFileUrl;
+    private String pdfArchiveStatus;
+    private String pdfEmailFileUrl;
+    private String pdfEmailStatus;
+    private String pdfMobstatFileUrl;
+    private String pdfMobstatStatus;
+    private String printFileUrl;
+    private String printStatus;
 
-    public static String writeSummaryJsonToFile(SummaryPayload payload) {
-        if (payload == null) {
-            logger.error("SummaryPayload is null. Cannot write summary.json.");
-            throw new IllegalArgumentException("SummaryPayload cannot be null");
-        }
+    private String statusCode;
+    private String statusDescription;
 
-        try {
-            String batchId = Optional.ofNullable(payload.getBatchID()).orElse("unknown");
-            String fileName = "summary_" + batchId + ".json";
+    private String fullName;
+    private String blobURL;
 
-            Path tempDir = Files.createTempDirectory("summaryFiles");
-            Path summaryFilePath = tempDir.resolve(fileName);
+    //private Map<String, String> fileUrls = new HashMap<>(); // archive, email, mobstat, print
+    private String status; // SUCCESS / FAILED / null
+    private String fileType; // for trigger file
+    private String fileURL;  // for trigger file
 
-            File summaryFile = summaryFilePath.toFile();
-            if (summaryFile.exists()) {
-                Files.delete(summaryFilePath);
-                logger.warn("Existing summary file deleted: {}", summaryFilePath);
-            }
+    private String outputMethod; // ✅ fixed name
 
-            objectMapper.writeValue(summaryFile, payload);
-            logger.info("✅ Summary JSON written at: {}", summaryFilePath);
-
-            return summaryFilePath.toAbsolutePath().toString();
-
-        } catch (Exception e) {
-            logger.error("❌ Failed to write summary.json", e);
-            throw new RuntimeException("Failed to write summary JSON", e);
-        }
-    }
-
-    public static SummaryPayload buildPayload(
-            KafkaMessage kafkaMessage,
-            List<SummaryProcessedFile> processedList,
-            String summaryBlobUrl,
-            String fileName,
-            String batchId,
-            String timestamp
-    ) {
-        SummaryPayload payload = new SummaryPayload();
-        payload.setBatchID(batchId);
-        payload.setFileName(fileName);
-        payload.setTimestamp(timestamp);
-        payload.setSummaryFileURL(summaryBlobUrl);
-
-        // HEADER
-        Header header = new Header();
-        header.setTenantCode(kafkaMessage.getTenantCode());
-        header.setChannelID(kafkaMessage.getChannelID());
-        header.setAudienceID(kafkaMessage.getAudienceID());
-        header.setTimestamp(timestamp);
-        header.setSourceSystem(kafkaMessage.getSourceSystem());
-        header.setProduct(kafkaMessage.getSourceSystem());
-        header.setJobName(kafkaMessage.getSourceSystem());
-        payload.setHeader(header);
-
-        // METADATA
-        Metadata metadata = new Metadata();
-        metadata.setTotalFilesProcessed(processedList.size());
-        metadata.setProcessingStatus("Completed");
-        metadata.setEventOutcomeCode("0");
-        metadata.setEventOutcomeDescription("Success");
-        payload.setMetadata(metadata);
-
-        // PAYLOAD BLOCK
-        Payload payloadInfo = new Payload();
-        payloadInfo.setUniqueECPBatchRef(null);
-        payloadInfo.setRunPriority(null);
-        payloadInfo.setEventID(null);
-        payloadInfo.setEventType(null);
-        payloadInfo.setRestartKey(null);
-        payloadInfo.setFileCount(processedList.size());
-        payload.setPayload(payloadInfo);
-
-        // ✅ PROCESSED FILE LIST (grouped by customer + account)
-        List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
-        payload.setProcessedFileList(processedFileEntries);
-
-        // ✅ TRIGGER FILE
-        payload.setMobstatTriggerFile(buildMobstatTrigger(processedList));
-
-        return payload;
-    }
-
-    private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
-        Map<String, ProcessedFileEntry> entryMap = new LinkedHashMap<>();
-
-        for (SummaryProcessedFile file : processedList) {
-            if (file.getCustomerId() == null || file.getAccountNumber() == null) continue;
-
-            String key = file.getCustomerId() + "::" + file.getAccountNumber();
-            ProcessedFileEntry entry = entryMap.computeIfAbsent(key, k -> {
-                ProcessedFileEntry e = new ProcessedFileEntry();
-                e.setCustomerId(file.getCustomerId());
-                e.setAccountNumber(file.getAccountNumber());
-                return e;
-            });
-
-            String url = URLDecoder.decode(file.getBlobURL(), StandardCharsets.UTF_8);
-            if (url == null) continue;
-
-            if (url.contains("/email/")) {
-                entry.setPdfEmailFileUrl(url);
-                entry.setPdfEmailFileUrlStatus("Success");
-            } else if (url.contains("/archive/")) {
-                entry.setPdfArchiveFileUrl(url);
-                entry.setPdfArchiveFileUrlStatus("Success");
-            } else if (url.contains("/mobstat/")) {
-                entry.setPdfMobstatFileUrl(url);
-                entry.setPdfMobstatFileUrlStatus("Success");
-            } else if (url.contains("/print/")) {
-                entry.setPrintFileUrl(url);
-                entry.setPrintFileUrlStatus("Success");
-            }
-        }
-
-        return new ArrayList<>(entryMap.values());
-    }
-
-    private static String buildMobstatTrigger(List<SummaryProcessedFile> list) {
-        return list.stream()
-                .map(SummaryProcessedFile::getBlobURL)
-                .filter(url -> url != null && url.contains("/DropData.trigger"))
-                .findFirst()
-                .orElse(null);
-    }
+    private String overallStatus;
 
 }
