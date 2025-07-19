@@ -1,18 +1,20 @@
-    public String uploadFile(byte[] content, String targetPath) {
-        try {
-            initSecrets();
-            BlobServiceClient blobClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format(azureStorageFormat, accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobClient blob = blobClient.getBlobContainerClient(containerName).getBlobClient(targetPath);
-            blob.upload(new ByteArrayInputStream(content), content.length, true);
-
-            logger.info("📤 Uploaded BINARY file to '{}'", blob.getBlobUrl());
-            return blob.getBlobUrl();
-        } catch (Exception e) {
-            logger.error("❌ Upload failed: {}", e.getMessage(), e);
-            throw new CustomAppException("Upload failed", 602, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
+public String uploadFile(File file, String folderName, KafkaMessage msg) {
+    try {
+        byte[] content = Files.readAllBytes(file.toPath());
+        String targetPath = buildBlobPath(file.getName(), folderName, msg);
+        return uploadFile(content, targetPath);
+    } catch (IOException e) {
+        logger.error("❌ Error reading file for upload: {}", file.getAbsolutePath(), e);
+        throw new CustomAppException("File read failed", 603, HttpStatus.INTERNAL_SERVER_ERROR, e);
     }
+}
+
+private String buildBlobPath(String fileName, String folderName, KafkaMessage msg) {
+    return msg.getTenantCode() + "/" +
+           msg.getSourceSystem() + "/" +
+           msg.getConsumerReference() + "/" +
+           msg.getProcessReference() + "/" +
+           msg.getTimestamp() + "/" +
+           folderName + "/" +
+           fileName;
+}
