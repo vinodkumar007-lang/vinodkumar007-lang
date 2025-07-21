@@ -105,15 +105,15 @@ public class SummaryJsonWriter {
         long success = processedFileEntries.stream()
                 .filter(entry -> "SUCCESS".equalsIgnoreCase(entry.getOverAllStatusCode()))
                 .count();
-        long failure = processedFileEntries.stream()
-                .filter(entry -> "FAILURE".equalsIgnoreCase(entry.getOverAllStatusCode()))
+        long failed = processedFileEntries.stream()
+                .filter(entry -> "FAILED".equalsIgnoreCase(entry.getOverAllStatusCode()))
                 .count();
 
         String overallStatus;
         if (success == total) {
             overallStatus = "SUCCESS";
-        } else if (failure == total) {
-            overallStatus = "FAILURE";
+        } else if (failed == total) {
+            overallStatus = "FAILED";
         } else {
             overallStatus = "PARTIAL";
         }
@@ -145,8 +145,8 @@ public class SummaryJsonWriter {
                 String method = file.getOutputMethod();
                 if (method == null) continue;
 
-                switch (method) {
-                    case "EMAIL", "MOBSTAT", "PRINT" -> methodMap.put(method, file);
+                switch (method.toUpperCase()) {
+                    case "EMAIL", "MOBSTAT", "PRINT" -> methodMap.put(method.toUpperCase(), file);
                     case "ARCHIVE" -> {
                         String linked = file.getLinkedDeliveryType();
                         if (linked != null) {
@@ -193,7 +193,7 @@ public class SummaryJsonWriter {
                 if (archive != null) {
                     entry.setPdfArchiveFileUrl(archive.getBlobURL());
                     entry.setPdfArchiveFileUrlStatus(archive.getStatus());
-                    if ("FAILED".equalsIgnoreCase(archive.getStatus())) {
+                    if ("FAILED".equalsIgnoreCase(archive.getStatus()) && entry.getReason() == null) {
                         entry.setReason(archive.getStatusDescription());
                     }
                 }
@@ -214,13 +214,5 @@ public class SummaryJsonWriter {
         }
 
         return finalList;
-    }
-
-    private static String buildMobstatTrigger(List<SummaryProcessedFile> list) {
-        return list.stream()
-                .map(SummaryProcessedFile::getBlobURL)
-                .filter(url -> url != null && url.contains("/DropData.trigger"))
-                .findFirst()
-                .orElse(null);
     }
 }
