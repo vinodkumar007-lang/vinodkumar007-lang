@@ -1,122 +1,124 @@
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        Path jobDir,
-        List<SummaryProcessedFile> customerList,
-        Map<String, Map<String, String>> errorMap,
-        KafkaMessage msg) throws IOException {
+private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
+    List<ProcessedFileEntry> finalList = new ArrayList<>();
 
-    List<String> folders = List.of("email", "archive", "mobstat", "print");
-    Map<String, String> folderToOutputMethod = Map.of(
-            "email", "EMAIL",
-            "archive", "ARCHIVE",
-            "mobstat", "MOBSTAT",
-            "print", "PRINT"
-    );
+    Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
+            .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
+            .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber()));
 
-    List<SummaryProcessedFile> finalList = new ArrayList<>();
+    for (Map.Entry<String, List<SummaryProcessedFile>> group : grouped.entrySet()) {
+        String[] parts = group.getKey().split("::");
+        String customerId = parts[0];
+        String accountNumber = parts[1];
 
-    for (SummaryProcessedFile customer : customerList) {
-        String account = customer.getAccountNumber();
-        String customerId = customer.getCustomerId();
-        Map<String, Boolean> methodAdded = new HashMap<>();
+        Map<String, SummaryProcessedFile> methodMap = new HashMap<>();
+        Map<String, SummaryProcessedFile> archiveMap = new HashMap<>();
 
-        for (String folder : folders) {
-            methodAdded.put(folder, false);
-            Path folderPath = jobDir.resolve(folder);
-            if (!Files.exists(folderPath)) continue;
+        for (SummaryProcessedFile file : group.getValue()) {
+            String method = file.getOutputMethod();
+            if (method == null) continue;
 
-            Optional<Path> match = Files.list(folderPath)
-                    .filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().contains(account))
-                    .findFirst();
-
-            String method = folderToOutputMethod.get(folder);
-
-            if (match.isPresent()) {
-                Path filePath = match.get();
-                File file = filePath.toFile();
-                String blobUrl = blobStorageService.uploadFileByMessage(file, folder, msg);
-
-                SummaryProcessedFile entry = new SummaryProcessedFile();
-                BeanUtils.copyProperties(customer, entry);
-                entry.setOutputMethod(method);
-                entry.setBlobURL(blobUrl);
-
-                if (errorMap.containsKey(account) && errorMap.get(account).containsKey(method)) {
-                    String status = errorMap.get(account).get(method);
-                    if ("FAILED".equalsIgnoreCase(status)) {
-                        entry.setStatus("FAILED");
-                        entry.setStatusDescription("Marked as FAILED from ErrorReport");
-                    } else {
-                        entry.setStatus("PARTIAL");
-                        entry.setStatusDescription("Marked as PARTIAL from ErrorReport");
-                    }
-                } else {
-                    entry.setStatus("SUCCESS");
-                    entry.setStatusDescription("No error found in ErrorReport");
-                }
-
-                if ("archive".equals(folder)) {
-                    for (String deliveryFolder : List.of("email", "mobstat", "print")) {
-                        Path deliveryPath = jobDir.resolve(deliveryFolder);
-                        if (Files.exists(deliveryPath)) {
-                            boolean found = Files.list(deliveryPath)
-                                    .filter(Files::isRegularFile)
-                                    .anyMatch(p -> p.getFileName().toString().contains(account));
-                            if (found) {
-                                entry.setLinkedDeliveryType(deliveryFolder.toUpperCase());
-                                break;
-                            }
-                        }
+            switch (method.toUpperCase()) {
+                case "EMAIL", "MOBSTAT", "PRINT" -> methodMap.put(method.toUpperCase(), file);
+                case "ARCHIVE" -> {
+                    String linked = file.getLinkedDeliveryType();
+                    if (linked != null) {
+                        archiveMap.put(linked.toUpperCase(), file);
                     }
                 }
-
-                finalList.add(entry);
-                methodAdded.put(folder, true);
             }
         }
 
-        // Add placeholders for missing methods based on errorMap
-        for (String folder : folders) {
-            if (methodAdded.get(folder)) continue;
-            Path folderPath = jobDir.resolve(folder);
-            if (!Files.exists(folderPath)) continue;
+        ProcessedFileEntry entry = new ProcessedFileEntry();
+        entry.setCustomerId(customerId);
+        entry.setAccountNumber(accountNumber);
 
-            String method = folderToOutputMethod.get(folder);
+        List<String> statuses = new ArrayList<>();
+        boolean hasAtLeastOneSuccess = false;
 
-            SummaryProcessedFile entry = new SummaryProcessedFile();
-            BeanUtils.copyProperties(customer, entry);
-            entry.setOutputMethod(method);
+        for (String type : List.of("EMAIL", "MOBSTAT", "PRINT")) {
+            SummaryProcessedFile delivery = methodMap.get(type);
+            SummaryProcessedFile archive = archiveMap.get(type);
 
-            if (errorMap.containsKey(account) && errorMap.get(account).containsKey(method)) {
-                String status = errorMap.get(account).get(method);
-                if ("FAILED".equalsIgnoreCase(status)) {
-                    entry.setStatus("FAILED");
-                    entry.setStatusDescription("Marked as FAILED from ErrorReport");
-                } else {
-                    entry.setStatus("PARTIAL");
-                    entry.setStatusDescription("Marked as PARTIAL from ErrorReport");
+            String deliveryStatus = null, archiveStatus = null;
+            String deliveryUrl = null, archiveUrl = null;
+            String deliveryReason = null, archiveReason = null;
+
+            if (delivery != null) {
+                deliveryStatus = delivery.getStatus();
+                deliveryUrl = delivery.getBlobURL();
+                deliveryReason = delivery.getStatusDescription();
+            }
+
+            if (archive != null) {
+                archiveStatus = archive.getStatus();
+                archiveUrl = archive.getBlobURL();
+                archiveReason = archive.getStatusDescription();
+            }
+
+            // Set file URLs and statuses
+            switch (type) {
+                case "EMAIL" -> {
+                    entry.setPdfEmailFileUrl(deliveryUrl);
+                    entry.setPdfEmailFileUrlStatus(deliveryStatus);
+                    if ("FAILED".equalsIgnoreCase(deliveryStatus)) {
+                        entry.setReason(deliveryReason);
+                    }
                 }
+                case "MOBSTAT" -> {
+                    entry.setPdfMobstatFileUrl(deliveryUrl);
+                    entry.setPdfMobstatFileUrlStatus(deliveryStatus);
+                    if ("FAILED".equalsIgnoreCase(deliveryStatus)) {
+                        entry.setReason(deliveryReason);
+                    }
+                }
+                case "PRINT" -> {
+                    entry.setPrintFileUrl(deliveryUrl);
+                    entry.setPrintFileUrlStatus(deliveryStatus);
+                    if ("FAILED".equalsIgnoreCase(deliveryStatus)) {
+                        entry.setReason(deliveryReason);
+                    }
+                }
+            }
+
+            // Shared archive URL + status field (overwrites last one)
+            if (archiveUrl != null) {
+                entry.setPdfArchiveFileUrl(archiveUrl);
+            }
+            if (archiveStatus != null) {
+                entry.setPdfArchiveFileUrlStatus(archiveStatus);
+                if ("FAILED".equalsIgnoreCase(archiveStatus) && entry.getReason() == null) {
+                    entry.setReason(archiveReason);
+                }
+            }
+
+            // Determine per-type outcome
+            if (deliveryStatus == null && archiveStatus == null) {
+                continue; // No file at all, skip
+            }
+
+            if ("SUCCESS".equalsIgnoreCase(deliveryStatus) && "SUCCESS".equalsIgnoreCase(archiveStatus)) {
+                statuses.add("SUCCESS");
+                hasAtLeastOneSuccess = true;
+            } else if ("SUCCESS".equalsIgnoreCase(deliveryStatus) || "SUCCESS".equalsIgnoreCase(archiveStatus)) {
+                statuses.add("PARTIAL");
+                hasAtLeastOneSuccess = true;
             } else {
-                continue; // Skip adding if not in folder and no error entry
+                statuses.add("FAILED");
             }
-
-            if ("archive".equals(folder)) {
-                for (String deliveryFolder : List.of("email", "mobstat", "print")) {
-                    Path deliveryPath = jobDir.resolve(deliveryFolder);
-                    if (Files.exists(deliveryPath)) {
-                        boolean found = Files.list(deliveryPath)
-                                .filter(Files::isRegularFile)
-                                .anyMatch(p -> p.getFileName().toString().contains(account));
-                        if (found) {
-                            entry.setLinkedDeliveryType(deliveryFolder.toUpperCase());
-                            break;
-                        }
-                    }
-                }
-            }
-
-            finalList.add(entry);
         }
+
+        if (!hasAtLeastOneSuccess) continue; // Don't add if nothing was successful
+
+        // Set overall status
+        if (statuses.stream().allMatch(s -> "SUCCESS".equals(s))) {
+            entry.setOverAllStatusCode("SUCCESS");
+        } else if (statuses.stream().allMatch(s -> "FAILED".equals(s))) {
+            entry.setOverAllStatusCode("FAILED");
+        } else {
+            entry.setOverAllStatusCode("PARTIAL");
+        }
+
+        finalList.add(entry);
     }
 
     return finalList;
