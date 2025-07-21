@@ -1,53 +1,92 @@
-private List<SummaryProcessedFile> buildProcessedFileEntry(String customerId, String accountNumber, Map<String, String> statusMap, Map<String, String> urlMap) {
-    List<SummaryProcessedFile> processedFiles = new ArrayList<>();
+private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
+    List<ProcessedFileEntry> finalList = new ArrayList<>();
 
-    // Define combinations
-    List<String[]> combinations = List.of(
-        new String[]{"EMAIL", "ARCHIVE"},
-        new String[]{"MOBSTAT", "ARCHIVE"},
-        new String[]{"PRINT", "ARCHIVE"}
-    );
+    Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
+        .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
+        .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber()));
 
-    for (String[] pair : combinations) {
-        String type = pair[0];
-        String archive = pair[1];
+    for (Map.Entry<String, List<SummaryProcessedFile>> group : grouped.entrySet()) {
+        String[] parts = group.getKey().split("::");
+        String customerId = parts[0];
+        String accountNumber = parts[1];
 
-        // Generate 4 logical combinations for each (SUCCESS-SUCCESS, SUCCESS-FAILED, FAILED-SUCCESS, FAILED-FAILED)
-        SummaryProcessedFile entry = new SummaryProcessedFile();
-        entry.setCustomerId(customerId);
-        entry.setAccountNumber(accountNumber);
-        entry.setOutputMethod(type + "_" + archive);
+        // Create maps by output method
+        Map<String, SummaryProcessedFile> methodMap = new HashMap<>();
+        Map<String, SummaryProcessedFile> archiveMap = new HashMap<>();
 
-        // Set blob URLs and statuses for the relevant types only
-        if ("EMAIL".equals(type)) {
-            entry.setEmailBlobUrl(urlMap.getOrDefault("EMAIL", null));
-            entry.setEmailStatus(statusMap.getOrDefault("EMAIL", "FAILED"));
-        } else if ("MOBSTAT".equals(type)) {
-            entry.setMobstatBlobUrl(urlMap.getOrDefault("MOBSTAT", null));
-            entry.setMobstatStatus(statusMap.getOrDefault("MOBSTAT", "FAILED"));
-        } else if ("PRINT".equals(type)) {
-            entry.setPrintBlobUrl(urlMap.getOrDefault("PRINT", null));
-            entry.setPrintStatus(statusMap.getOrDefault("PRINT", "FAILED"));
+        for (SummaryProcessedFile file : group.getValue()) {
+            String method = file.getOutputMethod();
+            if (method == null) continue;
+
+            switch (method) {
+                case "EMAIL", "MOBSTAT", "PRINT" -> methodMap.put(method, file);
+                case "ARCHIVE" -> {
+                    String linked = file.getLinkedDeliveryType(); // email/mobstat/print
+                    if (linked != null) {
+                        archiveMap.put(linked.toUpperCase(), file); // key as EMAIL, etc.
+                    }
+                }
+            }
         }
 
-        // Common ARCHIVE values
-        entry.setArchiveBlobUrl(urlMap.getOrDefault("ARCHIVE", null));
-        entry.setArchiveStatus(statusMap.getOrDefault("ARCHIVE", "FAILED"));
+        // Now build combinations
+        for (String type : List.of("EMAIL", "MOBSTAT", "PRINT")) {
+            SummaryProcessedFile delivery = methodMap.get(type);
+            SummaryProcessedFile archive = archiveMap.get(type);
 
-        // Set overallStatus strictly based on only two statuses
-        String status1 = statusMap.getOrDefault(type, "FAILED");
-        String status2 = statusMap.getOrDefault("ARCHIVE", "FAILED");
+            ProcessedFileEntry entry = new ProcessedFileEntry();
+            entry.setCustomerId(customerId);
+            entry.setAccountNumber(accountNumber);
 
-        if ("SUCCESS".equals(status1) && "SUCCESS".equals(status2)) {
-            entry.setOverallStatus("SUCCESS");
-        } else if ("FAILED".equals(status1) && "FAILED".equals(status2)) {
-            entry.setOverallStatus("FAILED");
-        } else {
-            entry.setOverallStatus("PARTIAL");
+            // Set delivery file info
+            if (delivery != null) {
+                String url = delivery.getBlobURL();
+                String status = delivery.getStatus();
+                String reason = delivery.getStatusDescription();
+
+                switch (type) {
+                    case "EMAIL" -> {
+                        entry.setPdfEmailFileUrl(url);
+                        entry.setPdfEmailFileUrlStatus(status);
+                        if ("FAILED".equalsIgnoreCase(status)) entry.setReason(reason);
+                    }
+                    case "MOBSTAT" -> {
+                        entry.setPdfMobstatFileUrl(url);
+                        entry.setPdfMobstatFileUrlStatus(status);
+                        if ("FAILED".equalsIgnoreCase(status)) entry.setReason(reason);
+                    }
+                    case "PRINT" -> {
+                        entry.setPrintFileUrl(url);
+                        entry.setPrintFileUrlStatus(status);
+                        if ("FAILED".equalsIgnoreCase(status)) entry.setReason(reason);
+                    }
+                }
+            }
+
+            // Set archive info for that type
+            if (archive != null) {
+                entry.setPdfArchiveFileUrl(archive.getBlobURL());
+                entry.setPdfArchiveFileUrlStatus(archive.getStatus());
+                if ("FAILED".equalsIgnoreCase(archive.getStatus())) {
+                    entry.setReason(archive.getStatusDescription());
+                }
+            }
+
+            // Compute overall status for the pair
+            String deliveryStatus = delivery != null ? delivery.getStatus() : "FAILED";
+            String archiveStatus = archive != null ? archive.getStatus() : "FAILED";
+
+            if ("SUCCESS".equalsIgnoreCase(deliveryStatus) && "SUCCESS".equalsIgnoreCase(archiveStatus)) {
+                entry.setOverAllStatusCode("SUCCESS");
+            } else if ("FAILED".equalsIgnoreCase(deliveryStatus) && "FAILED".equalsIgnoreCase(archiveStatus)) {
+                entry.setOverAllStatusCode("FAILED");
+            } else {
+                entry.setOverAllStatusCode("PARTIAL");
+            }
+
+            finalList.add(entry);
         }
-
-        processedFiles.add(entry);
     }
 
-    return processedFiles;
+    return finalList;
 }
