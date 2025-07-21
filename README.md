@@ -1,187 +1,178 @@
-{
-  "fileName" : "DEBTMAN_20250715_022024_error.TXT",
-  "header" : {
-    "tenantCode" : "ZANBL",
-    "channelID" : null,
-    "audienceID" : null,
-    "timestamp" : "2025-07-21T03:52:12.489592761Z",
-    "sourceSystem" : "DEBTMAN",
-    "product" : "DEBTMAN",
-    "jobName" : "DEBTMAN"
-  },
-  "metadata" : {
-    "totalCustomersProcessed" : 20,
-    "processingStatus" : "PARTIAL",
-    "eventOutcomeCode" : "0",
-    "eventOutcomeDescription" : "partial"
-  },
-  "payload" : {
-    "uniqueConsumerRef" : null,
-    "uniqueECPBatchRef" : null,
-    "runPriority" : null,
-    "eventID" : null,
-    "eventType" : null,
-    "restartKey" : null,
-    "fileCount" : 18
-  },
-  "processedFileList" : [ {
-    "customerId" : "191749661002",
-    "accountNumber" : "1001179722",
-    "pdfEmailFileUrlStatus" : "FAILED",
-    "pdfMobstatFileUrlStatus" : "FAILED",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: mobstat"
-  }, {
-    "customerId" : "600002895121",
-    "accountNumber" : "1001382854",
-    "pdfEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1001382854_EMLCA002.pdf",
-    "pdfEmailFileUrlStatus" : "SUCCESS",
-    "pdfMobstatFileUrlStatus" : "FAILED",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: mobstat"
-  }, {
-    "customerId" : "191590092008",
-    "accountNumber" : "1001451856",
-    "pdfEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1001451856_error.pdf",
-    "pdfEmailFileUrlStatus" : "SUCCESS",
-    "pdfMobstatFileUrlStatus" : "FAILED",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: mobstat"
-  }, {
-    "customerId" : "191752943609",
-    "accountNumber" : "1001499298",
-    "pdfEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1001499298_EMLCA002.pdf",
-    "pdfEmailFileUrlStatus" : "SUCCESS",
-    "pdfMobstatFileUrlStatus" : "FAILED",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: mobstat"
-  }, {
-    "customerId" : "110000715808",
-    "accountNumber" : "1125950300101",
-    "pdfEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1125950300101_LHDL03E.pdf",
-    "pdfEmailFileUrlStatus" : "SUCCESS",
-    "pdfMobstatFileUrlStatus" : "FAILED",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: mobstat"
-  }, {
-    "customerId" : "600005484029",
-    "accountNumber" : "3768000010570766",
-    "pdfEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F3768000010570766_EML002.pdf",
-    "pdfEmailFileUrlStatus" : "SUCCESS",
-    "pdfMobstatFileUrlStatus" : "FAILED",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: mobstat"
-  }, {
-    "customerId" : "600006708797",
-    "accountNumber" : "3768000010613657",
-    "pdfEmailFileUrlStatus" : "FAILED",
-    "pdfMobstatFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fmobstat%2FDEBTMAN_3768000010613657_600006708797_0737392815_0801114949_30_CARD.pdf",
-    "pdfMobstatFileUrlStatus" : "SUCCESS",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: email"
-  }, {
-    "customerId" : "211432335427_ARC",
-    "accountNumber" : "5898460761746866",
-    "pdfEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F5898460761746866_CCEML805.pdf",
-    "pdfEmailFileUrlStatus" : "SUCCESS",
-    "pdfMobstatFileUrlStatus" : "FAILED",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: mobstat"
-  }, {
-    "customerId" : "110051703106",
-    "accountNumber" : "5898460773614342",
-    "pdfEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F5898460773614342_EML002.pdf",
-    "pdfEmailFileUrlStatus" : "SUCCESS",
-    "pdfMobstatFileUrlStatus" : "FAILED",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: mobstat"
-  }, {
-    "customerId" : "600006709118",
-    "accountNumber" : "5898460774023071",
-    "pdfEmailFileUrlStatus" : "FAILED",
-    "pdfMobstatFileUrlStatus" : "FAILED",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: mobstat"
-  }, {
-    "customerId" : "600006708608",
-    "accountNumber" : "5898460774023931",
-    "pdfEmailFileUrlStatus" : "FAILED",
-    "pdfMobstatFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fmobstat%2FDEBTMAN_5898460774023931_600006708608_0737392815_0801114949_30_CARD.pdf",
-    "pdfMobstatFileUrlStatus" : "SUCCESS",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: email"
-  }, {
-    "customerId" : "600006332098",
-    "accountNumber" : "error",
-    "pdfEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1001451856_error.pdf",
-    "pdfEmailFileUrlStatus" : "SUCCESS",
-    "pdfMobstatFileUrlStatus" : "FAILED",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: mobstat"
-  }, {
-    "customerId" : "600006708699",
-    "accountNumber" : "5898460774025233",
-    "pdfEmailFileUrlStatus" : "FAILED",
-    "pdfMobstatFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fmobstat%2FDEBTMAN_5898460774025233_600006708699_0737392815_0801114949_30_CARD.pdf",
-    "pdfMobstatFileUrlStatus" : "SUCCESS",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: email"
-  }, {
-    "customerId" : "600006708711",
-    "accountNumber" : "5898460774025472",
-    "pdfEmailFileUrlStatus" : "FAILED",
-    "pdfMobstatFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fmobstat%2FDEBTMAN_5898460774025472_600006708711_0737392815_0801114949_30_CARD.pdf",
-    "pdfMobstatFileUrlStatus" : "SUCCESS",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: email"
-  }, {
-    "customerId" : "600006709129",
-    "accountNumber" : "5898460774027833",
-    "pdfEmailFileUrlStatus" : "FAILED",
-    "pdfMobstatFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fmobstat%2FDEBTMAN_5898460774027833_600006709129_0737392815_0801114949_30_CARD.pdf",
-    "pdfMobstatFileUrlStatus" : "SUCCESS",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: email"
-  }, {
-    "customerId" : "600006708154",
-    "accountNumber" : "5898460774028104",
-    "pdfEmailFileUrlStatus" : "FAILED",
-    "pdfMobstatFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fmobstat%2FDEBTMAN_5898460774028104_600006708154_0737392815_0801114949_30_CARD.pdf",
-    "pdfMobstatFileUrlStatus" : "SUCCESS",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: email"
-  }, {
-    "customerId" : "600006708291",
-    "accountNumber" : "5898460774031439",
-    "pdfEmailFileUrlStatus" : "FAILED",
-    "pdfMobstatFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fmobstat%2FDEBTMAN_5898460774031439_600006708291_0737392815_0801114949_30_CARD.pdf",
-    "pdfMobstatFileUrlStatus" : "SUCCESS",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: email"
-  }, {
-    "customerId" : "110000365408",
-    "accountNumber" : "8186138500101",
-    "pdfEmailFileUrlStatus" : "FAILED",
-    "pdfMobstatFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fmobstat%2FDEBTMAN_8186138500101_110000365408_0994565647_0861100033_30_RRB.pdf",
-    "pdfMobstatFileUrlStatus" : "SUCCESS",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: email"
-  }, {
-    "customerId" : "110000206903",
-    "accountNumber" : "8637238800101",
-    "pdfEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F8637238800101_LHDL03E.pdf",
-    "pdfEmailFileUrlStatus" : "SUCCESS",
-    "pdfMobstatFileUrlStatus" : "FAILED",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: mobstat"
-  }, {
-    "customerId" : "110000206903",
-    "accountNumber" : "8835308600101",
-    "pdfEmailFileUrl" : "https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001/DEBTMAN%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F8835308600101_LHDL03E.pdf",
-    "pdfEmailFileUrlStatus" : "SUCCESS",
-    "pdfMobstatFileUrlStatus" : "FAILED",
-    "overAllStatusCode" : "PARTIAL",
-    "reason" : "File not found for method: mobstat"
-  } ],
-  "timestamp" : "2025-07-21T03:52:12.489592761Z"
-}
+public static SummaryPayload buildPayload(
+            KafkaMessage kafkaMessage,
+            List<SummaryProcessedFile> processedList,
+            String summaryBlobUrl,
+            String fileName,
+            String batchId,
+            String timestamp
+    ) {
+        SummaryPayload payload = new SummaryPayload();
+        payload.setBatchID(batchId);
+        payload.setFileName(fileName);
+        payload.setTimestamp(timestamp);
+        payload.setSummaryFileURL(summaryBlobUrl);
+
+        // HEADER
+        Header header = new Header();
+        header.setTenantCode(kafkaMessage.getTenantCode());
+        header.setChannelID(kafkaMessage.getChannelID());
+        header.setAudienceID(kafkaMessage.getAudienceID());
+        header.setTimestamp(timestamp);
+        header.setSourceSystem(kafkaMessage.getSourceSystem());
+        header.setProduct(kafkaMessage.getSourceSystem());
+        header.setJobName(kafkaMessage.getSourceSystem());
+        payload.setHeader(header);
+
+        // ✅ Final Processed Entries
+        List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
+        payload.setProcessedFileList(processedFileEntries);
+
+        // ✅ Dynamically count total non-null URLs (files actually added to summary)
+        int totalFileUrls = processedFileEntries.stream()
+                .mapToInt(entry -> {
+                    int count = 0;
+                    if (entry.getPdfEmailFileUrl() != null && !entry.getPdfEmailFileUrl().isBlank()) count++;
+                    if (entry.getPdfArchiveFileUrl() != null && !entry.getPdfArchiveFileUrl().isBlank()) count++;
+                    if (entry.getPdfMobstatFileUrl() != null && !entry.getPdfMobstatFileUrl().isBlank()) count++;
+                    if (entry.getPrintFileUrl() != null && !entry.getPrintFileUrl().isBlank()) count++;
+                    return count;
+                })
+                .sum();
+
+        // PAYLOAD BLOCK
+        Payload payloadInfo = new Payload();
+        payloadInfo.setUniqueECPBatchRef(kafkaMessage.getUniqueECPBatchRef());
+        payloadInfo.setRunPriority(kafkaMessage.getRunPriority());
+        payloadInfo.setEventID(kafkaMessage.getEventID());
+        payloadInfo.setEventType(kafkaMessage.getEventType());
+        payloadInfo.setRestartKey(kafkaMessage.getRestartKey());
+        payloadInfo.setFileCount(totalFileUrls);
+        payload.setPayload(payloadInfo);
+
+        // METADATA
+        Metadata metadata = new Metadata();
+        metadata.setTotalCustomersProcessed((int) processedFileEntries.stream()
+                .map(pf -> pf.getCustomerId() + "::" + pf.getAccountNumber())
+                .distinct()
+                .count());
+
+        // ✅ Determine overall status (Success / Partial / Failure)
+        long total = processedFileEntries.size();
+        long success = processedFileEntries.stream()
+                .filter(entry -> "SUCCESS".equalsIgnoreCase(entry.getOverAllStatusCode()))
+                .count();
+        long failure = processedFileEntries.stream()
+                .filter(entry -> "FAILURE".equalsIgnoreCase(entry.getOverAllStatusCode()))
+                .count();
+
+        String overallStatus;
+        if (success == total) {
+            overallStatus = "SUCCESS";
+        } else if (failure == total) {
+            overallStatus = "FAILURE";
+        } else {
+            overallStatus = "PARTIAL";
+        }
+
+        metadata.setProcessingStatus(overallStatus);
+        metadata.setEventOutcomeCode("0");
+        metadata.setEventOutcomeDescription(overallStatus.toLowerCase());
+        payload.setMetadata(metadata);
+
+        return payload;
+    }
+
+    private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
+        Map<String, ProcessedFileEntry> entryMap = new LinkedHashMap<>();
+        Map<String, List<SummaryProcessedFile>> groupedFiles = processedList.stream()
+                .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
+                .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber(), LinkedHashMap::new, Collectors.toList()));
+
+        for (Map.Entry<String, List<SummaryProcessedFile>> group : groupedFiles.entrySet()) {
+            String key = group.getKey();
+            List<SummaryProcessedFile> files = group.getValue();
+
+            ProcessedFileEntry entry = new ProcessedFileEntry();
+            String[] parts = key.split("::", 2);
+            entry.setCustomerId(parts[0]);
+            entry.setAccountNumber(parts[1]);
+
+            Map<String, SummaryProcessedFile> deliveryMap = new HashMap<>();
+            Map<String, SummaryProcessedFile> archiveMap = new HashMap<>();
+            List<String> statuses = new ArrayList<>();
+
+            for (SummaryProcessedFile file : files) {
+                String method = file.getOutputMethod();
+                if (method == null) continue;
+
+                String status = file.getStatus() != null ? file.getStatus() : "UNKNOWN";
+                statuses.add(status);
+
+                String blobURL = file.getBlobURL();
+                String reason = file.getStatusDescription();
+
+                switch (method.toLowerCase()) {
+                    case "email" -> deliveryMap.put("email", file);
+                    case "mobstat" -> deliveryMap.put("mobstat", file);
+                    case "print" -> deliveryMap.put("print", file);
+                    case "archive" -> {
+                        String linked = file.getLinkedDeliveryType();
+                        if (linked != null) archiveMap.put(linked.toLowerCase(), file);
+                    }
+                }
+            }
+
+            // 📦 Set fields and combine archive logic
+            for (String method : List.of("email", "mobstat", "print")) {
+                SummaryProcessedFile delivery = deliveryMap.get(method);
+                SummaryProcessedFile archive = archiveMap.get(method);
+
+                if (delivery != null) {
+                    String status = delivery.getStatus();
+                    String blobURL = delivery.getBlobURL();
+                    String reason = delivery.getStatusDescription();
+
+                    switch (method) {
+                        case "email" -> {
+                            entry.setPdfEmailFileUrl(blobURL);
+                            entry.setPdfEmailFileUrlStatus(status);
+                            if ("FAILED".equalsIgnoreCase(status)) entry.setReason(reason);
+                        }
+                        case "mobstat" -> {
+                            entry.setPdfMobstatFileUrl(blobURL);
+                            entry.setPdfMobstatFileUrlStatus(status);
+                            if ("FAILED".equalsIgnoreCase(status)) entry.setReason(reason);
+                        }
+                        case "print" -> {
+                            entry.setPrintFileUrl(blobURL);
+                            entry.setPrintFileUrlStatus(status);
+                            if ("FAILED".equalsIgnoreCase(status)) entry.setReason(reason);
+                        }
+                    }
+                }
+
+                if (archive != null) {
+                    String status = archive.getStatus();
+                    String blobURL = archive.getBlobURL();
+                    String reason = archive.getStatusDescription();
+
+                    if ("email".equals(method)) {
+                        entry.setPdfArchiveFileUrl(blobURL);  // reused archive slot
+                        entry.setPdfArchiveFileUrlStatus(status);
+                        if ("FAILED".equalsIgnoreCase(status)) entry.setReason(reason);
+                    }
+                    // Optional: extend logic for separate archive types if needed
+                }
+            }
+
+            // ✅ Determine overallStatusCode
+            boolean allSuccess = statuses.stream().allMatch(s -> "SUCCESS".equalsIgnoreCase(s));
+            boolean noneSuccess = statuses.stream().noneMatch(s -> "SUCCESS".equalsIgnoreCase(s));
+            String overallStatus = allSuccess ? "SUCCESS" : noneSuccess ? "FAILURE" : "PARTIAL";
+            entry.setOverAllStatusCode(overallStatus);
+
+            entryMap.put(key, entry);
+        }
+
+        return new ArrayList<>(entryMap.values());
+    }
