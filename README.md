@@ -5,18 +5,12 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.nedbank.kafka.filemanage.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
-import java.io.IOException;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.stream.Collectors;
-
-import static org.apache.commons.codec.net.URLCodec.decodeUrl;
 
 @Component
 public class SummaryJsonWriter {
@@ -68,7 +62,6 @@ public class SummaryJsonWriter {
         payload.setTimestamp(timestamp);
         payload.setSummaryFileURL(summaryBlobUrl);
 
-        // HEADER
         Header header = new Header();
         header.setTenantCode(kafkaMessage.getTenantCode());
         header.setChannelID(kafkaMessage.getChannelID());
@@ -79,11 +72,9 @@ public class SummaryJsonWriter {
         header.setJobName(kafkaMessage.getSourceSystem());
         payload.setHeader(header);
 
-        // ✅ Final Processed Entries
         List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
         payload.setProcessedFileList(processedFileEntries);
 
-        // ✅ Dynamically count total non-null URLs (files actually added to summary)
         int totalFileUrls = processedFileEntries.stream()
                 .mapToInt(entry -> {
                     int count = 0;
@@ -95,7 +86,6 @@ public class SummaryJsonWriter {
                 })
                 .sum();
 
-        // PAYLOAD BLOCK
         Payload payloadInfo = new Payload();
         payloadInfo.setUniqueECPBatchRef(kafkaMessage.getUniqueECPBatchRef());
         payloadInfo.setRunPriority(kafkaMessage.getRunPriority());
@@ -105,14 +95,12 @@ public class SummaryJsonWriter {
         payloadInfo.setFileCount(totalFileUrls);
         payload.setPayload(payloadInfo);
 
-        // METADATA
         Metadata metadata = new Metadata();
         metadata.setTotalCustomersProcessed((int) processedFileEntries.stream()
                 .map(pf -> pf.getCustomerId() + "::" + pf.getAccountNumber())
                 .distinct()
                 .count());
 
-        // ✅ Determine overall status (Success / Partial / Failure)
         long total = processedFileEntries.size();
         long success = processedFileEntries.stream()
                 .filter(entry -> "SUCCESS".equalsIgnoreCase(entry.getOverAllStatusCode()))
@@ -150,7 +138,6 @@ public class SummaryJsonWriter {
             String customerId = parts[0];
             String accountNumber = parts[1];
 
-            // Create maps by output method
             Map<String, SummaryProcessedFile> methodMap = new HashMap<>();
             Map<String, SummaryProcessedFile> archiveMap = new HashMap<>();
 
@@ -161,24 +148,24 @@ public class SummaryJsonWriter {
                 switch (method) {
                     case "EMAIL", "MOBSTAT", "PRINT" -> methodMap.put(method, file);
                     case "ARCHIVE" -> {
-                        String linked = file.getLinkedDeliveryType(); // email/mobstat/print
+                        String linked = file.getLinkedDeliveryType();
                         if (linked != null) {
-                            archiveMap.put(linked.toUpperCase(), file); // key as EMAIL, etc.
+                            archiveMap.put(linked.toUpperCase(), file);
                         }
                     }
                 }
             }
 
-            // Now build combinations
             for (String type : List.of("EMAIL", "MOBSTAT", "PRINT")) {
                 SummaryProcessedFile delivery = methodMap.get(type);
                 SummaryProcessedFile archive = archiveMap.get(type);
+
+                if (delivery == null && archive == null) continue;
 
                 ProcessedFileEntry entry = new ProcessedFileEntry();
                 entry.setCustomerId(customerId);
                 entry.setAccountNumber(accountNumber);
 
-                // Set delivery file info
                 if (delivery != null) {
                     String url = delivery.getBlobURL();
                     String status = delivery.getStatus();
@@ -203,7 +190,6 @@ public class SummaryJsonWriter {
                     }
                 }
 
-                // Set archive info for that type
                 if (archive != null) {
                     entry.setPdfArchiveFileUrl(archive.getBlobURL());
                     entry.setPdfArchiveFileUrlStatus(archive.getStatus());
@@ -212,7 +198,6 @@ public class SummaryJsonWriter {
                     }
                 }
 
-                // Compute overall status for the pair
                 String deliveryStatus = delivery != null ? delivery.getStatus() : "FAILED";
                 String archiveStatus = archive != null ? archive.getStatus() : "FAILED";
 
