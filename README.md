@@ -1,125 +1,102 @@
-private Map<String, Map<String, String>> parseErrorReport(KafkaMessage msg) {
-    Map<String, Map<String, String>> map = new HashMap<>();
-    Path errorPath = Paths.get(mountPath, "output", msg.getSourceSystem(), msg.getJobName(), "ErrorReport.csv");
+private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+            Path jobDir,
+            List<SummaryProcessedFile> customerList,
+            Map<String, Map<String, String>> errorMap,
+            KafkaMessage msg) throws IOException {
 
-    if (!Files.exists(errorPath)) return map;
+        List<String> folders = List.of("email", "archive", "mobstat", "print");
+        Map<String, String> folderToOutputMethod = Map.of(
+                "email", "EMAIL",
+                "archive", "ARCHIVE",
+                "mobstat", "MOBSTAT",
+                "print", "PRINT"
+        );
 
-    try (BufferedReader reader = Files.newBufferedReader(errorPath)) {
-        String line;
-        while ((line = reader.readLine()) != null) {
-            String[] parts = line.split("\\|");
+        List<SummaryProcessedFile> finalList = new ArrayList<>();
 
-            // Standardize logic for >= 3 fields
-            if (parts.length >= 3) {
-                String acc = parts[0].trim();
-                String method = (parts.length >= 4 ? parts[3] : parts[2]).trim().toUpperCase();
-                String status = (parts.length >= 5 ? parts[4] : (parts.length >= 4 ? parts[3] : "Failed")).trim();
+        for (SummaryProcessedFile customer : customerList) {
+            String account = customer.getAccountNumber();
+            String customerId = customer.getCustomerId();
+            Map<String, Boolean> methodAdded = new HashMap<>();
 
-                // Normalize missing/misplaced fields
-                if (method.isEmpty()) method = "UNKNOWN";
-                if (status.isEmpty()) status = "Failed";
+            for (String folder : folders) {
+                methodAdded.put(folder, false);
+                Path folderPath = jobDir.resolve(folder);
+                if (!Files.exists(folderPath)) continue;
 
-                map.computeIfAbsent(acc, k -> new HashMap<>()).put(method, status);
-            }
-        }
-    } catch (Exception e) {
-        logger.warn("⚠️ Error reading ErrorReport.csv", e);
-    }
+                Optional<Path> match = Files.list(folderPath)
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().contains(account))
+                        .findFirst();
 
-    return map;
-}
+                if (match.isPresent()) {
+                    Path filePath = match.get();
+                    File file = filePath.toFile();
+                    String blobUrl = blobStorageService.uploadFileByMessage(file, folder, msg);
 
-================
-private static List<ProcessedFileEntry> buildDetailedProcessedFileEntries(
-        List<SummaryProcessedFile> processedList,
-        Map<String, Map<String, String>> errorMap) {
+                    SummaryProcessedFile successEntry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, successEntry);
+                    successEntry.setOutputMethod(folderToOutputMethod.get(folder));
+                    successEntry.setStatus("SUCCESS");
+                    successEntry.setBlobURL(blobUrl);
 
-    List<ProcessedFileEntry> finalList = new ArrayList<>();
-
-    Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
-            .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
-            .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber()));
-
-    for (Map.Entry<String, List<SummaryProcessedFile>> entry : grouped.entrySet()) {
-        String[] parts = entry.getKey().split("::");
-        String customerId = parts[0];
-        String accountNumber = parts[1];
-
-        List<SummaryProcessedFile> customerFiles = entry.getValue();
-
-        for (SummaryProcessedFile file : customerFiles) {
-            String method = file.getOutputType().toUpperCase();
-            String status = "SUCCESS"; // default
-
-            Map<String, String> methodMap = errorMap.get(accountNumber);
-            if (methodMap != null) {
-                String result = methodMap.get(method);
-                if ("Failed".equalsIgnoreCase(result)) {
-                    status = "FAILED";
-                } else if (result == null) {
-                    status = "PARTIAL"; // method missing for this account = partial
-                }
-            }
-
-            ProcessedFileEntry entryObj = new ProcessedFileEntry();
-            entryObj.setCustomerId(customerId);
-            entryObj.setAccountNumber(accountNumber);
-            entryObj.setOutputType(method);
-            entryObj.setBlobUrl(file.getBlobUrl());
-            entryObj.setStatus(status);
-
-            finalList.add(entryObj);
-        }
-    }
-
-    return finalList;
-}
-
-===========
-private static List<ProcessedFileEntry> buildProcessedFileEntries(
-        List<SummaryProcessedFile> processedList,
-        Map<String, Map<String, String>> errorMap) {
-
-    List<ProcessedFileEntry> finalList = new ArrayList<>();
-
-    // Group by customerId + accountNumber
-    Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
-            .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
-            .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber()));
-
-    for (Map.Entry<String, List<SummaryProcessedFile>> entry : grouped.entrySet()) {
-        String[] parts = entry.getKey().split("::");
-        String customerId = parts[0];
-        String accountNumber = parts[1];
-        List<SummaryProcessedFile> files = entry.getValue();
-
-        Map<String, String> methodMap = errorMap.getOrDefault(accountNumber, Collections.emptyMap());
-
-        for (SummaryProcessedFile file : files) {
-            String method = file.getOutputType() != null ? file.getOutputType().toUpperCase() : "";
-            String status = "SUCCESS";
-
-            if (errorMap.containsKey(accountNumber)) {
-                if (methodMap.containsKey(method)) {
-                    String result = methodMap.get(method);
-                    if ("Failed".equalsIgnoreCase(result)) {
-                        status = "FAILED";
+                    if ("archive".equals(folder)) {
+                        for (String deliveryFolder : List.of("email", "mobstat", "print")) {
+                            Path deliveryPath = jobDir.resolve(deliveryFolder);
+                            if (Files.exists(deliveryPath)) {
+                                boolean found = Files.list(deliveryPath)
+                                        .filter(Files::isRegularFile)
+                                        .anyMatch(p -> p.getFileName().toString().contains(account));
+                                if (found) {
+                                    successEntry.setLinkedDeliveryType(deliveryFolder.toUpperCase());
+                                    break;
+                                }
+                            }
+                        }
                     }
-                } else {
-                    status = "PARTIAL"; // method missing under errorMap
+
+                    finalList.add(successEntry);
+                    methodAdded.put(folder, true);
                 }
             }
 
-            ProcessedFileEntry processed = new ProcessedFileEntry();
-            processed.setCustomerId(customerId);
-            processed.setAccountNumber(accountNumber);
-            processed.setOutputType(method);
-            processed.setBlobUrl(file.getBlobUrl());
-            processed.setStatus(status);
+            for (String folder : folders) {
+                if (methodAdded.get(folder)) continue;
+                Path folderPath = jobDir.resolve(folder);
+                if (!Files.exists(folderPath)) continue;
 
-            finalList.add(processed);
+                SummaryProcessedFile entry = new SummaryProcessedFile();
+                BeanUtils.copyProperties(customer, entry);
+                String method = folderToOutputMethod.get(folder);
+                entry.setOutputMethod(method);
+
+                if (errorMap.containsKey(account) && errorMap.get(account).containsKey(method)) {
+                    String errorStatus = errorMap.get(account).get(method);
+                    entry.setStatus("FAILED".equals(errorStatus) ? "FAILED" : "PARTIAL");
+                    entry.setStatusDescription("Marked from ErrorReport");
+                } else {
+                    entry.setStatus("SUCCESS"); // Not present = no error
+                    entry.setStatusDescription("No error found in ErrorReport");
+                }
+
+                if ("archive".equals(folder)) {
+                    for (String deliveryFolder : List.of("email", "mobstat", "print")) {
+                        Path deliveryPath = jobDir.resolve(deliveryFolder);
+                        if (Files.exists(deliveryPath)) {
+                            boolean found = Files.list(deliveryPath)
+                                    .filter(Files::isRegularFile)
+                                    .anyMatch(p -> p.getFileName().toString().contains(account));
+                            if (found) {
+                                entry.setLinkedDeliveryType(deliveryFolder.toUpperCase());
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                finalList.add(entry);
+            }
         }
-    }
 
-    return finalList;
-}
+        return finalList;
+    }
