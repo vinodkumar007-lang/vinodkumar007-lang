@@ -1,112 +1,613 @@
-private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
-    List<ProcessedFileEntry> finalList = new ArrayList<>();
+package com.nedbank.kafka.filemanage.service;
 
-    Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
-            .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
-            .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber()));
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.*;
+import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
+import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.*;
+import org.springframework.http.*;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+import org.w3c.dom.*;
 
-    for (Map.Entry<String, List<SummaryProcessedFile>> group : grouped.entrySet()) {
-        String[] parts = group.getKey().split("::");
-        String customerId = parts[0];
-        String accountNumber = parts[1];
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.*;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.*;
 
-        Map<String, SummaryProcessedFile> methodMap = new HashMap<>();
-        Map<String, SummaryProcessedFile> archiveMap = new HashMap<>();
+@Service
+public class KafkaListenerService {
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
-        for (SummaryProcessedFile file : group.getValue()) {
-            String method = file.getOutputMethod();
-            if (method == null) continue;
+    @Value("${mount.path}")
+    private String mountPath;
 
-            switch (method.toUpperCase()) {
-                case "EMAIL", "MOBSTAT", "PRINT" -> methodMap.put(method.toUpperCase(), file);
-                case "ARCHIVE" -> {
-                    String linked = file.getLinkedDeliveryType();
-                    if (linked != null) {
-                        archiveMap.put(linked.toUpperCase(), file);
-                    }
-                }
-            }
-        }
+    @Value("${kafka.topic.output}")
+    private String kafkaOutputTopic;
 
-        ProcessedFileEntry entry = new ProcessedFileEntry();
-        entry.setCustomerId(customerId);
-        entry.setAccountNumber(accountNumber);
+    @Value("${rpt.max.wait.seconds}")
+    private int rptMaxWaitSeconds;
 
-        List<String> statuses = new ArrayList<>();
-        boolean hasSuccess = false;
+    @Value("${rpt.poll.interval.millis}")
+    private int rptPollIntervalMillis;
 
-        for (String type : List.of("EMAIL", "MOBSTAT", "PRINT")) {
-            SummaryProcessedFile delivery = methodMap.get(type);
-            SummaryProcessedFile archive = archiveMap.get(type);
+    @Value("${ot.orchestration.api.url}")
+    private String otOrchestrationApiUrl;
 
-            String deliveryStatus = null, archiveStatus = null;
+    @Value("${ot.service.mfc.url}")
+    private String orchestrationMfcUrl;
 
-            if (delivery != null) {
-                String url = delivery.getBlobURL();
-                deliveryStatus = delivery.getStatus();
-                String reason = delivery.getStatusDescription();
+    @Value("${ot.auth.token}")
+    private String orchestrationAuthToken;
 
-                switch (type) {
-                    case "EMAIL" -> {
-                        entry.setPdfEmailFileUrl(url);
-                        entry.setPdfEmailFileUrlStatus(deliveryStatus);
-                        if ("FAILED".equalsIgnoreCase(deliveryStatus)) entry.setReason(reason);
-                    }
-                    case "MOBSTAT" -> {
-                        entry.setPdfMobstatFileUrl(url);
-                        entry.setPdfMobstatFileUrlStatus(deliveryStatus);
-                        if ("FAILED".equalsIgnoreCase(deliveryStatus)) entry.setReason(reason);
-                    }
-                    case "PRINT" -> {
-                        entry.setPrintFileUrl(url);
-                        entry.setPrintFileUrlStatus(deliveryStatus);
-                        if ("FAILED".equalsIgnoreCase(deliveryStatus)) entry.setReason(reason);
-                    }
-                }
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final BlobStorageService blobStorageService;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ExecutorService executor = Executors.newFixedThreadPool(5);
 
-                if ("SUCCESS".equalsIgnoreCase(deliveryStatus)) hasSuccess = true;
-            }
-
-            if (archive != null) {
-                archiveStatus = archive.getStatus();
-                String aUrl = archive.getBlobURL();
-
-                entry.setPdfArchiveFileUrl(aUrl); // shared field
-                entry.setPdfArchiveFileUrlStatus(archiveStatus);
-
-                if ("FAILED".equalsIgnoreCase(archiveStatus) && entry.getReason() == null) {
-                    entry.setReason(archive.getStatusDescription());
-                }
-
-                if ("SUCCESS".equalsIgnoreCase(archiveStatus)) hasSuccess = true;
-            }
-
-            // Record method-level status only if at least one file is present
-            if (deliveryStatus != null || archiveStatus != null) {
-                if ("SUCCESS".equalsIgnoreCase(deliveryStatus) && "SUCCESS".equalsIgnoreCase(archiveStatus)) {
-                    statuses.add("SUCCESS");
-                } else if ("FAILED".equalsIgnoreCase(deliveryStatus) && "FAILED".equalsIgnoreCase(archiveStatus)) {
-                    statuses.add("FAILED");
-                } else {
-                    statuses.add("PARTIAL");
-                }
-            }
-        }
-
-        // ✅ Skip if no file for this customer is SUCCESS
-        if (!hasSuccess) continue;
-
-        // ✅ Determine overall status
-        if (statuses.stream().allMatch(s -> "SUCCESS".equals(s))) {
-            entry.setOverAllStatusCode("SUCCESS");
-        } else if (statuses.stream().allMatch(s -> "FAILED".equals(s))) {
-            entry.setOverAllStatusCode("FAILED");
-        } else {
-            entry.setOverAllStatusCode("PARTIAL");
-        }
-
-        finalList.add(entry);
+    @Autowired
+    public KafkaListenerService(BlobStorageService blobStorageService, KafkaTemplate<String, String> kafkaTemplate) {
+        this.blobStorageService = blobStorageService;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
-    return finalList;
+    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
+    public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
+        try {
+            logger.info("\uD83D\uDCE5 Received Kafka message: {}", rawMessage);
+            KafkaMessage message = objectMapper.readValue(rawMessage, KafkaMessage.class);
+            String batchId = message.getBatchId();
+            Path batchDir = Paths.get(mountPath, "input", message.getSourceSystem(), batchId);
+            Files.createDirectories(batchDir);
+            logger.info("\uD83D\uDCC1 Created input directory: {}", batchDir);
+
+            for (BatchFile file : message.getBatchFiles()) {
+                String blobUrl = file.getBlobUrl();
+                String content = blobStorageService.downloadFileContent(blobUrl);
+                Path localPath = batchDir.resolve(file.getFilename());
+                Files.write(localPath, content.getBytes(StandardCharsets.UTF_8));
+                file.setBlobUrl(localPath.toString());
+                logger.info("⬇️ Downloaded file {} to local path {}", blobUrl, localPath);
+            }
+
+            String url = switch (message.getSourceSystem().toUpperCase()) {
+                case "DEBTMAN" -> otOrchestrationApiUrl;
+                case "MFC" -> orchestrationMfcUrl;
+                default -> throw new IllegalArgumentException("Unsupported source system: " + message.getSourceSystem());
+            };
+
+            logger.info("\uD83D\uDE80 Calling Orchestration API: {}", url);
+            OTResponse otResponse = callOrchestrationBatchApi(orchestrationAuthToken, url, message);
+
+            if (otResponse == null) {
+                logger.error("❌ OT orchestration failed for batch {}", batchId);
+                kafkaTemplate.send(kafkaOutputTopic, "{\"status\":\"FAILURE\",\"message\":\"OT call failed\"}");
+                ack.acknowledge();
+                return;
+            }
+
+            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(Map.of(
+                    "batchID", batchId,
+                    "status", "PENDING",
+                    "message", "OT Request Sent"
+            )));
+            logger.info("\uD83D\uDCE4 OT request sent for batch {}", batchId);
+            ack.acknowledge();
+            executor.submit(() -> processAfterOT(message, otResponse));
+
+        } catch (Exception ex) {
+            logger.error("❌ Kafka processing failed", ex);
+        }
+    }
+
+    private List<CustomerSummary> parseSTDXml(File xmlFile, Map<String, Map<String, String>> errorMap) {
+        List<CustomerSummary> list = new ArrayList<>();
+        try {
+            Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile);
+            doc.getDocumentElement().normalize();
+
+            NodeList customers = doc.getElementsByTagName("customer");
+            for (int i = 0; i < customers.getLength(); i++) {
+                Element cust = (Element) customers.item(i);
+
+                String acc = null, cis = null;
+                List<String> methods = new ArrayList<>();
+
+                NodeList keys = cust.getElementsByTagName("key");
+                for (int j = 0; j < keys.getLength(); j++) {
+                    Element k = (Element) keys.item(j);
+                    if ("AccountNumber".equalsIgnoreCase(k.getAttribute("name"))) acc = k.getTextContent();
+                    if ("CISNumber".equalsIgnoreCase(k.getAttribute("name"))) cis = k.getTextContent();
+                }
+
+                NodeList queues = cust.getElementsByTagName("queueName");
+                for (int q = 0; q < queues.getLength(); q++) {
+                    String val = queues.item(q).getTextContent().trim().toUpperCase();
+                    if (!val.isEmpty()) methods.add(val);
+                }
+
+                if (acc != null && cis != null) {
+                    CustomerSummary cs = new CustomerSummary();
+                    cs.setAccountNumber(acc);
+                    cs.setCisNumber(cis);
+                    cs.setCustomerId(acc);
+
+                    // Merge error report
+                    Map<String, String> deliveryStatus = errorMap.getOrDefault(acc, new HashMap<>());
+                    cs.setDeliveryStatus(deliveryStatus); // for logs only
+
+                    long failed = methods.stream()
+                            .filter(m -> "FAILED".equalsIgnoreCase(deliveryStatus.getOrDefault(m, "")))
+                            .count();
+
+                    if (failed == methods.size()) {
+                        cs.setStatus("FAILED");
+                    } else if (failed > 0) {
+                        cs.setStatus("PARTIAL");
+                    } else {
+                        cs.setStatus("SUCCESS");
+                    }
+
+                    list.add(cs);
+
+                    logger.debug("📋 Customer: {}, CIS: {}, Methods: {}, Failed: {}, FinalStatus: {}",
+                            acc, cis, methods, failed, cs.getStatus());
+                }
+            }
+        } catch (Exception e) {
+            logger.error("❌ Failed parsing STD XML", e);
+        }
+        return list;
+    }
+
+    private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
+        try {
+            logger.info("⏳ Waiting for XML for jobId={}, id={}", otResponse.getJobId(), otResponse.getId());
+            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
+            if (xmlFile == null) throw new IllegalStateException("XML not found");
+            logger.info("✅ Found XML file: {}", xmlFile);
+
+            // ✅ Parse error report (already used in buildDetailedProcessedFiles)
+            Map<String, Map<String, String>> errorMap = parseErrorReport(message);
+            //logger.info("🧾 Parsed error report with {} entries", errorMap.size());
+
+            // ✅ Parse STDXML and extract basic customer summaries
+            List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile, errorMap);
+            logger.info("📊 Total customerSummaries parsed: {}", customerSummaries.size());
+
+            // ✅ Convert to basic SummaryProcessedFile list
+            List<SummaryProcessedFile> customerList = customerSummaries.stream()
+                    .map(cs -> {
+                        SummaryProcessedFile spf = new SummaryProcessedFile();
+                        spf.setAccountNumber(cs.getAccountNumber());
+                        spf.setCustomerId(cs.getCisNumber());
+                        return spf;
+                    })
+                    .collect(Collectors.toList());
+
+            // ✅ Locate output job directory
+            Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
+
+            // ✅ Build processedFiles with output-specific blob URLs and status (SUCCESS/ERROR)
+            List<SummaryProcessedFile> processedFiles =
+                    buildDetailedProcessedFiles(jobDir, customerList, errorMap, message);
+            logger.info("📦 Processed {} customer records", processedFiles.size());
+
+            // ✅ Upload print files and track their URLs
+            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
+            logger.info("🖨️ Uploaded {} print files", printFiles.size());
+
+            // ✅ Upload MobStat trigger file if present
+            String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
+
+            // ✅ Extract counts from <outputList> inside STD XML
+            Map<String, Integer> summaryCounts = extractSummaryCountsFromXml(xmlFile);
+            String customersProcessed = String.valueOf(summaryCounts.getOrDefault("customersProcessed", processedFiles.size()));
+            String pagesProcessed = String.valueOf(summaryCounts.getOrDefault("pagesProcessed", 0));
+
+            // ✅ Create payload for summary.json
+            SummaryPayload payload = SummaryJsonWriter.buildPayload(
+                    message,
+                    processedFiles,      // ✅ Now includes blob URLs + status from buildDetailedProcessedFiles
+                    pagesProcessed,
+                    printFiles.toString(),
+                    mobstatTriggerUrl,
+                    customersProcessed
+            );
+
+            String currentTimestamp = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
+            payload.setFileName(message.getBatchFiles().get(0).getFilename());
+            payload.setTimestamp(currentTimestamp);
+            if (payload.getHeader() != null) {
+                payload.getHeader().setTimestamp(currentTimestamp);
+            }
+
+            // ✅ Write and upload summary.json
+            String fileName = "summary_" + message.getBatchId() + ".json";
+            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
+            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, fileName);
+            payload.setSummaryFileURL(decodeUrl(summaryUrl));
+            logger.info("📁 Summary JSON uploaded to: {}", decodeUrl(summaryUrl));
+
+            // ✅ Final beautified payload log
+            logger.info("📄 Final Summary Payload:\n{}",
+                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
+
+            // ✅ Send final response to Kafka
+            SummaryResponse response = new SummaryResponse();
+            response.setBatchID(message.getBatchId());
+            response.setFileName(payload.getFileName());
+            response.setHeader(payload.getHeader());
+            response.setMetadata(payload.getMetadata());
+            response.setPayload(payload.getPayload());
+            response.setSummaryFileURL(decodeUrl(summaryUrl));
+            response.setTimestamp(currentTimestamp);
+
+            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
+                    new ApiResponse("Summary generated", "COMPLETED", response)));
+
+            logger.info("✅ Kafka output sent for batch {} with response: {}", message.getBatchId(),
+                    objectMapper.writeValueAsString(response));
+
+        } catch (Exception e) {
+            logger.error("❌ Error post-OT summary generation", e);
+        }
+    }
+
+    private String findAndUploadMobstatTriggerFile(Path jobDir, KafkaMessage message) {
+        try (Stream<Path> stream = Files.list(jobDir)) {
+            Optional<Path> trigger = stream.filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().toLowerCase().endsWith(".trigger"))
+                    .findFirst();
+            if (trigger.isPresent()) {
+                String blobUrl = blobStorageService.uploadFile(trigger.get().toFile(),
+                        message.getSourceSystem() + "/" + message.getBatchId() + "/" + trigger.get().getFileName());
+                return decodeUrl(blobUrl);
+            } else {
+                logger.info("ℹ️ No .trigger file found in jobDir: {}", jobDir);
+            }
+        } catch (IOException e) {
+            logger.warn("⚠️ Failed to scan for .trigger file", e);
+        }
+        return null;
+    }
+
+    private OTResponse callOrchestrationBatchApi(String token, String url, KafkaMessage msg) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer " + token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, request, Map.class);
+
+            List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get("data");
+            if (data != null && !data.isEmpty()) {
+                Map<String, Object> item = data.get(0);
+                OTResponse otResponse = new OTResponse();
+                otResponse.setJobId((String) item.get("jobId"));
+                otResponse.setId((String) item.get("id"));
+                return otResponse;
+            } else {
+                logger.error("❌ No data in OT orchestration response");
+            }
+        } catch (Exception e) {
+            logger.error("❌ Failed OT Orchestration call", e);
+        }
+        return null;
+    }
+
+    private File waitForXmlFile(String jobId, String id) throws InterruptedException {
+        Path docgenRoot = Paths.get(mountPath, "jobs", jobId, id, "docgen");
+        long startTime = System.currentTimeMillis();
+        File xmlFile = null;
+
+        while ((System.currentTimeMillis() - startTime) < rptMaxWaitSeconds * 1000L) {
+            if (Files.exists(docgenRoot)) {
+                try (Stream<Path> paths = Files.walk(docgenRoot)) {
+                    Optional<Path> xmlPath = paths
+                            .filter(Files::isRegularFile)
+                            .filter(p -> p.getFileName().toString().equalsIgnoreCase("_STDDELIVERYFILE.xml"))
+                            .findFirst();
+
+                    if (xmlPath.isPresent()) {
+                        xmlFile = xmlPath.get().toFile();
+
+                        // ✅ Check file size is stable (not growing)
+                        long size1 = xmlFile.length();
+                        TimeUnit.SECONDS.sleep(1); // wait a second
+                        long size2 = xmlFile.length();
+
+                        if (size1 > 0 && size1 == size2) {
+                            logger.info("✅ Found stable XML file: {}", xmlFile.getAbsolutePath());
+                            return xmlFile;
+                        } else {
+                            logger.info("⌛ XML file still being written (size changing): {}", xmlFile.getAbsolutePath());
+                        }
+                    }
+                } catch (IOException e) {
+                    logger.warn("⚠️ Error scanning docgen folder", e);
+                }
+            } else {
+                logger.debug("🔍 docgen folder not found yet: {}", docgenRoot);
+            }
+
+            TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+        }
+
+        logger.error("❌ Timed out waiting for complete XML file in {}", docgenRoot);
+        return null;
+    }
+
+    private Map<String, String> extractAccountCustomerMapFromDoc(Document doc) {
+        Map<String, String> map = new HashMap<>();
+        NodeList customers = doc.getElementsByTagName("customer");
+        for (int i = 0; i < customers.getLength(); i++) {
+            Element customer = (Element) customers.item(i);
+            NodeList keys = customer.getElementsByTagName("key");
+            String acc = null, cus = null;
+            for (int j = 0; j < keys.getLength(); j++) {
+                Element k = (Element) keys.item(j);
+                if ("AccountNumber".equalsIgnoreCase(k.getAttribute("name"))) acc = k.getTextContent();
+                if ("CISNumber".equalsIgnoreCase(k.getAttribute("name"))) cus = k.getTextContent();
+            }
+            if (acc != null && cus != null) map.put(acc, cus);
+        }
+        return map;
+    }
+
+    private Map<String, Map<String, String>> parseErrorReport(KafkaMessage msg) {
+        Map<String, Map<String, String>> map = new HashMap<>();
+        Path errorPath = Paths.get(mountPath, "output", msg.getSourceSystem(), msg.getJobName(), "ErrorReport.csv");
+
+        if (!Files.exists(errorPath)) return map;
+
+        try (BufferedReader reader = Files.newBufferedReader(errorPath)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split("\\|");
+                if (parts.length >= 5) {
+                    String acc = parts[0].trim();
+                    String method = parts[3].trim().toUpperCase();
+                    String status = parts[4].trim();
+                    map.computeIfAbsent(acc, k -> new HashMap<>()).put(method, status);
+                } else if (parts.length >= 3) {
+                    String acc = parts[0].trim();
+                    String method = parts[2].trim().toUpperCase();
+                    String status = parts.length > 3 ? parts[3].trim() : "Failed";
+                    map.computeIfAbsent(acc, k -> new HashMap<>()).put(method, status);
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("⚠️ Error reading ErrorReport.csv", e);
+        }
+        return map;
+    }
+
+    private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+            Path jobDir,
+            List<SummaryProcessedFile> customerList,
+            Map<String, Map<String, String>> errorMap,
+            KafkaMessage msg) throws IOException {
+
+        List<String> folders = List.of("email", "archive", "mobstat", "print");
+        Map<String, String> folderToOutputMethod = Map.of(
+                "email", "EMAIL",
+                "archive", "ARCHIVE",
+                "mobstat", "MOBSTAT",
+                "print", "PRINT"
+        );
+
+        List<SummaryProcessedFile> finalList = new ArrayList<>();
+
+        for (SummaryProcessedFile customer : customerList) {
+            String account = customer.getAccountNumber();
+            String customerId = customer.getCustomerId();
+            boolean hasAtLeastOneSuccess = false;
+            Map<String, Boolean> methodAdded = new HashMap<>();
+
+            for (String folder : folders) {
+                methodAdded.put(folder, false); // to prevent duplicates
+                Path folderPath = jobDir.resolve(folder);
+                if (!Files.exists(folderPath)) continue;
+
+                Optional<Path> match = Files.list(folderPath)
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().contains(account))
+                        .findFirst();
+
+                if (match.isPresent()) {
+                    Path filePath = match.get();
+                    File file = filePath.toFile();
+                    String blobUrl = blobStorageService.uploadFileByMessage(file, folder, msg);
+
+                    SummaryProcessedFile successEntry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, successEntry);
+                    successEntry.setOutputMethod(folderToOutputMethod.get(folder));
+                    successEntry.setStatus("SUCCESS");
+                    successEntry.setBlobURL(blobUrl);
+
+                    // 🔗 Set linked delivery type for archive
+                    if ("archive".equals(folder)) {
+                        // Try to determine if archive matches email/mobstat/print by checking jobDir subfolders
+                        for (String deliveryFolder : List.of("email", "mobstat", "print")) {
+                            Path deliveryPath = jobDir.resolve(deliveryFolder);
+                            if (Files.exists(deliveryPath)) {
+                                boolean found = Files.list(deliveryPath)
+                                        .filter(Files::isRegularFile)
+                                        .anyMatch(p -> p.getFileName().toString().contains(account));
+                                if (found) {
+                                    successEntry.setLinkedDeliveryType(deliveryFolder.toUpperCase());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    finalList.add(successEntry);
+                    hasAtLeastOneSuccess = true;
+                    methodAdded.put(folder, true);
+                }
+            }
+
+            // Add failed entries for folders that exist but file is missing
+            for (String folder : folders) {
+                if (methodAdded.get(folder)) continue;
+
+                Path folderPath = jobDir.resolve(folder);
+                if (Files.exists(folderPath)) {
+                    SummaryProcessedFile failedEntry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, failedEntry);
+                    failedEntry.setOutputMethod(folderToOutputMethod.get(folder));
+                    failedEntry.setStatus("FAILED");
+                    failedEntry.setStatusDescription("File not found for method: " + folder);
+                    failedEntry.setReason("File not found in " + folder + " folder");
+                    failedEntry.setBlobURL(null);
+
+                    // ⛔ Also set linked delivery type if archive failed
+                    if ("archive".equals(folder)) {
+                        for (String deliveryFolder : List.of("email", "mobstat", "print")) {
+                            Path deliveryPath = jobDir.resolve(deliveryFolder);
+                            if (Files.exists(deliveryPath)) {
+                                boolean found = Files.list(deliveryPath)
+                                        .filter(Files::isRegularFile)
+                                        .anyMatch(p -> p.getFileName().toString().contains(account));
+                                if (found) {
+                                    failedEntry.setLinkedDeliveryType(deliveryFolder.toUpperCase());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    finalList.add(failedEntry);
+                }
+            }
+
+            // Error report failure if any
+            if (errorMap.containsKey(account)) {
+                Map<String, String> errData = errorMap.get(account);
+                SummaryProcessedFile errorEntry = new SummaryProcessedFile();
+                BeanUtils.copyProperties(customer, errorEntry);
+                errorEntry.setOutputMethod("ERROR_REPORT");
+                errorEntry.setStatus("FAILED");
+                errorEntry.setStatusDescription("Marked as failed from ErrorReport");
+                errorEntry.setReason(errData.get("reason"));
+                errorEntry.setBlobURL(errData.get("blobURL"));
+                finalList.add(errorEntry);
+            }
+        }
+
+        return finalList;
+    }
+
+    // Helper methods
+    private boolean isNumeric(String str) {
+        return str != null && str.matches("\\d+");
+    }
+
+    private SummaryProcessedFile buildCopy(SummaryProcessedFile original) {
+        SummaryProcessedFile copy = new SummaryProcessedFile();
+        BeanUtils.copyProperties(original, copy);
+        return copy;
+    }
+
+    private Map<String, Map<String, String>> parseErrorReport(String content) {
+        Map<String, Map<String, String>> errorMap = new HashMap<>();
+
+        for (String line : content.split("\\r?\\n")) {
+            String[] parts = line.split("\\|");
+            if (parts.length >= 5) {
+                String customer = parts[0].trim();
+                String account = parts[1].trim();
+                String method = parts[3].trim().toUpperCase(); // EMAIL, PRINT, etc.
+
+                Map<String, String> info = new HashMap<>();
+                info.put("account", account);
+                info.put("method", method);
+
+                errorMap.put(customer, info);
+            }
+        }
+        return errorMap;
+    }
+
+    private List<PrintFile> uploadPrintFiles(Path jobDir, KafkaMessage msg) {
+        List<PrintFile> printFiles = new ArrayList<>();
+        Path printDir = jobDir.resolve("print");
+        if (!Files.exists(printDir)) return printFiles;
+        try (Stream<Path> stream = Files.list(printDir)) {
+            stream.filter(Files::isRegularFile).forEach(f -> {
+                try {
+                    String blob = blobStorageService.uploadFile(f.toFile(), msg.getSourceSystem() + "/print/" + f.getFileName());
+                    printFiles.add(new PrintFile(blob));
+                } catch (Exception e) {
+                    logger.warn("⚠️ Print upload failed", e);
+                }
+            });
+        } catch (IOException ignored) {}
+        return printFiles;
+    }
+
+    private Map<String, Integer> extractSummaryCountsFromXml(File xmlFile) {
+        Map<String, Integer> summaryCounts = new HashMap<>();
+        try {
+            Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile);
+            doc.getDocumentElement().normalize();
+            NodeList outputListNodes = doc.getElementsByTagName("outputList");
+            if (outputListNodes.getLength() > 0) {
+                Element outputList = (Element) outputListNodes.item(0);
+                String customersProcessed = outputList.getAttribute("customersProcessed");
+                String pagesProcessed = outputList.getAttribute("pagesProcessed");
+
+                int custCount = customersProcessed != null && !customersProcessed.isBlank()
+                        ? Integer.parseInt(customersProcessed) : 0;
+                int pageCount = pagesProcessed != null && !pagesProcessed.isBlank()
+                        ? Integer.parseInt(pagesProcessed) : 0;
+
+                summaryCounts.put("customersProcessed", custCount);
+                summaryCounts.put("pagesProcessed", pageCount);
+            }
+        } catch (Exception e) {
+            logger.warn("⚠️ Unable to extract summary counts from XML", e);
+        }
+        return summaryCounts;
+    }
+
+    private String decodeUrl(String url) {
+        try {
+            return URLDecoder.decode(url, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return url;
+        }
+    }
+
+    @PreDestroy
+    public void shutdownExecutor() {
+        logger.info("⚠️ Shutting down executor service");
+        executor.shutdown();
+    }
+
+    static class OTResponse {
+        private String jobId;
+        private String id;
+        public String getJobId() { return jobId; }
+        public void setJobId(String jobId) { this.jobId = jobId; }
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
+    }
 }
