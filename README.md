@@ -1,122 +1,93 @@
-private Map<String, List<SummaryProcessedFile>> buildDetailedProcessedFiles(
-        List<ProcessedFileEntry> processedFileEntries,
-        Map<String, ErrorDetail> errorDetailMap
-) {
-    Map<String, List<SummaryProcessedFile>> groupedFiles = new LinkedHashMap<>();
+ private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
+        try {
+            logger.info("⏳ Waiting for XML for jobId={}, id={}", otResponse.getJobId(), otResponse.getId());
+            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
+            if (xmlFile == null) throw new IllegalStateException("XML not found");
+            logger.info("✅ Found XML file: {}", xmlFile);
 
-    for (ProcessedFileEntry entry : processedFileEntries) {
-        SummaryProcessedFile summaryFile = new SummaryProcessedFile();
-        summaryFile.setType(entry.getType());
-        summaryFile.setUrl(entry.getBlobUrl());
+            // ✅ Parse error report (already used in buildDetailedProcessedFiles)
+            Map<String, Map<String, String>> errorMap = parseErrorReport(message);
+            //logger.info("🧾 Parsed error report with {} entries", errorMap.size());
 
-        // Attach error info if available
-        String errorKey = entry.getCustomerId() + "::" + entry.getAccountNumber() + "::" + entry.getType();
-        ErrorDetail errorDetail = errorDetailMap.get(errorKey);
+            // ✅ Parse STDXML and extract basic customer summaries
+            List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile);
+            logger.info("📊 Total customerSummaries parsed: {}", customerSummaries.size());
 
-        if (entry.getBlobUrl() != null && !entry.getBlobUrl().isEmpty()) {
-            summaryFile.setStatus("success");
-        } else if (errorDetail != null) {
-            summaryFile.setStatus("failed");
-            summaryFile.setErrorCode(errorDetail.getErrorCode());
-            summaryFile.setErrorMessage(errorDetail.getErrorMessage());
-        } else {
-            summaryFile.setStatus("not_found");
+            // ✅ Convert to basic SummaryProcessedFile list
+            List<SummaryProcessedFile> customerList = customerSummaries.stream()
+                    .map(cs -> {
+                        SummaryProcessedFile spf = new SummaryProcessedFile();
+                        spf.setAccountNumber(cs.getAccountNumber());
+                        spf.setCustomerId(cs.getCisNumber());
+                        return spf;
+                    })
+                    .collect(Collectors.toList());
+
+            // ✅ Locate output job directory
+            Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
+
+            // ✅ Build processedFiles with output-specific blob URLs and status (SUCCESS/ERROR)
+            List<SummaryProcessedFile> processedFiles =
+                    buildDetailedProcessedFiles(jobDir, customerList, errorMap, message);
+            logger.info("📦 Processed {} customer records", processedFiles.size());
+
+            // ✅ Upload print files and track their URLs
+            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
+            logger.info("🖨️ Uploaded {} print files", printFiles.size());
+
+            // ✅ Upload MobStat trigger file if present
+            String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
+
+            // ✅ Extract counts from <outputList> inside STD XML
+            Map<String, Integer> summaryCounts = extractSummaryCountsFromXml(xmlFile);
+            String customersProcessed = String.valueOf(summaryCounts.getOrDefault("customersProcessed", processedFiles.size()));
+            String pagesProcessed = String.valueOf(summaryCounts.getOrDefault("pagesProcessed", 0));
+
+            // ✅ Create payload for summary.json
+            SummaryPayload payload = SummaryJsonWriter.buildPayload(
+                    message,
+                    processedFiles,      // ✅ Now includes blob URLs + status from buildDetailedProcessedFiles
+                    pagesProcessed,
+                    printFiles.toString(),
+                    mobstatTriggerUrl,
+                    customersProcessed
+            );
+
+            String currentTimestamp = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
+            payload.setFileName(message.getBatchFiles().get(0).getFilename());
+            payload.setTimestamp(currentTimestamp);
+            if (payload.getHeader() != null) {
+                payload.getHeader().setTimestamp(currentTimestamp);
+            }
+
+            // ✅ Write and upload summary.json
+            String fileName = "summary_" + message.getBatchId() + ".json";
+            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
+            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, fileName);
+            payload.setSummaryFileURL(decodeUrl(summaryUrl));
+            logger.info("📁 Summary JSON uploaded to: {}", decodeUrl(summaryUrl));
+
+            // ✅ Final beautified payload log
+            logger.info("📄 Final Summary Payload:\n{}",
+                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
+
+            // ✅ Send final response to Kafka
+            SummaryResponse response = new SummaryResponse();
+            response.setBatchID(message.getBatchId());
+            response.setFileName(payload.getFileName());
+            response.setHeader(payload.getHeader());
+            response.setMetadata(payload.getMetadata());
+            response.setPayload(payload.getPayload());
+            response.setSummaryFileURL(decodeUrl(summaryUrl));
+            response.setTimestamp(currentTimestamp);
+
+            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
+                    new ApiResponse("Summary generated", "COMPLETED", response)));
+
+            logger.info("✅ Kafka output sent for batch {} with response: {}", message.getBatchId(),
+                    objectMapper.writeValueAsString(response));
+
+        } catch (Exception e) {
+            logger.error("❌ Error post-OT summary generation", e);
         }
-
-        String groupKey = entry.getCustomerId() + "::" + entry.getAccountNumber() + "::" + entry.getOutputMethod();
-        groupedFiles.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(summaryFile);
     }
-
-    // Add overallStatus per group
-    for (Map.Entry<String, List<SummaryProcessedFile>> group : groupedFiles.entrySet()) {
-        List<SummaryProcessedFile> files = group.getValue();
-        boolean hasFailed = files.stream().anyMatch(f -> "failed".equalsIgnoreCase(f.getStatus()));
-        boolean hasNotFound = files.stream().anyMatch(f -> "not_found".equalsIgnoreCase(f.getStatus()));
-
-        String overallStatus;
-        if (hasFailed) {
-            overallStatus = "failed";
-        } else if (hasNotFound) {
-            overallStatus = "partial";
-        } else {
-            overallStatus = "success";
-        }
-
-        files.forEach(f -> f.setOverallStatus(overallStatus));
-    }
-
-    return groupedFiles;
-}
-
-
-public class ErrorReportEntry {
-
-    private String customerId;
-    private String accountNumber;
-    private String outputMethod;
-    private String errorCode;
-    private String errorMessage;
-
-    public ErrorReportEntry() {
-    }
-
-    public ErrorReportEntry(String customerId, String accountNumber, String outputMethod,
-                            String errorCode, String errorMessage) {
-        this.customerId = customerId;
-        this.accountNumber = accountNumber;
-        this.outputMethod = outputMethod;
-        this.errorCode = errorCode;
-        this.errorMessage = errorMessage;
-    }
-
-    public String getCustomerId() {
-        return customerId;
-    }
-
-    public void setCustomerId(String customerId) {
-        this.customerId = customerId;
-    }
-
-    public String getAccountNumber() {
-        return accountNumber;
-    }
-
-    public void setAccountNumber(String accountNumber) {
-        this.accountNumber = accountNumber;
-    }
-
-    public String getOutputMethod() {
-        return outputMethod;
-    }
-
-    public void setOutputMethod(String outputMethod) {
-        this.outputMethod = outputMethod;
-    }
-
-    public String getErrorCode() {
-        return errorCode;
-    }
-
-    public void setErrorCode(String errorCode) {
-        this.errorCode = errorCode;
-    }
-
-    public String getErrorMessage() {
-        return errorMessage;
-    }
-
-    public void setErrorMessage(String errorMessage) {
-        this.errorMessage = errorMessage;
-    }
-
-    @Override
-    public String toString() {
-        return "ErrorReportEntry{" +
-                "customerId='" + customerId + '\'' +
-                ", accountNumber='" + accountNumber + '\'' +
-                ", outputMethod='" + outputMethod + '\'' +
-                ", errorCode='" + errorCode + '\'' +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
-    }
-}
