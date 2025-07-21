@@ -1,41 +1,61 @@
- private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
-        List<ProcessedFileEntry> finalList = new ArrayList<>();
+private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
+    List<ProcessedFileEntry> finalList = new ArrayList<>();
 
-        Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
-                .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
-                .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber()));
+    Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
+        .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
+        .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber()));
 
-        for (Map.Entry<String, List<SummaryProcessedFile>> entry : grouped.entrySet()) {
-            String[] parts = entry.getKey().split("::");
-            String customerId = parts[0];
-            String accountNumber = parts[1];
+    for (Map.Entry<String, List<SummaryProcessedFile>> entry : grouped.entrySet()) {
+        String[] parts = entry.getKey().split("::");
+        String customerId = parts[0];
+        String accountNumber = parts[1];
 
-            List<SummaryProcessedFile> records = entry.getValue();
+        ProcessedFileEntry result = new ProcessedFileEntry();
+        result.setCustomerId(customerId);
+        result.setAccountNumber(accountNumber);
 
-            List<String> statuses = records.stream()
-                    .map(SummaryProcessedFile::getStatus)
-                    .filter(Objects::nonNull)
-                    .map(String::toUpperCase)
-                    .collect(Collectors.toList());
+        boolean hasFailed = false;
+        boolean hasNotFound = false;
 
-            String overallStatus;
+        for (SummaryProcessedFile file : entry.getValue()) {
+            String status = file.getStatus();
+            String blobUrl = file.getBlobUrl();
+            String method = file.getOutputType();
 
-            if (statuses.stream().allMatch(s -> s.equals("SUCCESS"))) {
-                overallStatus = "SUCCESS";
-            } else if (statuses.stream().allMatch(s -> s.equals("FAILED"))) {
-                overallStatus = "FAILED";
-            } else {
-                overallStatus = "PARTIAL";
+            if ("FAILED".equalsIgnoreCase(status)) hasFailed = true;
+            if ("NOT-FOUND".equalsIgnoreCase(status)) hasNotFound = true;
+
+            switch (method.toUpperCase()) {
+                case "EMAIL":
+                    result.setEmailUrl(blobUrl);
+                    result.setEmailStatus(status);
+                    break;
+                case "ARCHIVE":
+                    result.setArchiveUrl(blobUrl);
+                    result.setArchiveStatus(status);
+                    break;
+                case "PRINT":
+                    result.setPrintUrl(blobUrl);
+                    result.setPrintStatus(status);
+                    break;
+                case "MOBSTAT":
+                    result.setMobstatUrl(blobUrl);
+                    result.setMobstatStatus(status);
+                    break;
             }
-
-            ProcessedFileEntry entryObj = new ProcessedFileEntry();
-            entryObj.setCustomerId(customerId);
-            entryObj.setAccountNumber(accountNumber);
-            entryObj.setOutputTypes(records); // includes EMAIL/ARCHIVE/PRINT/MOBSTAT with status
-            entryObj.setOverAllStatusCode(overallStatus);
-
-            finalList.add(entryObj);
         }
 
-        return finalList;
+        // Set overall status
+        if (hasFailed) {
+            result.setOverallStatus("FAILED");
+        } else if (hasNotFound) {
+            result.setOverallStatus("PARTIAL");
+        } else {
+            result.setOverallStatus("SUCCESS");
+        }
+
+        finalList.add(result);
     }
+
+    return finalList;
+}
