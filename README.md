@@ -81,20 +81,22 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryPr
                 if ("SUCCESS".equalsIgnoreCase(archiveStatus)) hasSuccess = true;
             }
 
-            // Record method-level status for overall calculation
-            if ("FAILED".equalsIgnoreCase(deliveryStatus) && "FAILED".equalsIgnoreCase(archiveStatus)) {
-                statuses.add("FAILED");
-            } else if ("SUCCESS".equalsIgnoreCase(deliveryStatus) && "SUCCESS".equalsIgnoreCase(archiveStatus)) {
-                statuses.add("SUCCESS");
-            } else {
-                statuses.add("PARTIAL");
+            // Record method-level status only if at least one file is present
+            if (deliveryStatus != null || archiveStatus != null) {
+                if ("SUCCESS".equalsIgnoreCase(deliveryStatus) && "SUCCESS".equalsIgnoreCase(archiveStatus)) {
+                    statuses.add("SUCCESS");
+                } else if ("FAILED".equalsIgnoreCase(deliveryStatus) && "FAILED".equalsIgnoreCase(archiveStatus)) {
+                    statuses.add("FAILED");
+                } else {
+                    statuses.add("PARTIAL");
+                }
             }
         }
 
-        // ✅ Filter: only include if at least one SUCCESS
+        // ✅ Skip if no file for this customer is SUCCESS
         if (!hasSuccess) continue;
 
-        // Determine overall status for entry
+        // ✅ Determine overall status
         if (statuses.stream().allMatch(s -> "SUCCESS".equals(s))) {
             entry.setOverAllStatusCode("SUCCESS");
         } else if (statuses.stream().allMatch(s -> "FAILED".equals(s))) {
