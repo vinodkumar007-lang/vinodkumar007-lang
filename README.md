@@ -1,74 +1,30 @@
-private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
-    List<ProcessedFileEntry> finalList = new ArrayList<>();
+private Map<String, Map<String, String>> parseErrorReport(KafkaMessage msg) {
+        Map<String, Map<String, String>> map = new HashMap<>();
+        Path errorPath = Paths.get(mountPath, "output", msg.getSourceSystem(), msg.getJobName(), "ErrorReport.csv");
 
-    // Filter valid entries
-    List<SummaryProcessedFile> valid = processedList.stream()
-        .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null && f.getOutputMethod() != null)
-        .toList();
+        if (!Files.exists(errorPath)) return map;
 
-    // Separate archive entries
-    Map<String, SummaryProcessedFile> archiveMap = valid.stream()
-        .filter(f -> "ARCHIVE".equalsIgnoreCase(f.getOutputMethod()) && f.getLinkedDeliveryType() != null)
-        .collect(Collectors.toMap(
-            f -> f.getCustomerId() + "::" + f.getAccountNumber() + "::" + f.getLinkedDeliveryType().toUpperCase(),
-            f -> f,
-            (a, b) -> a
-        ));
+        try (BufferedReader reader = Files.newBufferedReader(errorPath)) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split("\\|");
 
-    // Process EMAIL, MOBSTAT, PRINT
-    for (SummaryProcessedFile file : valid) {
-        String type = file.getOutputMethod().toUpperCase();
-        if (!Set.of("EMAIL", "MOBSTAT", "PRINT").contains(type)) continue;
+                // Standardize logic for >= 3 fields
+                if (parts.length >= 3) {
+                    String acc = parts[0].trim();
+                    String method = (parts.length >= 4 ? parts[3] : parts[2]).trim().toUpperCase();
+                    String status = (parts.length >= 5 ? parts[4] : (parts.length >= 4 ? parts[3] : "Failed")).trim();
 
-        String key = file.getCustomerId() + "::" + file.getAccountNumber() + "::" + type;
-        SummaryProcessedFile archive = archiveMap.get(key);
+                    // Normalize missing/misplaced fields
+                    if (method.isEmpty()) method = "UNKNOWN";
+                    if (status.isEmpty()) status = "Failed";
 
-        ProcessedFileEntry entry = new ProcessedFileEntry();
-        entry.setCustomerId(file.getCustomerId());
-        entry.setAccountNumber(file.getAccountNumber());
-        entry.setOverAllStatusCode("FAILED"); // default
-
-        String deliveryStatus = file.getStatus();
-        String archiveStatus = archive != null ? archive.getStatus() : null;
-        String deliveryUrl = file.getBlobURL();
-        String archiveUrl = archive != null ? archive.getBlobURL() : null;
-
-        // Set fields based on delivery type
-        switch (type) {
-            case "EMAIL" -> {
-                entry.setPdfEmailFileUrl(deliveryUrl);
-                entry.setPdfEmailFileUrlStatus(deliveryStatus);
+                    map.computeIfAbsent(acc, k -> new HashMap<>()).put(method, status);
+                }
             }
-            case "MOBSTAT" -> {
-                entry.setPdfMobstatFileUrl(deliveryUrl);
-                entry.setPdfMobstatFileUrlStatus(deliveryStatus);
-            }
-            case "PRINT" -> {
-                entry.setPrintFileUrl(deliveryUrl);
-                entry.setPrintFileUrlStatus(deliveryStatus);
-            }
+        } catch (Exception e) {
+            logger.warn("⚠️ Error reading ErrorReport.csv", e);
         }
 
-        // Archive common field
-        if (archiveUrl != null) entry.setPdfArchiveFileUrl(archiveUrl);
-        if (archiveStatus != null) entry.setPdfArchiveFileUrlStatus(archiveStatus);
-
-        // Failure reasons
-        if ("FAILED".equalsIgnoreCase(deliveryStatus)) {
-            entry.setReason(file.getStatusDescription());
-        } else if (archive != null && "FAILED".equalsIgnoreCase(archiveStatus)) {
-            entry.setReason(archive.getStatusDescription());
-        }
-
-        // Determine overallStatus
-        if ("SUCCESS".equalsIgnoreCase(deliveryStatus) && "SUCCESS".equalsIgnoreCase(archiveStatus)) {
-            entry.setOverAllStatusCode("SUCCESS");
-        } else if ("SUCCESS".equalsIgnoreCase(deliveryStatus) || "SUCCESS".equalsIgnoreCase(archiveStatus)) {
-            entry.setOverAllStatusCode("PARTIAL");
-        }
-
-        finalList.add(entry);
+        return map;
     }
-
-    return finalList;
-}
