@@ -1,241 +1,149 @@
-package com.nedbank.kafka.filemanage.utils;
+private Map<String, Set<String>> parseSTDXml(Path stdFilePath) {
+    Map<String, Set<String>> requestedOutputMethods = new HashMap<>();
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.nedbank.kafka.filemanage.model.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
+    try {
+        DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
+        DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+        Document doc = dBuilder.parse(stdFilePath.toFile());
+        doc.getDocumentElement().normalize();
 
-import java.io.File;
-import java.nio.file.*;
-import java.util.*;
-import java.util.stream.Collectors;
+        NodeList queueList = doc.getElementsByTagName("queue");
 
-@Component
-public class SummaryJsonWriter {
+        for (int i = 0; i < queueList.getLength(); i++) {
+            Node queueNode = queueList.item(i);
+            if (queueNode.getNodeType() == Node.ELEMENT_NODE) {
+                Element queueElement = (Element) queueNode;
 
-    private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
-    private static final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
+                String method = queueElement.getAttribute("name").toLowerCase(); // email, archive, print, mobstat
+                Node parent = queueNode.getParentNode(); // should be document/recipient
+                while (parent != null && !(parent instanceof Element && ((Element) parent).hasAttribute("accountNumber"))) {
+                    parent = parent.getParentNode();
+                }
 
-    public static String writeSummaryJsonToFile(SummaryPayload payload) {
-        if (payload == null) {
-            logger.error("SummaryPayload is null. Cannot write summary.json.");
-            throw new IllegalArgumentException("SummaryPayload cannot be null");
-        }
+                if (parent != null && parent.getNodeType() == Node.ELEMENT_NODE) {
+                    Element recipient = (Element) parent;
+                    String customerId = recipient.getAttribute("customerId");
+                    String accountNumber = recipient.getAttribute("accountNumber");
 
-        try {
-            String batchId = Optional.ofNullable(payload.getBatchID()).orElse("unknown");
-            String fileName = "summary_" + batchId + ".json";
-
-            Path tempDir = Files.createTempDirectory("summaryFiles");
-            Path summaryFilePath = tempDir.resolve(fileName);
-
-            File summaryFile = summaryFilePath.toFile();
-            if (summaryFile.exists()) {
-                Files.delete(summaryFilePath);
-                logger.warn("Existing summary file deleted: {}", summaryFilePath);
+                    if (!customerId.isEmpty() && !accountNumber.isEmpty()) {
+                        String key = customerId + "|" + accountNumber;
+                        requestedOutputMethods
+                            .computeIfAbsent(key, k -> new HashSet<>())
+                            .add(method.toUpperCase()); // normalize to uppercase
+                    }
+                }
             }
-
-            objectMapper.writeValue(summaryFile, payload);
-            logger.info("✅ Summary JSON written at: {}", summaryFilePath);
-
-            return summaryFilePath.toAbsolutePath().toString();
-
-        } catch (Exception e) {
-            logger.error("❌ Failed to write summary.json", e);
-            throw new RuntimeException("Failed to write summary JSON", e);
         }
+
+    } catch (Exception e) {
+        log.error("Error parsing STD XML: {}", e.getMessage(), e);
     }
 
-    public static SummaryPayload buildPayload(
-            KafkaMessage kafkaMessage,
-            List<SummaryProcessedFile> processedList,
-            String summaryBlobUrl,
-            String fileName,
-            String batchId,
-            String timestamp
-    ) {
-        SummaryPayload payload = new SummaryPayload();
-        payload.setBatchID(batchId);
-        payload.setFileName(fileName);
-        payload.setTimestamp(timestamp);
-        payload.setSummaryFileURL(summaryBlobUrl);
+    return requestedOutputMethods;
+}
 
-        Header header = new Header();
-        header.setTenantCode(kafkaMessage.getTenantCode());
-        header.setChannelID(kafkaMessage.getChannelID());
-        header.setAudienceID(kafkaMessage.getAudienceID());
-        header.setTimestamp(timestamp);
-        header.setSourceSystem(kafkaMessage.getSourceSystem());
-        header.setProduct(kafkaMessage.getSourceSystem());
-        header.setJobName(kafkaMessage.getSourceSystem());
-        payload.setHeader(header);
 
-        List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
-        payload.setProcessedFileList(processedFileEntries);
+==============
 
-        int totalFileUrls = processedFileEntries.stream()
-                .mapToInt(entry -> {
-                    int count = 0;
-                    if (entry.getPdfEmailFileUrl() != null && !entry.getPdfEmailFileUrl().isBlank()) count++;
-                    if (entry.getPdfArchiveFileUrl() != null && !entry.getPdfArchiveFileUrl().isBlank()) count++;
-                    if (entry.getPdfMobstatFileUrl() != null && !entry.getPdfMobstatFileUrl().isBlank()) count++;
-                    if (entry.getPrintFileUrl() != null && !entry.getPrintFileUrl().isBlank()) count++;
-                    return count;
-                })
-                .sum();
+private Map<String, Set<String>> parseErrorReport(Path errorReportPath) {
+    Map<String, Set<String>> failedOutputMethods = new HashMap<>();
 
-        Payload payloadInfo = new Payload();
-        payloadInfo.setUniqueECPBatchRef(kafkaMessage.getUniqueECPBatchRef());
-        payloadInfo.setRunPriority(kafkaMessage.getRunPriority());
-        payloadInfo.setEventID(kafkaMessage.getEventID());
-        payloadInfo.setEventType(kafkaMessage.getEventType());
-        payloadInfo.setRestartKey(kafkaMessage.getRestartKey());
-        payloadInfo.setFileCount(totalFileUrls);
-        payload.setPayload(payloadInfo);
+    try (BufferedReader reader = Files.newBufferedReader(errorReportPath)) {
+        String line;
+        while ((line = reader.readLine()) != null) {
+            String[] parts = line.split("\\|");
+            if (parts.length >= 5) {
+                String customerId = parts[0].trim();
+                String accountNumber = parts[1].trim();
+                String failedMethod = parts[3].trim().toUpperCase(); // e.g., EMAIL, MOBSTAT
 
-        Metadata metadata = new Metadata();
-        metadata.setTotalCustomersProcessed((int) processedFileEntries.stream()
-                .map(pf -> pf.getCustomerId() + "::" + pf.getAccountNumber())
-                .distinct()
-                .count());
+                // Normalize ARC suffix if any
+                accountNumber = accountNumber.replaceAll("_ARC$", "");
 
-        long total = processedFileEntries.size();
-        long success = processedFileEntries.stream()
-                .filter(entry -> "SUCCESS".equalsIgnoreCase(entry.getOverAllStatusCode()))
-                .count();
-        long failed = processedFileEntries.stream()
-                .filter(entry -> "FAILED".equalsIgnoreCase(entry.getOverAllStatusCode()))
-                .count();
-
-        String overallStatus;
-        if (success == total) {
-            overallStatus = "SUCCESS";
-        } else if (failed == total) {
-            overallStatus = "FAILED";
-        } else {
-            overallStatus = "PARTIAL";
+                String key = customerId + "|" + accountNumber;
+                failedOutputMethods
+                    .computeIfAbsent(key, k -> new HashSet<>())
+                    .add(failedMethod);
+            }
         }
-
-        metadata.setProcessingStatus(overallStatus);
-        metadata.setEventOutcomeCode("0");
-        metadata.setEventOutcomeDescription(overallStatus.toLowerCase());
-        payload.setMetadata(metadata);
-
-        return payload;
+    } catch (IOException e) {
+        log.error("Error reading ErrorReport: {}", e.getMessage(), e);
     }
 
-    private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
-        List<ProcessedFileEntry> finalList = new ArrayList<>();
+    return failedOutputMethods;
+}
 
-        Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
-                .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
-                .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber()));
 
-        for (Map.Entry<String, List<SummaryProcessedFile>> group : grouped.entrySet()) {
-            String[] parts = group.getKey().split("::");
-            String customerId = parts[0];
-            String accountNumber = parts[1];
+======================
+public static List<ProcessedFileEntry> buildProcessedFileEntries(
+    List<SummaryProcessedFile> processedList,
+    Map<String, Set<String>> stdRequestedMap,
+    Map<String, String> errorReportMap
+) {
+    Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
+        .collect(Collectors.groupingBy(spf -> spf.getCustomerId() + "::" + spf.getAccountNumber()));
 
-            Map<String, SummaryProcessedFile> methodMap = new HashMap<>();
-            Map<String, SummaryProcessedFile> archiveMap = new HashMap<>();
+    List<ProcessedFileEntry> result = new ArrayList<>();
 
-            for (SummaryProcessedFile file : group.getValue()) {
-                String method = file.getOutputMethod();
-                if (method == null) continue;
+    for (Map.Entry<String, List<SummaryProcessedFile>> entry : grouped.entrySet()) {
+        String customerKey = entry.getKey();
+        List<SummaryProcessedFile> list = entry.getValue();
 
-                switch (method.toUpperCase()) {
-                    case "EMAIL", "MOBSTAT", "PRINT" -> methodMap.put(method.toUpperCase(), file);
-                    case "ARCHIVE" -> {
-                        String linked = file.getLinkedDeliveryType();
-                        if (linked != null) {
-                            archiveMap.put(linked.toUpperCase(), file);
-                        }
-                    }
-                }
-            }
+        Set<String> requestedMethods = stdRequestedMap.getOrDefault(customerKey, new HashSet<>());
+        Map<String, String> typeToStatus = new HashMap<>();
 
-            ProcessedFileEntry entry = new ProcessedFileEntry();
-            entry.setCustomerId(customerId);
-            entry.setAccountNumber(accountNumber);
+        // Collect status for each type present
+        for (SummaryProcessedFile spf : list) {
+            String type = spf.getLinkedDeliveryType();
+            typeToStatus.put(type, spf.getStatus());
+        }
 
-            List<String> statuses = new ArrayList<>();
-            boolean hasSuccess = false;
+        Set<String> successSet = new HashSet<>();
+        Set<String> failedSet = new HashSet<>();
+        Set<String> missingSet = new HashSet<>();
 
-            for (String type : List.of("EMAIL", "MOBSTAT", "PRINT")) {
-                SummaryProcessedFile delivery = methodMap.get(type);
-                SummaryProcessedFile archive = archiveMap.get(type);
-
-                String deliveryStatus = null, archiveStatus = null;
-
-                if (delivery != null) {
-                    String url = delivery.getBlobURL();
-                    deliveryStatus = delivery.getStatus();
-                    String reason = delivery.getStatusDescription();
-
-                    switch (type) {
-                        case "EMAIL" -> {
-                            entry.setPdfEmailFileUrl(url);
-                            entry.setPdfEmailFileUrlStatus(deliveryStatus);
-                            if ("FAILED".equalsIgnoreCase(deliveryStatus)) entry.setReason(reason);
-                        }
-                        case "MOBSTAT" -> {
-                            entry.setPdfMobstatFileUrl(url);
-                            entry.setPdfMobstatFileUrlStatus(deliveryStatus);
-                            if ("FAILED".equalsIgnoreCase(deliveryStatus)) entry.setReason(reason);
-                        }
-                        case "PRINT" -> {
-                            entry.setPrintFileUrl(url);
-                            entry.setPrintFileUrlStatus(deliveryStatus);
-                            if ("FAILED".equalsIgnoreCase(deliveryStatus)) entry.setReason(reason);
-                        }
-                    }
-
-                    if ("SUCCESS".equalsIgnoreCase(deliveryStatus)) hasSuccess = true;
-                }
-
-                if (archive != null) {
-                    archiveStatus = archive.getStatus();
-                    String aUrl = archive.getBlobURL();
-
-                    entry.setPdfArchiveFileUrl(aUrl); // shared field
-                    entry.setPdfArchiveFileUrlStatus(archiveStatus);
-
-                    if ("FAILED".equalsIgnoreCase(archiveStatus) && entry.getReason() == null) {
-                        entry.setReason(archive.getStatusDescription());
-                    }
-
-                    if ("SUCCESS".equalsIgnoreCase(archiveStatus)) hasSuccess = true;
-                }
-
-                // Record method-level status only if at least one file is present
-                if (deliveryStatus != null || archiveStatus != null) {
-                    if ("SUCCESS".equalsIgnoreCase(deliveryStatus) && "SUCCESS".equalsIgnoreCase(archiveStatus)) {
-                        statuses.add("SUCCESS");
-                    } else if ("FAILED".equalsIgnoreCase(deliveryStatus) && "FAILED".equalsIgnoreCase(archiveStatus)) {
-                        statuses.add("FAILED");
-                    } else {
-                        statuses.add("PARTIAL");
-                    }
-                }
-            }
-
-            // ✅ Skip if no file for this customer is SUCCESS
-            if (!hasSuccess) continue;
-
-            // ✅ Determine overall status
-            if (statuses.stream().allMatch(s -> "SUCCESS".equals(s))) {
-                entry.setOverAllStatusCode("SUCCESS");
-            } else if (statuses.stream().allMatch(s -> "FAILED".equals(s))) {
-                entry.setOverAllStatusCode("FAILED");
+        for (String reqType : requestedMethods) {
+            String status = typeToStatus.get(reqType);
+            if ("SUCCESS".equalsIgnoreCase(status)) {
+                successSet.add(reqType);
+            } else if ("FAILED".equalsIgnoreCase(status)) {
+                failedSet.add(reqType);
             } else {
-                entry.setOverAllStatusCode("PARTIAL");
+                // Not present or not found
+                missingSet.add(reqType);
             }
-
-            finalList.add(entry);
         }
 
-        return finalList;
+        // Now handle missing types using ErrorReport
+        for (String missing : new HashSet<>(missingSet)) {
+            String errVal = errorReportMap.get(customerKey);
+            if (errVal != null && errVal.equalsIgnoreCase(missing)) {
+                failedSet.add(missing);
+            } else {
+                // Not in error report either → Partial
+                // Just leave it in missingSet
+            }
+        }
+
+        // Compute final status
+        String finalStatus;
+        if (successSet.containsAll(requestedMethods)) {
+            finalStatus = "SUCCESS";
+        } else if (failedSet.containsAll(requestedMethods)) {
+            finalStatus = "FAILED";
+        } else {
+            finalStatus = "PARTIAL";
+        }
+
+        // Build processed entry
+        SummaryProcessedFile sample = list.get(0);
+        ProcessedFileEntry processed = new ProcessedFileEntry();
+        processed.setCustomerId(sample.getCustomerId());
+        processed.setAccountNumber(sample.getAccountNumber());
+        processed.setStatus(finalStatus);
+        processed.setFiles(list);
+        result.add(processed);
     }
+
+    return result;
 }
