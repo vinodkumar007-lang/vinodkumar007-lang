@@ -1,55 +1,123 @@
-private Map<String, Map<String, String>> parseErrorReport(KafkaMessage msg) {
-    Map<String, Map<String, String>> result = new HashMap<>();
-    try {
-        String jobRootPath = "/mnt/nfs/dev-exstream/dev-SA/jobs";
-        Path jobRoot = Paths.get(jobRootPath);
-        String jobId = msg.getJobName();
+private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+            Path jobDir,
+            List<SummaryProcessedFile> customerList,
+            Map<String, Map<String, String>> errorMap,
+            KafkaMessage msg) throws IOException {
 
-        // Find all ErrorReport.csv files under this job's path
-        Path jobPath = jobRoot.resolve(jobId);
-        if (!Files.exists(jobPath)) {
-            logger.warn("❌ Job path not found: {}", jobPath);
-            return result;
-        }
+        List<String> folders = List.of("email", "archive", "mobstat", "print");
+        Map<String, String> folderToOutputMethod = Map.of(
+                "email", "EMAIL",
+                "archive", "ARCHIVE",
+                "mobstat", "MOBSTAT",
+                "print", "PRINT"
+        );
 
-        logger.info("🔍 Searching ErrorReport.csv under: {}", jobPath);
+        List<SummaryProcessedFile> finalList = new ArrayList<>();
 
-        try (Stream<Path> stream = Files.walk(jobPath)) {
-            Optional<Path> reportFile = stream
-                    .filter(path -> path.getFileName().toString().equalsIgnoreCase("ErrorReport.csv"))
-                    .findFirst();
+        for (SummaryProcessedFile customer : customerList) {
+            String account = customer.getAccountNumber();
+            String customerId = customer.getCustomerId();
+            Map<String, Boolean> methodAdded = new HashMap<>();
 
-            if (reportFile.isEmpty()) {
-                logger.warn("⚠️ ErrorReport.csv not found under job {}", jobId);
-                return result;
+            for (String folder : folders) {
+                methodAdded.put(folder, false);
+                Path folderPath = jobDir.resolve(folder);
+                if (!Files.exists(folderPath)) continue;
+
+                Optional<Path> match = Files.list(folderPath)
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().contains(account))
+                        .findFirst();
+
+                String method = folderToOutputMethod.get(folder);
+
+                if (match.isPresent()) {
+                    Path filePath = match.get();
+                    File file = filePath.toFile();
+                    String blobUrl = blobStorageService.uploadFileByMessage(file, folder, msg);
+
+                    SummaryProcessedFile entry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, entry);
+                    entry.setOutputMethod(method);
+                    entry.setBlobURL(blobUrl);
+
+                    if (errorMap.containsKey(account) && errorMap.get(account).containsKey(method)) {
+                        String status = errorMap.get(account).get(method);
+                        if ("FAILED".equalsIgnoreCase(status)) {
+                            entry.setStatus("FAILED");
+                            entry.setStatusDescription("Marked as FAILED from ErrorReport");
+                        } else {
+                            entry.setStatus("PARTIAL");
+                            entry.setStatusDescription("Marked as PARTIAL from ErrorReport");
+                        }
+                    } else {
+                        entry.setStatus("SUCCESS");
+                        entry.setStatusDescription("No error found in ErrorReport");
+                    }
+
+                    if ("archive".equals(folder)) {
+                        for (String deliveryFolder : List.of("email", "mobstat", "print")) {
+                            Path deliveryPath = jobDir.resolve(deliveryFolder);
+                            if (Files.exists(deliveryPath)) {
+                                boolean found = Files.list(deliveryPath)
+                                        .filter(Files::isRegularFile)
+                                        .anyMatch(p -> p.getFileName().toString().contains(account));
+                                if (found) {
+                                    entry.setLinkedDeliveryType(deliveryFolder.toUpperCase());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    finalList.add(entry);
+                    methodAdded.put(folder, true);
+                }
             }
 
-            Path reportPath = reportFile.get();
-            logger.info("✅ Found ErrorReport.csv at: {}", reportPath);
+            // Add placeholders for missing methods based on errorMap
+            for (String folder : folders) {
+                if (methodAdded.get(folder)) continue;
+                Path folderPath = jobDir.resolve(folder);
+                if (!Files.exists(folderPath)) continue;
 
-            try (BufferedReader reader = Files.newBufferedReader(reportPath)) {
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String[] parts = line.split("\\|");
+                String method = folderToOutputMethod.get(folder);
 
-                    if (parts.length >= 3) {
-                        String account = parts[0].trim();
-                        String method = (parts.length >= 4 ? parts[3] : parts[2]).trim().toUpperCase();
-                        String status = (parts.length >= 5 ? parts[4] : (parts.length >= 4 ? parts[3] : "Failed")).trim();
+                SummaryProcessedFile entry = new SummaryProcessedFile();
+                BeanUtils.copyProperties(customer, entry);
+                entry.setOutputMethod(method);
 
-                        if (method.isEmpty()) method = "UNKNOWN";
-                        if (status.isEmpty()) status = "Failed";
+                if (errorMap.containsKey(account) && errorMap.get(account).containsKey(method)) {
+                    String status = errorMap.get(account).get(method);
+                    if ("FAILED".equalsIgnoreCase(status)) {
+                        entry.setStatus("FAILED");
+                        entry.setStatusDescription("Marked as FAILED from ErrorReport");
+                    } else {
+                        entry.setStatus("PARTIAL");
+                        entry.setStatusDescription("Marked as PARTIAL from ErrorReport");
+                    }
+                } else {
+                    continue; // Skip adding if not in folder and no error entry
+                }
 
-                        result.computeIfAbsent(account, k -> new HashMap<>()).put(method, status);
+                if ("archive".equals(folder)) {
+                    for (String deliveryFolder : List.of("email", "mobstat", "print")) {
+                        Path deliveryPath = jobDir.resolve(deliveryFolder);
+                        if (Files.exists(deliveryPath)) {
+                            boolean found = Files.list(deliveryPath)
+                                    .filter(Files::isRegularFile)
+                                    .anyMatch(p -> p.getFileName().toString().contains(account));
+                            if (found) {
+                                entry.setLinkedDeliveryType(deliveryFolder.toUpperCase());
+                                break;
+                            }
+                        }
                     }
                 }
-            } catch (IOException e) {
-                logger.error("❌ Error reading ErrorReport.csv: {}", e.getMessage(), e);
+
+                finalList.add(entry);
             }
         }
-    } catch (Exception ex) {
-        logger.error("❌ Failed to parse error report: {}", ex.getMessage(), ex);
-    }
 
-    return result;
-}
+        return finalList;
+    }
