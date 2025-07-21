@@ -10,7 +10,6 @@ import org.springframework.stereotype.Component;
 import java.io.File;
 import java.nio.file.*;
 import java.util.*;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Component
@@ -55,7 +54,8 @@ public class SummaryJsonWriter {
             String summaryBlobUrl,
             String fileName,
             String batchId,
-            String timestamp,Map<String, Map<String, String>> errorMap
+            String timestamp,
+            Map<String, Set<String>> errorMap // key = customerId::accountNumber, value = Set of failed outputTypes
     ) {
         SummaryPayload payload = new SummaryPayload();
         payload.setBatchID(batchId);
@@ -73,19 +73,10 @@ public class SummaryJsonWriter {
         header.setJobName(kafkaMessage.getSourceSystem());
         payload.setHeader(header);
 
-        List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
+        List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList, errorMap);
         payload.setProcessedFileList(processedFileEntries);
 
-        int totalFileUrls = processedFileEntries.stream()
-                .mapToInt(entry -> {
-                    int count = 0;
-                    if (entry.getPdfEmailFileUrl() != null && !entry.getPdfEmailFileUrl().isBlank()) count++;
-                    if (entry.getPdfArchiveFileUrl() != null && !entry.getPdfArchiveFileUrl().isBlank()) count++;
-                    if (entry.getPdfMobstatFileUrl() != null && !entry.getPdfMobstatFileUrl().isBlank()) count++;
-                    if (entry.getPrintFileUrl() != null && !entry.getPrintFileUrl().isBlank()) count++;
-                    return count;
-                })
-                .sum();
+        int totalFileUrls = processedFileEntries.size();
 
         Payload payloadInfo = new Payload();
         payloadInfo.setUniqueECPBatchRef(kafkaMessage.getUniqueECPBatchRef());
@@ -127,7 +118,10 @@ public class SummaryJsonWriter {
         return payload;
     }
 
-    private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
+    private static List<ProcessedFileEntry> buildProcessedFileEntries(
+            List<SummaryProcessedFile> processedList,
+            Map<String, Set<String>> errorMap
+    ) {
         List<ProcessedFileEntry> finalList = new ArrayList<>();
 
         Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
@@ -138,108 +132,58 @@ public class SummaryJsonWriter {
             String[] parts = entry.getKey().split("::");
             String customerId = parts[0];
             String accountNumber = parts[1];
+            List<SummaryProcessedFile> records = entry.getValue();
 
-            ProcessedFileEntry result = new ProcessedFileEntry();
-            result.setCustomerId(customerId);
-            result.setAccountNumber(accountNumber);
+            Map<String, SummaryProcessedFile> typeMap = records.stream()
+                    .collect(Collectors.toMap(SummaryProcessedFile::getOutputType, f -> f, (a, b) -> a));
 
-            boolean hasFailed = false;
-            boolean hasNotFound = false;
+            SummaryProcessedFile archive = typeMap.get("ARCHIVE");
+            if (archive == null) continue;
 
-            for (SummaryProcessedFile file : entry.getValue()) {
-                String status = file.getStatus();
-                String blobUrl = file.getBlobURL();
-                String method = file.getOutputType();
+            for (String outputMethod : List.of("EMAIL", "PRINT", "MOBSTAT")) {
+                SummaryProcessedFile output = typeMap.get(outputMethod);
 
-                if ("FAILED".equalsIgnoreCase(status)) hasFailed = true;
-                if ("NOT-FOUND".equalsIgnoreCase(status)) hasNotFound = true;
+                ProcessedFileEntry entryObj = new ProcessedFileEntry();
+                entryObj.setCustomerId(customerId);
+                entryObj.setAccountNumber(accountNumber);
+                entryObj.setOutputMethod(outputMethod);
 
-                switch (method.toUpperCase()) {
-                    case "EMAIL":
-                        result.setPdfEmailFileUrl(blobUrl);
-                        result.setPdfEmailFileUrlStatus(status);
+                // Archive info
+                entryObj.setArchiveBlobUrl(archive.getBlobUrl());
+                entryObj.setArchiveStatus(archive.getStatus());
+
+                if (output != null) {
+                    entryObj.setOutputBlobUrl(output.getBlobUrl());
+                    entryObj.setOutputStatus(output.getStatus());
+                } else {
+                    String key = customerId + "::" + accountNumber;
+                    Set<String> failedOutputs = errorMap.getOrDefault(key, Collections.emptySet());
+
+                    entryObj.setOutputBlobUrl(null);
+                    if (failedOutputs.contains(outputMethod)) {
+                        entryObj.setOutputStatus("FAILED");
+                    } else {
+                        entryObj.setOutputStatus("NOT-FOUND");
+                    }
+                }
+
+                switch (entryObj.getOutputStatus()) {
+                    case "SUCCESS":
+                        entryObj.setOverallStatus("SUCCESS");
                         break;
-                    case "ARCHIVE":
-                        result.setPdfArchiveFileUrl(blobUrl);
-                        result.setPdfArchiveFileUrlStatus(status);
+                    case "FAILED":
+                        entryObj.setOverallStatus("FAILED");
                         break;
-                    case "PRINT":
-                        result.setPrintFileUrl(blobUrl);
-                        result.setPrintFileUrlStatus(status);
-                        break;
-                    case "MOBSTAT":
-                        result.setPdfMobstatFileUrl(blobUrl);
-                        result.setPdfMobstatFileUrlStatus(status);
+                    case "NOT-FOUND":
+                    default:
+                        entryObj.setOverallStatus("PARTIAL");
                         break;
                 }
-            }
 
-            // Set overall status
-            if (hasFailed) {
-                result.setOverAllStatusCode("FAILED");
-            } else if (hasNotFound) {
-                result.setOverAllStatusCode("PARTIAL");
-            } else {
-                result.setOverAllStatusCode("SUCCESS");
+                finalList.add(entryObj);
             }
-
-            finalList.add(result);
         }
 
         return finalList;
-    }
-
-    private static String determineOverallStatus(ProcessedFileEntry pf, Map<String, String> methodErrors) {
-        List<String> methods = new ArrayList<>();
-
-        if (pf.getPdfEmailFileUrlStatus() != null) {
-            methods.add("EMAIL");
-            methods.add("ARCHIVE");
-        } else if (pf.getPdfMobstatFileUrlStatus() != null) {
-            methods.add("MOBSTAT");
-            methods.add("ARCHIVE");
-        } else if (pf.getPrintFileUrlStatus() != null) {
-            methods.add("PRINT");
-            methods.add("ARCHIVE");
-        }
-
-        int successCount = 0;
-        int failedInErrorMapCount = 0;
-        int failedNotInErrorMapCount = 0;
-
-        for (String method : methods) {
-            String status = getStatusByMethod(pf, method);
-            if ("SUCCESS".equalsIgnoreCase(status)) {
-                successCount++;
-            } else if ("FAILED".equalsIgnoreCase(status)) {
-                if (methodErrors.containsKey(method)) {
-                    failedInErrorMapCount++;
-                } else {
-                    failedNotInErrorMapCount++;
-                }
-            }
-        }
-
-        if (successCount == methods.size()) {
-            return "SUCCESS";
-        } else if (failedInErrorMapCount > 0) {
-            return "FAILED";
-        } else {
-            return "PARTIAL";
-        }
-    }
-    private static String getStatusByMethod(ProcessedFileEntry pf, String method) {
-        switch (method.toUpperCase()) {
-            case "EMAIL":
-                return pf.getPdfEmailFileUrlStatus();
-            case "ARCHIVE":
-                return pf.getPdfArchiveFileUrlStatus();
-            case "MOBSTAT":
-                return pf.getPdfMobstatFileUrlStatus();
-            case "PRINT":
-                return pf.getPrintFileUrlStatus();
-            default:
-                return null;
-        }
     }
 }
