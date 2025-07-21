@@ -1,97 +1,3 @@
-private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
-    Map<String, ProcessedFileEntry> entryMap = new LinkedHashMap<>();
-
-    Map<String, List<SummaryProcessedFile>> groupedFiles = processedList.stream()
-            .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
-            .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber(), LinkedHashMap::new, Collectors.toList()));
-
-    for (Map.Entry<String, List<SummaryProcessedFile>> group : groupedFiles.entrySet()) {
-        String key = group.getKey();
-        List<SummaryProcessedFile> files = group.getValue();
-        String[] parts = key.split("::", 2);
-
-        String customerId = parts[0];
-        String accountNumber = parts[1];
-
-        for (String method : List.of("email", "mobstat", "print")) {
-            SummaryProcessedFile deliveryFile = null;
-            SummaryProcessedFile archiveFile = null;
-
-            for (SummaryProcessedFile file : files) {
-                String outputMethod = file.getOutputMethod();
-                if (outputMethod == null) continue;
-
-                if (outputMethod.equalsIgnoreCase(method)) {
-                    deliveryFile = file;
-                } else if (outputMethod.equalsIgnoreCase("archive")
-                        && method.equalsIgnoreCase(file.getLinkedDeliveryType())) {
-                    archiveFile = file;
-                }
-            }
-
-            if (deliveryFile != null || archiveFile != null) {
-                ProcessedFileEntry entry = new ProcessedFileEntry();
-                entry.setCustomerId(customerId);
-                entry.setAccountNumber(accountNumber);
-
-                // delivery part
-                if (deliveryFile != null) {
-                    String status = deliveryFile.getStatus();
-                    String blobURL = deliveryFile.getBlobURL();
-
-                    switch (method) {
-                        case "email" -> {
-                            entry.setPdfEmailFileUrl(blobURL);
-                            entry.setPdfEmailFileUrlStatus(status);
-                        }
-                        case "mobstat" -> {
-                            entry.setPdfMobstatFileUrl(blobURL);
-                            entry.setPdfMobstatFileUrlStatus(status);
-                        }
-                        case "print" -> {
-                            entry.setPrintFileUrl(blobURL);
-                            entry.setPrintFileUrlStatus(status);
-                        }
-                    }
-                    if ("FAILED".equalsIgnoreCase(status)) {
-                        entry.setReason(deliveryFile.getStatusDescription());
-                    }
-                }
-
-                // archive part
-                if (archiveFile != null) {
-                    String archStatus = archiveFile.getStatus();
-                    String archUrl = archiveFile.getBlobURL();
-                    entry.setPdfArchiveFileUrl(archUrl);
-                    entry.setPdfArchiveFileUrlStatus(archStatus);
-
-                    if ("FAILED".equalsIgnoreCase(archStatus)) {
-                        entry.setReason(archiveFile.getStatusDescription());
-                    }
-                }
-
-                // ✅ Compute overallStatus
-                boolean deliverySuccess = deliveryFile != null && "SUCCESS".equalsIgnoreCase(deliveryFile.getStatus());
-                boolean archiveSuccess = archiveFile != null && "SUCCESS".equalsIgnoreCase(archiveFile.getStatus());
-
-                String overall;
-                if (deliverySuccess && archiveSuccess) {
-                    overall = "SUCCESS";
-                } else if (!deliverySuccess && !archiveSuccess) {
-                    overall = "FAILURE";
-                } else {
-                    overall = "PARTIAL";
-                }
-
-                entry.setOverAllStatusCode(overall);
-                entryMap.put(customerId + "::" + accountNumber + "::" + method, entry);
-            }
-        }
-    }
-
-    return new ArrayList<>(entryMap.values());
-}
-
 private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         Path jobDir,
         List<SummaryProcessedFile> customerList,
@@ -106,8 +12,8 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             "print", "PRINT"
     );
 
+    List<SummaryProcessedFile> processedList = new ArrayList<>();
     Map<String, SummaryProcessedFile> archiveMap = new HashMap<>();
-    List<SummaryProcessedFile> resultList = new ArrayList<>();
 
     for (SummaryProcessedFile base : customerList) {
         String customerId = base.getCustomerId();
@@ -119,7 +25,6 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             BeanUtils.copyProperties(base, spf);
             spf.setOutputMethod(outputMethod);
 
-            String key = customerId + "::" + accountNumber + "::" + outputMethod;
             String blobUrl = getBlobUrlForCustomerAccount(folder, jobDir, customerId, accountNumber);
             spf.setBlobUrl(blobUrl);
 
@@ -129,43 +34,37 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                 spf.setStatus("FAILED");
             }
 
-            if (outputMethod.equals("ARCHIVE")) {
-                archiveMap.put(customerId + "::" + accountNumber, spf);
-                continue; // don't add ARCHIVE directly yet
+            if ("ARCHIVE".equals(outputMethod)) {
+                String archiveKey = customerId + "::" + accountNumber;
+                archiveMap.put(archiveKey, spf);
+                continue; // skip adding ARCHIVE for now
             }
 
-            // Pair this EMAIL/MOBSTAT/PRINT with its ARCHIVE (if exists)
-            SummaryProcessedFile archiveSpf = archiveMap.get(customerId + "::" + accountNumber);
-
-            SummaryProcessedFile combined = new SummaryProcessedFile();
-            combined.setCustomerId(customerId);
-            combined.setAccountNumber(accountNumber);
-
-            combined.setOutputMethod(outputMethod);
-            combined.setBlobUrl(spf.getBlobUrl());
-            combined.setStatus(spf.getStatus());
-
-            combined.setArchiveOutputMethod("ARCHIVE");
+            // Attach archive info if available
+            String matchKey = customerId + "::" + accountNumber;
+            SummaryProcessedFile archiveSpf = archiveMap.get(matchKey);
             if (archiveSpf != null) {
-                combined.setArchiveBlobUrl(archiveSpf.getBlobUrl());
-                combined.setArchiveStatus(archiveSpf.getStatus());
+                spf.setArchiveOutputMethod("ARCHIVE");
+                spf.setArchiveBlobUrl(archiveSpf.getBlobUrl());
+                spf.setArchiveStatus(archiveSpf.getStatus());
             } else {
-                combined.setArchiveBlobUrl(null);
-                combined.setArchiveStatus("FAILED");
+                spf.setArchiveOutputMethod("ARCHIVE");
+                spf.setArchiveBlobUrl(null);
+                spf.setArchiveStatus("FAILED");
             }
 
             // Set overallStatus
-            if ("SUCCESS".equals(spf.getStatus()) && "SUCCESS".equals(combined.getArchiveStatus())) {
-                combined.setOverallStatus("SUCCESS");
-            } else if ("FAILED".equals(spf.getStatus()) && "FAILED".equals(combined.getArchiveStatus())) {
-                combined.setOverallStatus("FAILED");
+            if ("SUCCESS".equals(spf.getStatus()) && "SUCCESS".equals(spf.getArchiveStatus())) {
+                spf.setOverallStatus("SUCCESS");
+            } else if ("FAILED".equals(spf.getStatus()) && "FAILED".equals(spf.getArchiveStatus())) {
+                spf.setOverallStatus("FAILED");
             } else {
-                combined.setOverallStatus("PARTIAL");
+                spf.setOverallStatus("PARTIAL");
             }
 
-            resultList.add(combined);
+            processedList.add(spf);
         }
     }
 
-    return resultList;
+    return processedList;
 }
