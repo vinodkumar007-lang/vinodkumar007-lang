@@ -1,6 +1,7 @@
 private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
     List<ProcessedFileEntry> finalList = new ArrayList<>();
 
+    // Group by customerId + accountNumber
     Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
         .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
         .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber()));
@@ -10,51 +11,48 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryPr
         String customerId = parts[0];
         String accountNumber = parts[1];
 
-        ProcessedFileEntry result = new ProcessedFileEntry();
-        result.setCustomerId(customerId);
-        result.setAccountNumber(accountNumber);
+        // Separate by output types
+        Map<String, SummaryProcessedFile> typeMap = entry.getValue().stream()
+            .collect(Collectors.toMap(SummaryProcessedFile::getOutputType, f -> f, (a, b) -> a));
 
-        boolean hasFailed = false;
-        boolean hasNotFound = false;
+        // Loop over EMAIL, MOBSTAT, PRINT
+        for (String type : List.of("EMAIL", "MOBSTAT", "PRINT")) {
+            SummaryProcessedFile main = typeMap.get(type);
+            SummaryProcessedFile archive = typeMap.get("ARCHIVE");
 
-        for (SummaryProcessedFile file : entry.getValue()) {
-            String status = file.getStatus();
-            String blobUrl = file.getBlobUrl();
-            String method = file.getOutputType();
+            if (archive == null) continue; // Skip if archive missing, as per your rule
 
-            if ("FAILED".equalsIgnoreCase(status)) hasFailed = true;
-            if ("NOT-FOUND".equalsIgnoreCase(status)) hasNotFound = true;
+            ProcessedFileEntry entryObj = new ProcessedFileEntry();
+            entryObj.setCustomerId(customerId);
+            entryObj.setAccountNumber(accountNumber);
+            entryObj.setOutputType(type);
 
-            switch (method.toUpperCase()) {
-                case "EMAIL":
-                    result.setEmailUrl(blobUrl);
-                    result.setEmailStatus(status);
-                    break;
-                case "ARCHIVE":
-                    result.setArchiveUrl(blobUrl);
-                    result.setArchiveStatus(status);
-                    break;
-                case "PRINT":
-                    result.setPrintUrl(blobUrl);
-                    result.setPrintStatus(status);
-                    break;
-                case "MOBSTAT":
-                    result.setMobstatUrl(blobUrl);
-                    result.setMobstatStatus(status);
-                    break;
+            // Set archive fields (always mandatory)
+            entryObj.setArchiveBlobUrl(archive.getBlobUrl());
+            entryObj.setArchiveStatus(archive.getStatus());
+
+            // Set outputType specific fields
+            if (main != null) {
+                entryObj.setOutputBlobUrl(main.getBlobUrl());
+                entryObj.setOutputStatus(main.getStatus());
+            } else {
+                // Not found scenario: no record in file
+                entryObj.setOutputBlobUrl(null);
+                entryObj.setOutputStatus("NOT-FOUND");
             }
-        }
 
-        // Set overall status
-        if (hasFailed) {
-            result.setOverallStatus("FAILED");
-        } else if (hasNotFound) {
-            result.setOverallStatus("PARTIAL");
-        } else {
-            result.setOverallStatus("SUCCESS");
-        }
+            // Determine overallStatus
+            String outputStatus = entryObj.getOutputStatus();
+            if ("SUCCESS".equalsIgnoreCase(outputStatus)) {
+                entryObj.setOverallStatus("SUCCESS");
+            } else if ("FAILED".equalsIgnoreCase(outputStatus)) {
+                entryObj.setOverallStatus("FAILED");
+            } else {
+                entryObj.setOverallStatus("PARTIAL");
+            }
 
-        finalList.add(result);
+            finalList.add(entryObj);
+        }
     }
 
     return finalList;
