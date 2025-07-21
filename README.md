@@ -1,10 +1,10 @@
 private static List<ProcessedFileEntry> buildProcessedFileEntries(
         List<SummaryProcessedFile> processedList,
-        Map<String, Map<String, String>> errorMap // key = customerId::accountNumber, value = Map<outputType, reason>
-) {
+        Map<String, String> errorMap,
+        Map<String, String> archiveUrlMap) {
+
     List<ProcessedFileEntry> finalList = new ArrayList<>();
 
-    // Group by customerId::accountNumber
     Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
             .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
             .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber()));
@@ -13,77 +13,57 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         String[] parts = entry.getKey().split("::");
         String customerId = parts[0];
         String accountNumber = parts[1];
-        List<SummaryProcessedFile> records = entry.getValue();
 
-        // Map of outputType -> SummaryProcessedFile
-        Map<String, SummaryProcessedFile> typeMap = records.stream()
-                .collect(Collectors.toMap(SummaryProcessedFile::getOutputType, f -> f, (a, b) -> a));
+        // Archive must be present — skip if missing
+        String archiveKey = customerId + "|" + accountNumber;
+        String archiveUrl = archiveUrlMap.get(archiveKey);
+        if (archiveUrl == null) continue;
 
-        SummaryProcessedFile archive = typeMap.get("ARCHIVE");
-        if (archive == null) continue; // skip if archive missing
+        List<SummaryProcessedFile> customerFiles = entry.getValue();
 
-        for (String outputMethod : List.of("EMAIL", "PRINT", "MOBSTAT")) {
-            SummaryProcessedFile output = typeMap.get(outputMethod);
+        for (String method : Arrays.asList("EMAIL", "MOBSTAT", "PRINT")) {
+            ProcessedFileEntry fileEntry = new ProcessedFileEntry();
+            fileEntry.setCustomerId(customerId);
+            fileEntry.setAccountNumber(accountNumber);
+            fileEntry.setOutputMethod(method);
 
-            ProcessedFileEntry entryObj = new ProcessedFileEntry();
-            entryObj.setCustomerId(customerId);
-            entryObj.setAccountNumber(accountNumber);
-            entryObj.setOutputMethod(outputMethod);
+            Optional<SummaryProcessedFile> match = customerFiles.stream()
+                    .filter(f -> method.equalsIgnoreCase(f.getOutputType()))
+                    .findFirst();
 
-            // Archive info
-            entryObj.setArchiveBlobUrl(archive.getBlobUrl());
-            entryObj.setArchiveStatus(archive.getStatus());
+            String errorKey = customerId + "|" + accountNumber + "|" + method;
+            boolean hasError = errorMap.containsKey(errorKey);
 
-            // Output method info
-            if (output != null) {
-                entryObj.setOutputBlobUrl(output.getBlobUrl());
-                entryObj.setOutputStatus(output.getStatus());
-            } else {
-                String key = customerId + "::" + accountNumber;
-                Map<String, String> failedOutputs = errorMap.getOrDefault(key, Collections.emptyMap());
+            if (match.isPresent()) {
+                SummaryProcessedFile matched = match.get();
+                fileEntry.setOutputBlobUrl(matched.getBlobUrl());
 
-                entryObj.setOutputBlobUrl(null);
-                if (failedOutputs.containsKey(outputMethod)) {
-                    entryObj.setOutputStatus("FAILED");
+                if (hasError || matched.getBlobUrl() == null) {
+                    fileEntry.setOutputStatus("FAILED");
                 } else {
-                    entryObj.setOutputStatus("NOT-FOUND");
+                    fileEntry.setOutputStatus("SUCCESS");
                 }
+            } else {
+                fileEntry.setOutputBlobUrl(null);
+                fileEntry.setOutputStatus("NOT-FOUND");
             }
 
-            // Overall status
-            switch (entryObj.getOutputStatus()) {
-                case "SUCCESS":
-                    entryObj.setOverallStatus("SUCCESS");
-                    break;
-                case "FAILED":
-                    entryObj.setOverallStatus("FAILED");
-                    break;
-                case "NOT-FOUND":
-                default:
-                    entryObj.setOverallStatus("PARTIAL");
-                    break;
+            // Archive always present at this point
+            fileEntry.setArchiveBlobUrl(archiveUrl);
+            fileEntry.setArchiveStatus("SUCCESS");
+
+            // Overall status logic
+            if ("SUCCESS".equals(fileEntry.getOutputStatus()) && "SUCCESS".equals(fileEntry.getArchiveStatus())) {
+                fileEntry.setOverallStatus("SUCCESS");
+            } else if (!"FAILED".equals(fileEntry.getOutputStatus())) {
+                fileEntry.setOverallStatus("PARTIAL");
+            } else {
+                fileEntry.setOverallStatus("FAILED");
             }
 
-            finalList.add(entryObj);
+            finalList.add(fileEntry);
         }
     }
 
     return finalList;
-}
-
-import lombok.Data;
-
-@Data
-public class ProcessedFileEntry {
-    private String customerId;
-    private String accountNumber;
-    private String outputMethod;
-
-    private String archiveBlobUrl;
-    private String archiveStatus;
-
-    private String outputBlobUrl;
-    private String outputStatus;
-
-    private String overallStatus;
 }
