@@ -1,88 +1,98 @@
-private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
-    List<ProcessedFileEntry> finalList = new ArrayList<>();
+public static List<SummaryProcessedFile> buildDetailedProcessedFiles(
+        List<SummaryProcessedFile> originalList,
+        Map<String, Map<String, String>> errorMap) {
 
-    // Group by customerId::accountNumber
-    Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
+    List<SummaryProcessedFile> finalList = new ArrayList<>();
+
+    Map<String, List<SummaryProcessedFile>> grouped = originalList.stream()
             .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
             .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber()));
 
+    List<String> methods = Arrays.asList("EMAIL", "ARCHIVE", "PRINT", "MOBSTAT");
+
     for (Map.Entry<String, List<SummaryProcessedFile>> entry : grouped.entrySet()) {
-        List<SummaryProcessedFile> files = entry.getValue();
+        String[] keys = entry.getKey().split("::");
+        String custId = keys[0];
+        String accNum = keys[1];
 
-        String customerId = files.get(0).getCustomerId();
-        String accountNumber = files.get(0).getAccountNumber();
+        Map<String, SummaryProcessedFile> methodMap = entry.getValue().stream()
+                .collect(Collectors.toMap(SummaryProcessedFile::getOutputType, f -> f));
 
-        boolean hasFailed = false;
-        boolean hasNotFound = false;
-        boolean allSuccess = true;
+        for (String method : methods) {
+            if (methodMap.containsKey(method)) {
+                // Found — add as-is
+                finalList.add(methodMap.get(method));
+            } else {
+                // Missing — determine status using errorMap
+                SummaryProcessedFile missing = new SummaryProcessedFile();
+                missing.setCustomerId(custId);
+                missing.setAccountNumber(accNum);
+                missing.setOutputType(method);
 
-        for (SummaryProcessedFile file : files) {
-            if ("FAILED".equalsIgnoreCase(file.getStatus())) {
-                hasFailed = true;
-                allSuccess = false;
-            } else if ("NOT_FOUND".equalsIgnoreCase(file.getStatus())) {
-                hasNotFound = true;
-                allSuccess = false;
+                if (isMethodFailedInErrorMap(errorMap, custId, accNum, method)) {
+                    missing.setStatus("FAILED");
+                } else {
+                    missing.setStatus("NOT_FOUND");
+                }
+
+                finalList.add(missing);
             }
         }
-
-        String overallStatus;
-        if (allSuccess) {
-            overallStatus = "SUCCESS";
-        } else if (hasFailed) {
-            overallStatus = "FAILED";
-        } else {
-            overallStatus = "PARTIAL";
-        }
-
-        // Set overallStatus to all entries for this customer
-        files.forEach(f -> f.setOverallStatusCode(overallStatus));
-
-        // Create the ProcessedFileEntry
-        ProcessedFileEntry entryObj = new ProcessedFileEntry();
-        entryObj.setCustomerId(customerId);
-        entryObj.setAccountNumber(accountNumber);
-        entryObj.setOverallStatus(overallStatus);
-        entryObj.setFiles(files);  // attach full list of method-specific files
-
-        finalList.add(entryObj);
     }
 
     return finalList;
 }
 
-private static List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        List<String> outputMethods,
-        String customerId,
-        String accountNumber,
-        String batchId,
-        Map<String, String> customerFileUrls,
-        Map<String, Map<String, String>> errorMap) {
+======
+private static boolean isMethodFailedInErrorMap(Map<String, Map<String, String>> errorMap,
+                                                String customerId,
+                                                String accountNumber,
+                                                String method) {
+    String key = customerId + "::" + accountNumber;
+    Map<String, String> methodMap = errorMap.get(key);
+    if (methodMap == null) return false;
+    return methodMap.containsKey(method);
+}
 
-    List<SummaryProcessedFile> detailedList = new ArrayList<>();
-    Map<String, String> methodErrors = errorMap.getOrDefault(customerId + "::" + accountNumber, new HashMap<>());
+==========
+private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
+    List<ProcessedFileEntry> finalList = new ArrayList<>();
 
-    for (String method : outputMethods) {
-        SummaryProcessedFile file = new SummaryProcessedFile();
-        file.setCustomerId(customerId);
-        file.setAccountNumber(accountNumber);
-        file.setBatchId(batchId);
-        file.setOutputType(method);
+    Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
+            .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
+            .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber()));
 
-        String url = customerFileUrls.getOrDefault(method, null);
-        file.setBlobURL(url);
+    for (Map.Entry<String, List<SummaryProcessedFile>> entry : grouped.entrySet()) {
+        String[] parts = entry.getKey().split("::");
+        String customerId = parts[0];
+        String accountNumber = parts[1];
 
-        if (url != null) {
-            file.setStatus("SUCCESS");
-        } else if (methodErrors.containsKey(method)) {
-            file.setStatus("FAILED");
+        List<SummaryProcessedFile> records = entry.getValue();
+
+        List<String> statuses = records.stream()
+                .map(SummaryProcessedFile::getStatus)
+                .filter(Objects::nonNull)
+                .map(String::toUpperCase)
+                .collect(Collectors.toList());
+
+        String overallStatus;
+
+        if (statuses.stream().allMatch(s -> s.equals("SUCCESS"))) {
+            overallStatus = "SUCCESS";
+        } else if (statuses.stream().allMatch(s -> s.equals("FAILED"))) {
+            overallStatus = "FAILED";
         } else {
-            file.setStatus("NOT_FOUND");
+            overallStatus = "PARTIAL";
         }
 
-        // 🔴 Don't set overallStatusCode here
-        detailedList.add(file);
+        ProcessedFileEntry entryObj = new ProcessedFileEntry();
+        entryObj.setCustomerId(customerId);
+        entryObj.setAccountNumber(accountNumber);
+        entryObj.setOutputTypes(records); // includes EMAIL/ARCHIVE/PRINT/MOBSTAT with status
+        entryObj.setOverallStatus(overallStatus);
+
+        finalList.add(entryObj);
     }
 
-    return detailedList;
+    return finalList;
 }
