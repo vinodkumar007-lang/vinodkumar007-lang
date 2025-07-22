@@ -1,62 +1,95 @@
-    private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedFiles) {
-        Map<String, List<SummaryProcessedFile>> grouped = processedFiles.stream()
-                .collect(Collectors.groupingBy(p -> p.getCustomerId() + "|" + p.getAccountNumber()));
+private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedFiles) {
+    Map<String, List<SummaryProcessedFile>> grouped = processedFiles.stream()
+            .collect(Collectors.groupingBy(p -> p.getCustomerId() + "|" + p.getAccountNumber()));
 
-        List<ProcessedFileEntry> result = new ArrayList<>();
+    List<ProcessedFileEntry> result = new ArrayList<>();
 
-        for (Map.Entry<String, List<SummaryProcessedFile>> entry : grouped.entrySet()) {
-            List<SummaryProcessedFile> groupList = entry.getValue();
-            if (groupList.isEmpty()) continue;
+    for (Map.Entry<String, List<SummaryProcessedFile>> entry : grouped.entrySet()) {
+        List<SummaryProcessedFile> groupList = entry.getValue();
+        if (groupList.isEmpty()) continue;
 
-            SummaryProcessedFile first = groupList.get(0);
+        SummaryProcessedFile first = groupList.get(0);
 
-            ProcessedFileEntry processedEntry = new ProcessedFileEntry();
-            processedEntry.setCustomerId(first.getCustomerId());
-            processedEntry.setAccountNumber(first.getAccountNumber());
+        ProcessedFileEntry processedEntry = new ProcessedFileEntry();
+        processedEntry.setCustomerId(first.getCustomerId());
+        processedEntry.setAccountNumber(first.getAccountNumber());
 
-            boolean hasFailed = false;
-            boolean hasPartial = false;
+        String emailStatus = null, mobstatStatus = null, printStatus = null, archiveStatus = null;
+        String emailUrl = null, mobstatUrl = null, printUrl = null, archiveUrl = null;
 
-            for (SummaryProcessedFile file : groupList) {
-                switch (file.getOutputType()) {
-                    case "EMAIL":
-                        processedEntry.setPdfEmailFileUrl(file.getBlobURL());
-                        processedEntry.setPdfEmailFileUrlStatus(file.getStatus());
-                        break;
-                    case "MOBSTAT":
-                        processedEntry.setPdfMobstatFileUrl(file.getBlobURL());
-                        processedEntry.setPdfMobstatFileUrlStatus(file.getStatus());
-                        break;
-                    case "PRINT":
-                        processedEntry.setPrintFileUrl(file.getBlobURL());
-                        processedEntry.setPrintFileUrlStatus(file.getStatus());
-                        break;
-                }
-
-                if (file.getArchiveBlobUrl() != null) {
-                    processedEntry.setArchiveBlobUrl(file.getArchiveBlobUrl());
-                    processedEntry.setArchiveStatus(file.getArchiveStatus());
-                }
-
-                // Track statuses
-                if ("FAILED".equalsIgnoreCase(file.getStatus())) {
-                    hasFailed = true;
-                } else if ("NOT-FOUND".equalsIgnoreCase(file.getStatus())) {
-                    hasPartial = true;
-                }
+        for (SummaryProcessedFile file : groupList) {
+            switch (file.getOutputType()) {
+                case "EMAIL":
+                    emailStatus = file.getStatus();
+                    emailUrl = file.getBlobURL();
+                    break;
+                case "MOBSTAT":
+                    mobstatStatus = file.getStatus();
+                    mobstatUrl = file.getBlobURL();
+                    break;
+                case "PRINT":
+                    printStatus = file.getStatus();
+                    printUrl = file.getBlobURL();
+                    break;
             }
 
-            // Decide overallStatus based on severity
-            if (hasFailed) {
-                processedEntry.setOverallStatus("FAILED");
-            } else if (hasPartial) {
-                processedEntry.setOverallStatus("PARTIAL");
-            } else {
-                processedEntry.setOverallStatus("SUCCESS");
+            if (file.getArchiveBlobUrl() != null) {
+                archiveUrl = file.getArchiveBlobUrl();
+                archiveStatus = file.getArchiveStatus();
             }
-
-            result.add(processedEntry);
         }
 
-        return result;
+        // Set individual URLs and statuses
+        processedEntry.setPdfEmailFileUrl(emailUrl);
+        processedEntry.setPdfEmailFileUrlStatus(emailStatus);
+        processedEntry.setPdfMobstatFileUrl(mobstatUrl);
+        processedEntry.setPdfMobstatFileUrlStatus(mobstatStatus);
+        processedEntry.setPrintFileUrl(printUrl);
+        processedEntry.setPrintFileUrlStatus(printStatus);
+        processedEntry.setArchiveBlobUrl(archiveUrl);
+        processedEntry.setArchiveStatus(archiveStatus);
+
+        // Determine overall status
+        boolean hasFailure = false;
+        boolean hasPartial = false;
+
+        // EMAIL
+        if (emailStatus == null && emailUrl == null) {
+            hasPartial = true;
+        } else if ("FAILED".equalsIgnoreCase(emailStatus)) {
+            hasFailure = true;
+        }
+
+        // MOBSTAT
+        if (mobstatStatus == null && mobstatUrl == null) {
+            hasPartial = true;
+        } else if ("FAILED".equalsIgnoreCase(mobstatStatus)) {
+            hasFailure = true;
+        }
+
+        // PRINT
+        if (printStatus == null && printUrl == null) {
+            hasPartial = true;
+        } else if ("FAILED".equalsIgnoreCase(printStatus)) {
+            hasFailure = true;
+        }
+
+        // ARCHIVE — always must exist
+        if (archiveStatus == null || !"SUCCESS".equalsIgnoreCase(archiveStatus)) {
+            hasFailure = true; // archive is mandatory
+        }
+
+        // Final decision
+        if (hasFailure) {
+            processedEntry.setOverallStatus("FAILED");
+        } else if (hasPartial) {
+            processedEntry.setOverallStatus("PARTIAL");
+        } else {
+            processedEntry.setOverallStatus("SUCCESS");
+        }
+
+        result.add(processedEntry);
     }
+
+    return result;
+}
