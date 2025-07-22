@@ -1,85 +1,87 @@
-private static List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        Path archivePath,
-        Map<String, Path> deliveryFolderMap,
-        MessageMetaData msg,
-        Map<String, Map<String, String>> errorMap
-) throws IOException {
+private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+            Path jobDir,
+            List<SummaryProcessedFile> customerList,
+            Map<String, Map<String, String>> errorMap,
+            KafkaMessage msg) throws IOException {
 
-    List<SummaryProcessedFile> detailedList = new ArrayList<>();
+        List<SummaryProcessedFile> finalList = new ArrayList<>();
+        List<String> deliveryFolders = List.of("email", "mobstat", "print");
+        Map<String, String> folderToOutputMethod = Map.of(
+                "email", "EMAIL",
+                "mobstat", "MOBSTAT",
+                "print", "PRINT"
+        );
 
-    for (Map.Entry<String, Path> deliveryEntry : deliveryFolderMap.entrySet()) {
-        String outputMethod = deliveryEntry.getKey(); // EMAIL, PRINT, MOBSTAT
-        Path folderPath = deliveryEntry.getValue();
+        Path archivePath = jobDir.resolve("archive");
 
-        if (!Files.exists(folderPath)) continue;
+        for (SummaryProcessedFile customer : customerList) {
+            String account = customer.getAccountNumber();
 
-        Files.list(folderPath)
-                .filter(Files::isRegularFile)
-                .forEach(filePath -> {
-                    try {
-                        String fileName = filePath.getFileName().toString();
-                        String customerId = extractCustomerId(fileName);
-                        String accountNumber = extractAccountNumber(fileName);
+            // Upload archive file once per customer/account
+            String archiveBlobUrl = null;
+            String archiveStatus = "NOT-FOUND";
 
-                        // Upload output file
-                        String outputBlobUrl = blobStorageService.uploadFileByMessage(filePath.toFile(), outputMethod.toLowerCase(), msg);
-                        log.info("Uploaded {} file for customerId={}, accountNumber={}: {}", outputMethod, customerId, accountNumber, outputBlobUrl);
+            if (Files.exists(archivePath)) {
+                Optional<Path> archiveFile = Files.list(archivePath)
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().contains(account))
+                        .findFirst();
 
-                        // Now match corresponding archive file (try prefix/suffix match)
-                        Optional<Path> archiveFile = Files.list(archivePath)
-                                .filter(Files::isRegularFile)
-                                .filter(p -> {
-                                    String name = p.getFileName().toString();
-                                    return name.contains(accountNumber) || name.startsWith(accountNumber) || name.endsWith(accountNumber + ".pdf");
-                                })
-                                .findFirst();
+                if (archiveFile.isPresent()) {
+                    archiveBlobUrl = blobStorageService.uploadFileByMessage(
+                            archiveFile.get().toFile(), "archive", msg);
+                    archiveStatus = "SUCCESS";
+                }
+            }
 
-                        String archiveBlobUrl = null;
-                        String archiveStatus = "FAILED";
+            // Process delivery folders
+            for (String folder : deliveryFolders) {
+                String outputMethod = folderToOutputMethod.get(folder);
+                Path methodPath = jobDir.resolve(folder);
 
-                        if (archiveFile.isPresent()) {
-                            archiveBlobUrl = blobStorageService.uploadFileByMessage(
-                                    archiveFile.get().toFile(), "archive", msg);
-                            archiveStatus = "SUCCESS";
-                            log.info("Uploaded archive file for customerId={}, accountNumber={}: {}", customerId, accountNumber, archiveBlobUrl);
-                        } else {
-                            log.warn("Archive file NOT FOUND for customerId={}, accountNumber={} in {}", customerId, accountNumber, archivePath);
-                        }
+                String blobUrl = "";
+                String deliveryStatus = "SUCCESS"; // default success
 
-                        // Error status
-                        String outputStatus = determineStatus(customerId, accountNumber, outputMethod, errorMap);
+                // Check if file exists in folder for this account
+                boolean fileFound = false;
+                if (Files.exists(methodPath)) {
+                    Optional<Path> match = Files.list(methodPath)
+                            .filter(Files::isRegularFile)
+                            .filter(p -> p.getFileName().toString().contains(account))
+                            .findFirst();
 
-                        SummaryProcessedFile entry = new SummaryProcessedFile();
-                        entry.setCustomerId(customerId);
-                        entry.setAccountNumber(accountNumber);
-                        entry.setOutputType(outputMethod);
-                        entry.setBlobUrl(outputBlobUrl);
-                        entry.setStatus(outputStatus);
-
-                        entry.setArchiveBlobUrl(archiveBlobUrl);
-                        entry.setArchiveStatus(archiveStatus);
-
-                        detailedList.add(entry);
-
-                    } catch (Exception e) {
-                        log.error("Error while processing file in " + outputMethod + ": " + filePath, e);
+                    if (match.isPresent()) {
+                        blobUrl = blobStorageService.uploadFileByMessage(match.get().toFile(), folder, msg);
+                        fileFound = true;
                     }
-                });
+                }
+
+                // Check errorMap for failure status
+                Map<String, String> customerErrors = errorMap.getOrDefault(account, Collections.emptyMap());
+                String errorStatus = customerErrors.getOrDefault(outputMethod, null);
+                if ("FAILED".equalsIgnoreCase(errorStatus)) {
+                    deliveryStatus = "FAILED"; // mark failed if found in errorMap as failed
+                } else if (!fileFound) {
+                    // If no file found but no error entry or not failed, still success (no partial)
+                    deliveryStatus = "SUCCESS";
+                }
+
+                // Overall status = deliveryStatus only, no PARTIAL allowed
+                String overallStatus = deliveryStatus;
+
+                SummaryProcessedFile entry = new SummaryProcessedFile();
+                BeanUtils.copyProperties(customer, entry);
+                entry.setOutputType(outputMethod);
+                entry.setBlobURL(blobUrl);
+                entry.setStatus(deliveryStatus);
+                entry.setArchiveOutputType("ARCHIVE");
+                entry.setArchiveBlobUrl(archiveBlobUrl);
+                entry.setArchiveStatus(archiveStatus);
+                entry.setOverallStatus(overallStatus);
+
+                finalList.add(entry);
+            }
+        }
+
+        return finalList;
     }
-
-    return detailedList;
-}
-
-=============
-
-private static String determineStatus(String customerId, String accountNumber, String outputType,
-                                      Map<String, Map<String, String>> errorMap) {
-    Map<String, String> accountMap = errorMap.getOrDefault(customerId, Collections.emptyMap());
-    String status = accountMap.getOrDefault(accountNumber, "SUCCESS");
-
-    if ("FAILED".equalsIgnoreCase(status)) {
-        log.warn("ErrorMap indicates FAILURE for customerId={}, accountNumber={}, output={}", customerId, accountNumber, outputType);
-        return "FAILED";
-    }
-    return "SUCCESS";
-}
