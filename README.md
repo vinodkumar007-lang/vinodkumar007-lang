@@ -18,7 +18,6 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         String errorKey = file.getCustomerId() + "-" + file.getAccountNumber();
         boolean isErrorPresent = errorMap.containsKey(errorKey);
 
-        // ✅ If blobUrl is null or empty, clear status unless error exists (in that case mark FAILED)
         if (blobUrl == null || blobUrl.trim().isEmpty()) {
             if (isErrorPresent && !outputType.equals("ARCHIVE")) {
                 status = "FAILED";
@@ -49,7 +48,6 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         grouped.put(key, entry);
     }
 
-    // ✅ Add missing error-only entries
     for (String errorKey : errorMap.keySet()) {
         if (!grouped.containsKey(errorKey)) {
             String[] parts = errorKey.split("-");
@@ -64,10 +62,29 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         }
     }
 
-    // ✅ Final loop to calculate overallStatus
+    // ✅ Enhanced: Fill missing output channels with FAILED if errorMap says so
     for (ProcessedFileEntry entry : grouped.values()) {
         String errorKey = entry.getCustomerId() + "-" + entry.getAccountNumber();
         boolean isErrorPresent = errorMap.containsKey(errorKey);
+
+        if (isErrorPresent) {
+            Map<String, String> channelErrors = errorMap.get(errorKey);
+
+            if ((entry.getEmailStatus() == null || entry.getEmailStatus().isEmpty())
+                    && channelErrors.containsKey("EMAIL")) {
+                entry.setEmailStatus("FAILED");
+            }
+
+            if ((entry.getPrintStatus() == null || entry.getPrintStatus().isEmpty())
+                    && channelErrors.containsKey("PRINT")) {
+                entry.setPrintStatus("FAILED");
+            }
+
+            if ((entry.getMobstatStatus() == null || entry.getMobstatStatus().isEmpty())
+                    && channelErrors.containsKey("MOBSTAT")) {
+                entry.setMobstatStatus("FAILED");
+            }
+        }
 
         List<String> statuses = new ArrayList<>();
         if (entry.getEmailStatus() != null && !entry.getEmailStatus().isEmpty()) statuses.add(entry.getEmailStatus());
@@ -80,7 +97,6 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         boolean allFailed = !statuses.isEmpty() && statuses.stream().allMatch(s -> "FAILED".equalsIgnoreCase(s));
 
         String overallStatus;
-
         if (isErrorPresent) {
             overallStatus = "FAILED";
         } else if (allSuccess) {
@@ -98,7 +114,6 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         entry.setOverallStatus(overallStatus);
     }
 
-    // ✅ Correct file count: only count if blobUrl exists and status is SUCCESS
     long fileCount = grouped.values().stream()
             .flatMap(entry -> Stream.of(
                     new AbstractMap.SimpleEntry<>(entry.getEmailBlobUrl(), entry.getEmailStatus()),
@@ -111,6 +126,5 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
             .count();
 
     System.out.println("✅ Final fileCount (blobUrls with SUCCESS): " + fileCount);
-
     return new ArrayList<>(grouped.values());
 }
