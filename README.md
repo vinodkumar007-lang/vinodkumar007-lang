@@ -1,93 +1,127 @@
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        Path jobDir,
-        List<SummaryProcessedFile> customerList,
-        Map<String, Map<String, String>> errorMap,
-        KafkaMessage msg) throws IOException {
+ public static SummaryPayload buildPayload(
+            KafkaMessage kafkaMessage,
+            List<SummaryProcessedFile> processedList,
+            String summaryBlobUrl,
+            String fileName,
+            String batchId,
+            String timestamp,
+            Map<String, Map<String, String>> errorMap
+    ) {
+        SummaryPayload payload = new SummaryPayload();
+        payload.setBatchID(batchId);
+        payload.setFileName(fileName);
+        payload.setTimestamp(timestamp);
+        payload.setSummaryFileURL(summaryBlobUrl);
 
-    List<SummaryProcessedFile> finalList = new ArrayList<>();
-    List<String> deliveryFolders = List.of("email", "mobstat", "print");
-    Map<String, String> folderToOutputMethod = Map.of(
-            "email", "EMAIL",
-            "mobstat", "MOBSTAT",
-            "print", "PRINT"
-    );
+        Header header = new Header();
+        header.setTenantCode(kafkaMessage.getTenantCode());
+        header.setChannelID(kafkaMessage.getChannelID());
+        header.setAudienceID(kafkaMessage.getAudienceID());
+        header.setTimestamp(timestamp);
+        header.setSourceSystem(kafkaMessage.getSourceSystem());
+        header.setProduct(kafkaMessage.getSourceSystem());
+        header.setJobName(kafkaMessage.getSourceSystem());
+        payload.setHeader(header);
 
-    Path archivePath = jobDir.resolve("archive");
+        List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
+        payload.setProcessedFileList(processedFileEntries);
 
-    for (SummaryProcessedFile customer : customerList) {
-        String account = customer.getAccountNumber();
-        String customerId = customer.getCustomerId();
+        int totalFileUrls = processedFileEntries.size();
 
-        // Step 1: Archive (always try to add)
-        String archiveBlobUrl = null;
-        if (Files.exists(archivePath)) {
-            Optional<Path> archiveFile = Files.list(archivePath)
-                    .filter(Files::isRegularFile)
-                    .filter(p -> p.getFileName().toString().contains(account))
-                    .findFirst();
+        Payload payloadInfo = new Payload();
+        payloadInfo.setUniqueECPBatchRef(kafkaMessage.getUniqueECPBatchRef());
+        payloadInfo.setRunPriority(kafkaMessage.getRunPriority());
+        payloadInfo.setEventID(kafkaMessage.getEventID());
+        payloadInfo.setEventType(kafkaMessage.getEventType());
+        payloadInfo.setRestartKey(kafkaMessage.getRestartKey());
+        payloadInfo.setFileCount(totalFileUrls);
+        payload.setPayload(payloadInfo);
 
-            if (archiveFile.isPresent()) {
-                archiveBlobUrl = blobStorageService.uploadFileByMessage(
-                        archiveFile.get().toFile(), "archive", msg);
-            }
+        Metadata metadata = new Metadata();
+        metadata.setTotalCustomersProcessed((int) processedFileEntries.stream()
+                .map(pf -> pf.getCustomerId() + "::" + pf.getAccountNumber())
+                .distinct()
+                .count());
+
+        long total = processedFileEntries.size();
+        long success = processedFileEntries.stream()
+                .filter(entry -> "SUCCESS".equalsIgnoreCase(entry.getOverallStatus()))
+                .count();
+        long failed = processedFileEntries.stream()
+                .filter(entry -> "FAILED".equalsIgnoreCase(entry.getOverallStatus()))
+                .count();
+
+        String overallStatus;
+        if (success == total) {
+            overallStatus = "SUCCESS";
+        } else if (failed == total) {
+            overallStatus = "FAILED";
+        } else {
+            overallStatus = "PARTIAL";
         }
 
-        // Step 2: Delivery types - email, mobstat, print
-        for (String folder : deliveryFolders) {
-            String outputMethod = folderToOutputMethod.get(folder);
-            Path methodPath = jobDir.resolve(folder);
+        metadata.setProcessingStatus(overallStatus);
+        metadata.setEventOutcomeCode("0");
+        metadata.setEventOutcomeDescription(overallStatus.toLowerCase());
+        payload.setMetadata(metadata);
 
-            String blobUrl = "";
-            String deliveryStatus = "SUCCESS"; // default to SUCCESS unless errorMap says FAILED
-
-            if (Files.exists(methodPath)) {
-                Optional<Path> match = Files.list(methodPath)
-                        .filter(Files::isRegularFile)
-                        .filter(p -> p.getFileName().toString().contains(account))
-                        .findFirst();
-
-                if (match.isPresent()) {
-                    blobUrl = blobStorageService.uploadFileByMessage(match.get().toFile(), folder, msg);
-                } else {
-                    // check errorMap
-                    Map<String, String> customerErrors = errorMap.getOrDefault(account, Collections.emptyMap());
-                    String errorStatus = customerErrors.getOrDefault(outputMethod, null);
-                    if ("FAILED".equalsIgnoreCase(errorStatus)) {
-                        deliveryStatus = "FAILED";
-                    }
-                }
-            } else {
-                // folder itself missing
-                Map<String, String> customerErrors = errorMap.getOrDefault(account, Collections.emptyMap());
-                String errorStatus = customerErrors.getOrDefault(outputMethod, null);
-                if ("FAILED".equalsIgnoreCase(errorStatus)) {
-                    deliveryStatus = "FAILED";
-                }
-            }
-
-            // Finalize overallStatus
-            String overallStatus;
-            if ("FAILED".equals(deliveryStatus)) {
-                overallStatus = "FAILED";
-            } else if (archiveBlobUrl != null && "SUCCESS".equals(deliveryStatus)) {
-                overallStatus = "SUCCESS";
-            } else {
-                overallStatus = "PARTIAL";
-            }
-
-            SummaryProcessedFile entry = new SummaryProcessedFile();
-            BeanUtils.copyProperties(customer, entry);
-            entry.setOutputType(outputMethod);
-            entry.setBlobURL(blobUrl);
-            entry.setStatus(deliveryStatus);
-            entry.setArchiveOutputType("ARCHIVE");
-            entry.setArchiveBlobUrl(archiveBlobUrl);
-            entry.setArchiveStatus(archiveBlobUrl != null ? "SUCCESS" : "NOT-FOUND");
-            entry.setOverallStatus(overallStatus);
-
-            finalList.add(entry);
-        }
+        return payload;
     }
 
-    return finalList;
-}
+    private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedFiles) {
+        Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
+
+        for (SummaryProcessedFile file : processedFiles) {
+            String key = file.getCustomerId() + "-" + file.getAccountNumber();
+            ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
+
+            entry.setCustomerId(file.getCustomerId());
+            entry.setAccountNumber(file.getAccountNumber());
+
+            switch (file.getOutputType()) {
+                case "EMAIL":
+                    entry.setPdfEmailFileUrl(file.getBlobURL());
+                    entry.setPdfEmailFileUrlStatus(file.getStatus());
+                    break;
+                case "ARCHIVE":
+                    entry.setArchiveBlobUrl(file.getBlobURL());
+                    entry.setArchiveStatus(file.getStatus());
+                    break;
+                case "MOBSTAT":
+                    entry.setPdfMobstatFileUrl(file.getBlobURL());
+                    entry.setPdfMobstatFileUrlStatus(file.getStatus());
+                    break;
+                // PRINT is intentionally excluded
+            }
+
+            grouped.put(key, entry);
+        }
+
+        for (ProcessedFileEntry entry : grouped.values()) {
+            String emailStatus = entry.getPdfEmailFileUrlStatus();
+            String archiveStatus = entry.getArchiveStatus();
+            String mobstatStatus = entry.getPdfMobstatFileUrlStatus();
+
+            boolean emailPresent = emailStatus != null;
+            boolean archivePresent = archiveStatus != null;
+
+            boolean emailSuccess = "SUCCESS".equalsIgnoreCase(emailStatus);
+            boolean archiveSuccess = "SUCCESS".equalsIgnoreCase(archiveStatus);
+            boolean mobstatSuccess = mobstatStatus == null || "SUCCESS".equalsIgnoreCase(mobstatStatus);
+
+            // Determine overall status logic
+            if (emailSuccess && archiveSuccess && mobstatSuccess) {
+                entry.setOverallStatus("SUCCESS");
+            } else if (emailPresent && "FAILED".equalsIgnoreCase(emailStatus)) {
+                entry.setOverallStatus("FAILED");
+            } else if (!emailPresent && archiveSuccess) {
+                entry.setOverallStatus("SUCCESS");
+            } else if (!emailPresent && !archiveSuccess) {
+                entry.setOverallStatus("FAILED");
+            } else {
+                entry.setOverallStatus("PARTIAL");
+            }
+        }
+
+        return new ArrayList<>(grouped.values());
+    }
