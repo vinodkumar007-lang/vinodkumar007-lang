@@ -1,5 +1,7 @@
-private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedFiles,
-                                                                   Map<String, String> errorMap) {
+private static List<ProcessedFileEntry> buildProcessedFileEntries(
+        List<SummaryProcessedFile> processedFiles,
+        Map<String, Map<String, String>> errorReportMap
+) {
     Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
 
     for (SummaryProcessedFile file : processedFiles) {
@@ -9,86 +11,81 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryPr
         entry.setCustomerId(file.getCustomerId());
         entry.setAccountNumber(file.getAccountNumber());
 
+        // Clean URL and status handling
+        String blobUrl = file.getBlobUrl();
+        String status = (blobUrl == null || blobUrl.isEmpty()) ? "" : file.getStatus();
+
         switch (file.getOutputType()) {
             case "EMAIL":
-                if (isBlank(entry.getEmailBlobUrl())) {
-                    entry.setEmailBlobUrl(file.getBlobUrl() != null ? file.getBlobUrl() : "");
-                    entry.setEmailStatus(file.getStatus() != null ? file.getStatus() : "");
-                }
+                entry.setEmailBlobUrl(blobUrl);
+                entry.setEmailStatus(status);
                 break;
             case "ARCHIVE":
-                if (isBlank(entry.getArchiveBlobUrl())) {
-                    entry.setArchiveBlobUrl(file.getBlobUrl() != null ? file.getBlobUrl() : "");
-                    entry.setArchiveStatus(file.getStatus() != null ? file.getStatus() : "");
-                }
+                entry.setArchiveBlobUrl(blobUrl);
+                entry.setArchiveStatus(status);
                 break;
             case "PRINT":
-                if (isBlank(entry.getPrintBlobUrl())) {
-                    entry.setPrintBlobUrl(file.getBlobUrl() != null ? file.getBlobUrl() : "");
-                    entry.setPrintStatus(file.getStatus() != null ? file.getStatus() : "");
-                }
+                entry.setPrintBlobUrl(blobUrl);
+                entry.setPrintStatus(status);
                 break;
             case "MOBSTAT":
-                if (isBlank(entry.getMobstatBlobUrl())) {
-                    entry.setMobstatBlobUrl(file.getBlobUrl() != null ? file.getBlobUrl() : "");
-                    entry.setMobstatStatus(file.getStatus() != null ? file.getStatus() : "");
-                }
+                entry.setMobstatBlobUrl(blobUrl);
+                entry.setMobstatStatus(status);
                 break;
         }
 
         grouped.put(key, entry);
     }
 
-    // Inject FAILED records from errorMap if EMAIL/PRINT/MOBSTAT missing
-    for (Map.Entry<String, String> errorEntry : errorMap.entrySet()) {
-        String[] parts = errorEntry.getKey().split("-");
-        if (parts.length != 3) continue;
-
-        String customerId = parts[0];
-        String accountNumber = parts[1];
-        String outputType = parts[2];
-
-        String key = customerId + "-" + accountNumber;
-        ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
-        entry.setCustomerId(customerId);
-        entry.setAccountNumber(accountNumber);
-
-        // Only set FAILED status if not already set
-        switch (outputType) {
-            case "EMAIL":
-                if (isBlank(entry.getEmailBlobUrl()) && isBlank(entry.getEmailStatus())) {
-                    entry.setEmailBlobUrl("");
-                    entry.setEmailStatus("FAILED");
-                }
-                break;
-            case "PRINT":
-                if (isBlank(entry.getPrintBlobUrl()) && isBlank(entry.getPrintStatus())) {
-                    entry.setPrintBlobUrl("");
-                    entry.setPrintStatus("FAILED");
-                }
-                break;
-            case "MOBSTAT":
-                if (isBlank(entry.getMobstatBlobUrl()) && isBlank(entry.getMobstatStatus())) {
-                    entry.setMobstatBlobUrl("");
-                    entry.setMobstatStatus("FAILED");
-                }
-                break;
-        }
-
-        grouped.put(key, entry);
-    }
-
-    // Always ensure ARCHIVE has URL and status set (even if missing)
+    // Finalize status per customer
     for (ProcessedFileEntry entry : grouped.values()) {
-        if (entry.getArchiveBlobUrl() == null) entry.setArchiveBlobUrl("");
-        if (entry.getArchiveStatus() == null) entry.setArchiveStatus("");
-        if (entry.getEmailBlobUrl() == null) entry.setEmailBlobUrl("");
-        if (entry.getEmailStatus() == null) entry.setEmailStatus("");
-        if (entry.getPrintBlobUrl() == null) entry.setPrintBlobUrl("");
-        if (entry.getPrintStatus() == null) entry.setPrintStatus("");
-        if (entry.getMobstatBlobUrl() == null) entry.setMobstatBlobUrl("");
-        if (entry.getMobstatStatus() == null) entry.setMobstatStatus("");
+        boolean archiveSuccess = "SUCCESS".equalsIgnoreCase(entry.getArchiveStatus());
+
+        // For EMAIL/PRINT/MOBSTAT, consider failed if status empty and present in errorMap
+        boolean emailFailed = isFailedOrMissing(entry.getEmailStatus(), entry.getCustomerId(), entry.getAccountNumber(), "EMAIL", errorReportMap);
+        boolean printFailed = isFailedOrMissing(entry.getPrintStatus(), entry.getCustomerId(), entry.getAccountNumber(), "PRINT", errorReportMap);
+        boolean mobstatFailed = isFailedOrMissing(entry.getMobstatStatus(), entry.getCustomerId(), entry.getAccountNumber(), "MOBSTAT", errorReportMap);
+
+        boolean anyFailed = emailFailed || printFailed || mobstatFailed;
+
+        // Ensure ARCHIVE is always retained even if it's the only one
+        if (!archiveSuccess) {
+            entry.setOverallStatus("FAILED");
+        } else if (anyFailed) {
+            entry.setOverallStatus("FAILED"); // You can switch to PARTIAL if desired
+        } else {
+            entry.setOverallStatus("SUCCESS");
+        }
+
+        // Force empty status to "" if blobUrl is also empty
+        if (entry.getEmailBlobUrl() == null || entry.getEmailBlobUrl().isEmpty()) {
+            entry.setEmailStatus("");
+        }
+        if (entry.getPrintBlobUrl() == null || entry.getPrintBlobUrl().isEmpty()) {
+            entry.setPrintStatus("");
+        }
+        if (entry.getMobstatBlobUrl() == null || entry.getMobstatBlobUrl().isEmpty()) {
+            entry.setMobstatStatus("");
+        }
     }
 
     return new ArrayList<>(grouped.values());
+}
+
+==========
+
+private static boolean isFailedOrMissing(
+        String status,
+        String customerId,
+        String accountNumber,
+        String method,
+        Map<String, Map<String, String>> errorReportMap
+) {
+    if (status == null || status.isEmpty()) {
+        String key = customerId + "|" + accountNumber;
+        Map<String, String> methodStatus = errorReportMap.getOrDefault(key, new HashMap<>());
+        String error = methodStatus.get(method);
+        return "Failed".equalsIgnoreCase(error);
+    }
+    return "FAILED".equalsIgnoreCase(status);
 }
