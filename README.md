@@ -1,70 +1,52 @@
-  private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedFiles) {
-        Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
+private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedFiles, Map<String, String> errorMap) {
+    Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
 
-        for (SummaryProcessedFile file : processedFiles) {
-            String key = file.getCustomerId() + "-" + file.getAccountNumber();
-            ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
+    for (SummaryProcessedFile file : processedFiles) {
+        String key = file.getCustomerId() + "-" + file.getAccountNumber();
+        ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
 
-            entry.setCustomerId(file.getCustomerId());
-            entry.setAccountNumber(file.getAccountNumber());
+        entry.setCustomerId(file.getCustomerId());
+        entry.setAccountNumber(file.getAccountNumber());
 
-            switch (file.getOutputType()) {
-                case "EMAIL":
-                    entry.setPdfEmailFileUrl(file.getBlobURL());
-                    entry.setPdfEmailFileUrlStatus(file.getStatus());
-                    break;
-                case "MOBSTAT":
-                    entry.setPdfMobstatFileUrl(file.getBlobURL());
-                    entry.setPdfMobstatFileUrlStatus(file.getStatus());
-                    break;
-                case "PRINT":
-                    entry.setPrintFileUrl(file.getBlobURL());
-                    entry.setPrintFileUrlStatus(file.getStatus());
-                    break;
-                case "ARCHIVE":
-                    entry.setArchiveBlobUrl(file.getBlobURL());
-                    entry.setArchiveStatus(file.getStatus());
-                    break;
-            }
-
-            grouped.put(key, entry);
+        switch (file.getOutputType().toUpperCase()) {
+            case "EMAIL":
+                entry.setEmailBlobUrl(file.getBlobURL());
+                entry.setEmailStatus(file.getStatus());
+                break;
+            case "ARCHIVE":
+                entry.setArchiveBlobUrl(file.getBlobURL());
+                entry.setArchiveStatus(file.getStatus());
+                break;
+            case "PRINT":
+                entry.setPrintBlobUrl(file.getBlobURL());
+                entry.setPrintStatus(file.getStatus());
+                break;
+            case "MOBSTAT":
+                entry.setMobstatBlobUrl(file.getBlobURL());
+                entry.setMobstatStatus(file.getStatus());
+                break;
         }
 
-        // Apply final overallStatus per grouped entry
-        for (ProcessedFileEntry entry : grouped.values()) {
-            boolean archiveOk = "SUCCESS".equalsIgnoreCase(entry.getArchiveStatus());
+        grouped.put(key, entry);
+    }
 
-            // EMAIL logic
-            String emailStatus = entry.getPdfEmailFileUrlStatus();
-            boolean emailSuccess = "SUCCESS".equalsIgnoreCase(emailStatus);
-            boolean emailFailed = "FAILED".equalsIgnoreCase(emailStatus);
+    // Set overallStatus for each grouped entry
+    for (ProcessedFileEntry entry : grouped.values()) {
+        String key = entry.getCustomerId() + "-" + entry.getAccountNumber();
 
-            // MOBSTAT logic
-            String mobstatStatus = entry.getPdfMobstatFileUrlStatus();
-            boolean mobstatSuccess = "SUCCESS".equalsIgnoreCase(mobstatStatus);
-
-            // PRINT logic
-            String printStatus = entry.getPrintFileUrlStatus();
-            boolean printSuccess = "SUCCESS".equalsIgnoreCase(printStatus);
-
-            // If EMAIL found
-            if (emailSuccess && archiveOk) {
-                entry.setOverallStatus("SUCCESS");
-            } else if (emailFailed) {
-                entry.setOverallStatus("FAILED");
-            } else if (emailStatus == null && archiveOk) {
-                entry.setOverallStatus("SUCCESS");
-            } else if (!archiveOk && (emailFailed || emailStatus == null)) {
-                entry.setOverallStatus("FAILED");
-            } else {
-                entry.setOverallStatus("PARTIAL");
-            }
-
-            // Extend to other types if needed (optional override for MOBSTAT/PRINT only cases)
-            if (entry.getPdfEmailFileUrlStatus() == null && entry.getPdfMobstatFileUrlStatus() != null && mobstatSuccess && archiveOk) {
-                entry.setOverallStatus("SUCCESS");
-            }
-            if (entry.getPdfEmailFileUrlStatus() == null && entry.getPdfEmailFileUrl() != null && printSuccess && archiveOk) {
-                entry.setOverallStatus("SUCCESS");
-            }
+        // If errorMap has this customer+account → mark FAILED
+        if (errorMap.containsKey(key)) {
+            entry.setOverallStatus("FAILED");
+            continue;
         }
+
+        // If archiveBlobUrl is present (successfully uploaded) → mark SUCCESS
+        if (entry.getArchiveBlobUrl() != null && !entry.getArchiveBlobUrl().isEmpty()) {
+            entry.setOverallStatus("SUCCESS");
+        } else {
+            entry.setOverallStatus("FAILED");
+        }
+    }
+
+    return new ArrayList<>(grouped.values());
+}
