@@ -1,3 +1,72 @@
+public static SummaryPayload buildPayload(
+            KafkaMessage kafkaMessage,
+            List<SummaryProcessedFile> processedList,
+            String summaryBlobUrl,
+            String fileName,
+            String batchId,
+            String timestamp,
+            Map<String, Map<String, String>> errorMap
+    ) {
+        SummaryPayload payload = new SummaryPayload();
+        payload.setBatchID(batchId);
+        payload.setFileName(fileName);
+        payload.setTimestamp(timestamp);
+        payload.setSummaryFileURL(summaryBlobUrl);
+
+        Header header = new Header();
+        header.setTenantCode(kafkaMessage.getTenantCode());
+        header.setChannelID(kafkaMessage.getChannelID());
+        header.setAudienceID(kafkaMessage.getAudienceID());
+        header.setTimestamp(timestamp);
+        header.setSourceSystem(kafkaMessage.getSourceSystem());
+        header.setProduct(kafkaMessage.getSourceSystem());
+        header.setJobName(kafkaMessage.getSourceSystem());
+        payload.setHeader(header);
+
+        List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList, errorMap);
+        payload.setProcessedFileList(processedFileEntries);
+
+        int totalFileUrls = processedFileEntries.size();
+
+        Payload payloadInfo = new Payload();
+        payloadInfo.setUniqueECPBatchRef(kafkaMessage.getUniqueECPBatchRef());
+        payloadInfo.setRunPriority(kafkaMessage.getRunPriority());
+        payloadInfo.setEventID(kafkaMessage.getEventID());
+        payloadInfo.setEventType(kafkaMessage.getEventType());
+        payloadInfo.setRestartKey(kafkaMessage.getRestartKey());
+        payloadInfo.setFileCount(totalFileUrls);
+        payload.setPayload(payloadInfo);
+
+        Metadata metadata = new Metadata();
+        metadata.setTotalCustomersProcessed((int) processedFileEntries.stream()
+                .map(pf -> pf.getCustomerId() + "::" + pf.getAccountNumber())
+                .distinct()
+                .count());
+
+        long total = processedFileEntries.size();
+        long success = processedFileEntries.stream()
+                .filter(entry -> "SUCCESS".equalsIgnoreCase(entry.getOverallStatus()))
+                .count();
+        long failed = processedFileEntries.stream()
+                .filter(entry -> "FAILED".equalsIgnoreCase(entry.getOverallStatus()))
+                .count();
+
+        String overallStatus;
+        if (success == total) {
+            overallStatus = "SUCCESS";
+        } else if (failed == total) {
+            overallStatus = "FAILED";
+        } else {
+            overallStatus = "PARTIAL";
+        }
+
+        metadata.setProcessingStatus(overallStatus);
+        metadata.setEventOutcomeCode("0");
+        metadata.setEventOutcomeDescription(overallStatus.toLowerCase());
+        payload.setMetadata(metadata);
+
+        return payload;
+    }
     private static List<ProcessedFileEntry> buildProcessedFileEntries(
             List<SummaryProcessedFile> processedFiles,
             Map<String, Map<String, String>> errorMap) {
