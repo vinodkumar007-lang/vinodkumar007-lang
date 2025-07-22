@@ -1,163 +1,85 @@
- public static SummaryPayload buildPayload(
-            KafkaMessage kafkaMessage,
-            List<SummaryProcessedFile> processedList,
-            String summaryBlobUrl,
-            String fileName,
-            String batchId,
-            String timestamp,
-            Map<String, Map<String, String>> errorMap
-    ) {
-        SummaryPayload payload = new SummaryPayload();
-        payload.setBatchID(batchId);
-        payload.setFileName(fileName);
-        payload.setTimestamp(timestamp);
-        payload.setSummaryFileURL(summaryBlobUrl);
+import com.fasterxml.jackson.annotation.JsonInclude;
+import lombok.Data;
+import java.util.*;
 
-        Header header = new Header();
-        header.setTenantCode(kafkaMessage.getTenantCode());
-        header.setChannelID(kafkaMessage.getChannelID());
-        header.setAudienceID(kafkaMessage.getAudienceID());
-        header.setTimestamp(timestamp);
-        header.setSourceSystem(kafkaMessage.getSourceSystem());
-        header.setProduct(kafkaMessage.getSourceSystem());
-        header.setJobName(kafkaMessage.getSourceSystem());
-        payload.setHeader(header);
+@Data
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class ProcessedFileEntry {
+    private String customerId;
+    private String accountNumber;
 
-        List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList);
-        payload.setProcessedFileList(processedFileEntries);
+    private String pdfEmailFileUrl;
+    private String pdfEmailFileUrlStatus;
 
-        int totalFileUrls = processedFileEntries.size();
+    private String pdfMobstatFileUrl;
+    private String pdfMobstatFileUrlStatus;
 
-        Payload payloadInfo = new Payload();
-        payloadInfo.setUniqueECPBatchRef(kafkaMessage.getUniqueECPBatchRef());
-        payloadInfo.setRunPriority(kafkaMessage.getRunPriority());
-        payloadInfo.setEventID(kafkaMessage.getEventID());
-        payloadInfo.setEventType(kafkaMessage.getEventType());
-        payloadInfo.setRestartKey(kafkaMessage.getRestartKey());
-        payloadInfo.setFileCount(totalFileUrls);
-        payload.setPayload(payloadInfo);
+    private String printFileUrl;
+    private String printFileUrlStatus;
 
-        Metadata metadata = new Metadata();
-        metadata.setTotalCustomersProcessed((int) processedFileEntries.stream()
-                .map(pf -> pf.getCustomerId() + "::" + pf.getAccountNumber())
-                .distinct()
-                .count());
+    private String archiveBlobUrl;
+    private String archiveStatus;
 
-        long total = processedFileEntries.size();
-        long success = processedFileEntries.stream()
-                .filter(entry -> "SUCCESS".equalsIgnoreCase(entry.getOverallStatus()))
-                .count();
-        long failed = processedFileEntries.stream()
-                .filter(entry -> "FAILED".equalsIgnoreCase(entry.getOverallStatus()))
-                .count();
+    private String overallStatus;
 
-        String overallStatus;
-        if (success == total) {
-            overallStatus = "SUCCESS";
-        } else if (failed == total) {
-            overallStatus = "FAILED";
-        } else {
-            overallStatus = "PARTIAL";
-        }
+    public static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList,
+                                                                      Map<String, ErrorReportEntry> errorMap) {
+        Map<String, ProcessedFileEntry> groupedMap = new LinkedHashMap<>();
 
-        metadata.setProcessingStatus(overallStatus);
-        metadata.setEventOutcomeCode("0");
-        metadata.setEventOutcomeDescription(overallStatus.toLowerCase());
-        payload.setMetadata(metadata);
+        for (SummaryProcessedFile file : processedList) {
+            String key = file.getCustomerId() + "_" + file.getAccountNumber();
+            groupedMap.putIfAbsent(key, new ProcessedFileEntry());
+            ProcessedFileEntry entry = groupedMap.get(key);
 
-        return payload;
-    }
+            entry.setCustomerId(file.getCustomerId());
+            entry.setAccountNumber(file.getAccountNumber());
 
-    public static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList) {
-        List<ProcessedFileEntry> finalList = new ArrayList<>();
-
-        Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
-                .collect(Collectors.groupingBy(file -> file.getCustomerId() + "::" + file.getAccountNumber()));
-
-        for (Map.Entry<String, List<SummaryProcessedFile>> entry : grouped.entrySet()) {
-            String[] keyParts = entry.getKey().split("::");
-            String customerId = keyParts[0];
-            String accountNumber = keyParts[1];
-            List<SummaryProcessedFile> files = entry.getValue();
-
-            // Separate by type
-            Optional<SummaryProcessedFile> emailOpt = files.stream()
-                    .filter(f -> "EMAIL".equalsIgnoreCase(f.getOutputType()))
-                    .findFirst();
-            Optional<SummaryProcessedFile> mobstatOpt = files.stream()
-                    .filter(f -> "MOBSTAT".equalsIgnoreCase(f.getOutputType()))
-                    .findFirst();
-            Optional<SummaryProcessedFile> printOpt = files.stream()
-                    .filter(f -> "PRINT".equalsIgnoreCase(f.getOutputType()))
-                    .findFirst();
-            Optional<SummaryProcessedFile> archiveOpt = files.stream()
-                    .filter(f -> "ARCHIVE".equalsIgnoreCase(f.getOutputType()))
-                    .findFirst();
-
-            // EMAIL + ARCHIVE combo
-            if (emailOpt.isPresent() || archiveOpt.isPresent()) {
-                ProcessedFileEntry emailEntry = new ProcessedFileEntry();
-                emailEntry.setCustomerId(customerId);
-                emailEntry.setAccountNumber(accountNumber);
-
-                SummaryProcessedFile email = emailOpt.orElse(null);
-                SummaryProcessedFile archive = archiveOpt.orElse(null);
-
-                if (email != null) {
-                    emailEntry.setOutputType("EMAIL");
-                    emailEntry.setBlobUrl(email.getPdfEmailFileUrl());
-                    emailEntry.setStatus(email.getStatus());
-                }
-
-                if (archive != null) {
-                    emailEntry.setArchiveBlobUrl(archive.getArchiveBlobUrl());
-                    emailEntry.setArchiveStatus(archive.getStatus());
-                }
-
-                emailEntry.setOverallStatus(computeOverallStatus(email, archive));
-                finalList.add(emailEntry);
-            }
-
-            // MOBSTAT + ARCHIVE combo
-            if (mobstatOpt.isPresent()) {
-                ProcessedFileEntry mobstatEntry = new ProcessedFileEntry();
-                mobstatEntry.setCustomerId(customerId);
-                mobstatEntry.setAccountNumber(accountNumber);
-
-                SummaryProcessedFile mobstat = mobstatOpt.get();
-                mobstatEntry.setOutputType("MOBSTAT");
-                mobstatEntry.setBlobUrl(mobstat.getPdfMobstatFileUrl());
-                mobstatEntry.setStatus(mobstat.getStatus());
-
-                archiveOpt.ifPresent(archive -> {
-                    mobstatEntry.setArchiveBlobUrl(archive.getArchiveBlobUrl());
-                    mobstatEntry.setArchiveStatus(archive.getStatus());
-                });
-
-                mobstatEntry.setOverallStatus(computeOverallStatus(mobstatOpt.get(), archiveOpt.orElse(null)));
-                finalList.add(mobstatEntry);
-            }
-
-            // PRINT + ARCHIVE combo
-            if (printOpt.isPresent()) {
-                ProcessedFileEntry printEntry = new ProcessedFileEntry();
-                printEntry.setCustomerId(customerId);
-                printEntry.setAccountNumber(accountNumber);
-
-                SummaryProcessedFile print = printOpt.get();
-                printEntry.setOutputType("PRINT");
-                printEntry.setBlobUrl(print.getArchiveBlobUrl());
-                printEntry.setStatus(print.getStatus());
-
-                archiveOpt.ifPresent(archive -> {
-                    printEntry.setArchiveBlobUrl(archive.getArchiveBlobUrl());
-                    printEntry.setArchiveStatus(archive.getStatus());
-                });
-
-                printEntry.setOverallStatus(computeOverallStatus(printOpt.get(), archiveOpt.orElse(null)));
-                finalList.add(printEntry);
+            switch (file.getOutputType()) {
+                case "EMAIL":
+                    entry.setPdfEmailFileUrl(file.getBlobUrl());
+                    entry.setPdfEmailFileUrlStatus(file.getStatus());
+                    break;
+                case "MOBSTAT":
+                    entry.setPdfMobstatFileUrl(file.getBlobUrl());
+                    entry.setPdfMobstatFileUrlStatus(file.getStatus());
+                    break;
+                case "PRINT":
+                    entry.setPrintFileUrl(file.getBlobUrl());
+                    entry.setPrintFileUrlStatus(file.getStatus());
+                    break;
+                case "ARCHIVE":
+                    entry.setArchiveBlobUrl(file.getBlobUrl());
+                    entry.setArchiveStatus(file.getStatus());
+                    break;
             }
         }
 
-        return finalList;
+        for (ProcessedFileEntry entry : groupedMap.values()) {
+            String email = entry.getPdfEmailFileUrlStatus();
+            String mobstat = entry.getPdfMobstatFileUrlStatus();
+            String print = entry.getPrintFileUrlStatus();
+            String archive = entry.getArchiveStatus();
+
+            boolean hasEmail = email != null;
+            boolean hasMobstat = mobstat != null;
+            boolean hasPrint = print != null;
+            boolean hasArchive = archive != null && archive.equalsIgnoreCase("SUCCESS");
+
+            List<String> allStatuses = new ArrayList<>();
+
+            if (hasEmail) allStatuses.add(email);
+            if (hasMobstat) allStatuses.add(mobstat);
+            if (hasPrint) allStatuses.add(print);
+
+            if (allStatuses.stream().allMatch(s -> s.equalsIgnoreCase("SUCCESS")) && hasArchive) {
+                entry.setOverallStatus("SUCCESS");
+            } else if (allStatuses.stream().anyMatch(s -> s.equalsIgnoreCase("FAILED")) || !hasArchive) {
+                entry.setOverallStatus("FAILED");
+            } else {
+                entry.setOverallStatus("PARTIAL");
+            }
+        }
+
+        return new ArrayList<>(groupedMap.values());
     }
+}
