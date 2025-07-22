@@ -111,6 +111,22 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
             overallStatus = "FAILED";
         }
 
+        // 🆕 Additional safeguard: Archive is SUCCESS, but other delivery types failed or missing
+        if ("SUCCESS".equalsIgnoreCase(entry.getArchiveStatus()) && isErrorPresent) {
+            Map<String, String> channelErrors = errorMap.get(errorKey);
+
+            boolean emailMissing = (entry.getEmailBlobUrl() == null || entry.getEmailBlobUrl().trim().isEmpty())
+                    && channelErrors.containsKey("EMAIL");
+            boolean printMissing = (entry.getPrintBlobUrl() == null || entry.getPrintBlobUrl().trim().isEmpty())
+                    && channelErrors.containsKey("PRINT");
+            boolean mobstatMissing = (entry.getMobstatBlobUrl() == null || entry.getMobstatBlobUrl().trim().isEmpty())
+                    && channelErrors.containsKey("MOBSTAT");
+
+            if (emailMissing || printMissing || mobstatMissing) {
+                overallStatus = "FAILED";
+            }
+        }
+
         entry.setOverallStatus(overallStatus);
     }
 
