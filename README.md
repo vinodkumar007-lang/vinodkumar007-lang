@@ -1,4 +1,7 @@
-private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedFiles, Map<String, String> errorMap) {
+private static List<ProcessedFileEntry> buildProcessedFileEntries(
+        List<SummaryProcessedFile> processedFiles,
+        Map<String, Map<String, String>> errorMap
+) {
     Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
 
     for (SummaryProcessedFile file : processedFiles) {
@@ -30,21 +33,21 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryPr
         grouped.put(key, entry);
     }
 
-    // Set overallStatus for each grouped entry
-    for (ProcessedFileEntry entry : grouped.values()) {
-        String key = entry.getCustomerId() + "-" + entry.getAccountNumber();
+    // Set overallStatus based on errorMap and archive presence
+    for (Map.Entry<String, ProcessedFileEntry> groupedEntry : grouped.entrySet()) {
+        String key = groupedEntry.getKey();
+        ProcessedFileEntry entry = groupedEntry.getValue();
 
-        // If errorMap has this customer+account → mark FAILED
         if (errorMap.containsKey(key)) {
+            // Even if archive exists, error presence forces FAILED
             entry.setOverallStatus("FAILED");
-            continue;
-        }
-
-        // If archiveBlobUrl is present (successfully uploaded) → mark SUCCESS
-        if (entry.getArchiveBlobUrl() != null && !entry.getArchiveBlobUrl().isEmpty()) {
-            entry.setOverallStatus("SUCCESS");
         } else {
-            entry.setOverallStatus("FAILED");
+            // Success only if archive blob URL is present
+            if (entry.getArchiveBlobUrl() != null && !entry.getArchiveBlobUrl().isEmpty()) {
+                entry.setOverallStatus("SUCCESS");
+            } else {
+                entry.setOverallStatus("FAILED");
+            }
         }
     }
 
