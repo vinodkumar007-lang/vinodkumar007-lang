@@ -1,86 +1,57 @@
-import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.Data;
-import java.util.*;
+private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList, Map<String, ErrorReportEntry> errorMap) {
+    Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
+        .collect(Collectors.groupingBy(f -> f.getCustomerId() + ":" + f.getAccountNumber() + ":" + f.getOutputType()));
 
-@Data
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class ProcessedFileEntry {
-    private String customerId;
-    private String accountNumber;
+    List<ProcessedFileEntry> result = new ArrayList<>();
 
-    private String pdfEmailFileUrl;
-    private String pdfEmailFileUrlStatus;
+    grouped.forEach((key, list) -> {
+        SummaryProcessedFile mainFile = list.stream()
+            .filter(f -> !"ARCHIVE".equalsIgnoreCase(f.getOutputType()))
+            .findFirst()
+            .orElse(null);
 
-    private String pdfMobstatFileUrl;
-    private String pdfMobstatFileUrlStatus;
+        SummaryProcessedFile archiveFile = list.stream()
+            .filter(f -> "ARCHIVE".equalsIgnoreCase(f.getOutputType()))
+            .findFirst()
+            .orElse(null);
 
-    private String printFileUrl;
-    private String printFileUrlStatus;
+        if (mainFile != null) {
+            ProcessedFileEntry entry = new ProcessedFileEntry();
+            entry.setCustomerId(mainFile.getCustomerId());
+            entry.setAccountNumber(mainFile.getAccountNumber());
+            entry.setOutputType(mainFile.getOutputType());
+            entry.setFileUrl(mainFile.getBlobUrl());
 
-    private String archiveBlobUrl;
-    private String archiveStatus;
-
-    private String overallStatus;
-
-    public static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedList,
-                                                                      Map<String, ErrorReportEntry> errorMap) {
-        Map<String, ProcessedFileEntry> groupedMap = new LinkedHashMap<>();
-
-        for (SummaryProcessedFile file : processedList) {
-            String key = file.getCustomerId() + "_" + file.getAccountNumber();
-            groupedMap.putIfAbsent(key, new ProcessedFileEntry());
-            ProcessedFileEntry entry = groupedMap.get(key);
-
-            entry.setCustomerId(file.getCustomerId());
-            entry.setAccountNumber(file.getAccountNumber());
-
-            switch (file.getOutputType()) {
-                case "EMAIL":
-                    entry.setPdfEmailFileUrl(file.getBlobUrl());
-                    entry.setPdfEmailFileUrlStatus(file.getStatus());
-                    break;
-                case "MOBSTAT":
-                    entry.setPdfMobstatFileUrl(file.getBlobUrl());
-                    entry.setPdfMobstatFileUrlStatus(file.getStatus());
-                    break;
-                case "PRINT":
-                    entry.setPrintFileUrl(file.getBlobUrl());
-                    entry.setPrintFileUrlStatus(file.getStatus());
-                    break;
-                case "ARCHIVE":
-                    entry.setArchiveBlobUrl(file.getBlobUrl());
-                    entry.setArchiveStatus(file.getStatus());
-                    break;
+            if (mainFile.getBlobUrl() != null) {
+                entry.setStatus("SUCCESS");
+            } else {
+                String errorKey = mainFile.getCustomerId() + ":" + mainFile.getAccountNumber();
+                if (errorMap.containsKey(errorKey)) {
+                    entry.setStatus("FAILED");
+                } else {
+                    return; // Skip adding this entry
+                }
             }
-        }
 
-        for (ProcessedFileEntry entry : groupedMap.values()) {
-            String email = entry.getPdfEmailFileUrlStatus();
-            String mobstat = entry.getPdfMobstatFileUrlStatus();
-            String print = entry.getPrintFileUrlStatus();
-            String archive = entry.getArchiveStatus();
+            if (archiveFile != null && archiveFile.getBlobUrl() != null) {
+                entry.setArchiveBlobUrl(archiveFile.getBlobUrl());
+                entry.setArchiveStatus("SUCCESS");
+            } else {
+                entry.setArchiveStatus("FAILED");
+            }
 
-            boolean hasEmail = email != null;
-            boolean hasMobstat = mobstat != null;
-            boolean hasPrint = print != null;
-            boolean hasArchive = archive != null && archive.equalsIgnoreCase("SUCCESS");
-
-            List<String> allStatuses = new ArrayList<>();
-
-            if (hasEmail) allStatuses.add(email);
-            if (hasMobstat) allStatuses.add(mobstat);
-            if (hasPrint) allStatuses.add(print);
-
-            if (allStatuses.stream().allMatch(s -> s.equalsIgnoreCase("SUCCESS")) && hasArchive) {
+            // Set overall status
+            if ("SUCCESS".equals(entry.getStatus()) && "SUCCESS".equals(entry.getArchiveStatus())) {
                 entry.setOverallStatus("SUCCESS");
-            } else if (allStatuses.stream().anyMatch(s -> s.equalsIgnoreCase("FAILED")) || !hasArchive) {
+            } else if ("FAILED".equals(entry.getStatus()) && "SUCCESS".equals(entry.getArchiveStatus())) {
                 entry.setOverallStatus("FAILED");
             } else {
                 entry.setOverallStatus("PARTIAL");
             }
+
+            result.add(entry);
         }
+    });
 
-        return new ArrayList<>(groupedMap.values());
-    }
+    return result;
 }
-
