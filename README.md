@@ -193,3 +193,111 @@
 
         return new ArrayList<>(grouped.values());
     }
+
+
+============
+
+private static List<ProcessedFileEntry> buildProcessedFileEntries(
+        List<SummaryProcessedFile> processedFiles,
+        Map<String, Map<String, String>> errorMap) {
+
+    Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
+
+    for (SummaryProcessedFile file : processedFiles) {
+        String key = file.getCustomerId() + "-" + file.getAccountNumber();
+
+        ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
+        entry.setCustomerId(file.getCustomerId());
+        entry.setAccountNumber(file.getAccountNumber());
+        grouped.putIfAbsent(key, entry);
+
+        String outputType = file.getOutputType().toUpperCase();
+        String blobUrl = file.getBlobUrl() != null ? file.getBlobUrl() : "";
+
+        switch (outputType) {
+            case "EMAIL":
+                entry.setEmailBlobUrl(blobUrl);
+                entry.setEmailStatus(!blobUrl.isEmpty() ? "SUCCESS" : "");
+                break;
+            case "PRINT":
+                entry.setPrintBlobUrl(blobUrl);
+                entry.setPrintStatus(!blobUrl.isEmpty() ? "SUCCESS" : "");
+                break;
+            case "MOBSTAT":
+                entry.setMobstatBlobUrl(blobUrl);
+                entry.setMobstatStatus(!blobUrl.isEmpty() ? "SUCCESS" : "");
+                break;
+            case "ARCHIVE":
+                entry.setArchiveBlobUrl(blobUrl);
+                entry.setArchiveStatus(!blobUrl.isEmpty() ? "SUCCESS" : "FAILED"); // archive is always expected
+                break;
+        }
+    }
+
+    for (ProcessedFileEntry entry : grouped.values()) {
+        String key = entry.getCustomerId() + "-" + entry.getAccountNumber();
+        Map<String, String> errorStatusMap = errorMap.getOrDefault(key, new HashMap<>());
+
+        // EMAIL
+        if (isEmpty(entry.getEmailStatus())) {
+            if ("FAILED".equalsIgnoreCase(errorStatusMap.get("EMAIL"))) {
+                entry.setEmailStatus("FAILED");
+            } else if (errorStatusMap.containsKey("EMAIL")) {
+                entry.setEmailStatus("NOT_FOUND");
+            }
+        }
+
+        // PRINT
+        if (isEmpty(entry.getPrintStatus())) {
+            if ("FAILED".equalsIgnoreCase(errorStatusMap.get("PRINT"))) {
+                entry.setPrintStatus("FAILED");
+            } else if (errorStatusMap.containsKey("PRINT")) {
+                entry.setPrintStatus("NOT_FOUND");
+            }
+        }
+
+        // MOBSTAT
+        if (isEmpty(entry.getMobstatStatus())) {
+            if ("FAILED".equalsIgnoreCase(errorStatusMap.get("MOBSTAT"))) {
+                entry.setMobstatStatus("FAILED");
+            } else if (errorStatusMap.containsKey("MOBSTAT")) {
+                entry.setMobstatStatus("NOT_FOUND");
+            }
+        }
+
+        // Default empty marking if nothing at all found
+        if (entry.getEmailStatus() == null) entry.setEmailStatus("");
+        if (entry.getPrintStatus() == null) entry.setPrintStatus("");
+        if (entry.getMobstatStatus() == null) entry.setMobstatStatus("");
+
+        // OVERALL STATUS LOGIC
+        List<String> statuses = Arrays.asList(
+            entry.getEmailStatus(),
+            entry.getPrintStatus(),
+            entry.getMobstatStatus()
+        );
+
+        boolean allEmpty = statuses.stream().allMatch(s -> s == null || s.isEmpty());
+        boolean allSuccess = statuses.stream().allMatch(s -> s.equals("SUCCESS") || s.isEmpty());
+        boolean anyFailed = statuses.stream().anyMatch(s -> s.equals("FAILED"));
+        boolean anyNotFound = statuses.stream().anyMatch(s -> s.equals("NOT_FOUND"));
+
+        if (allEmpty) {
+            entry.setOverallStatus("PARTIAL");
+        } else if (allSuccess) {
+            entry.setOverallStatus("SUCCESS");
+        } else if (anyFailed) {
+            entry.setOverallStatus("FAILED");
+        } else if (anyNotFound) {
+            entry.setOverallStatus("PARTIAL");
+        } else {
+            entry.setOverallStatus("PARTIAL");
+        }
+    }
+
+    return new ArrayList<>(grouped.values());
+}
+
+private static boolean isEmpty(String str) {
+    return str == null || str.trim().isEmpty();
+}
