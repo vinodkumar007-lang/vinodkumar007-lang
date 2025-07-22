@@ -119,11 +119,16 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         String blobUrl = file.getBlobUrl();
         String status = file.getStatus();
 
+        // ✅ If blobUrl is null or empty, clear the status as well
+        if (blobUrl == null || blobUrl.trim().isEmpty()) {
+            status = "";
+        }
+
         String errorKey = file.getCustomerId() + "-" + file.getAccountNumber();
         boolean isErrorPresent = errorMap.containsKey(errorKey);
 
-        // 👉 If error exists and it's EMAIL/PRINT/MOBSTAT, force status to FAILED
-        if (isErrorPresent && !outputType.equals("ARCHIVE")) {
+        // ✅ If error exists and it's EMAIL/PRINT/MOBSTAT, force status to FAILED
+        if (isErrorPresent && !outputType.equals("ARCHIVE") && !"".equals(status)) {
             status = "FAILED";
         }
 
@@ -155,10 +160,10 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         boolean isErrorPresent = errorMap.containsKey(errorKey);
 
         List<String> statuses = new ArrayList<>();
-        if (entry.getEmailStatus() != null) statuses.add(entry.getEmailStatus());
-        if (entry.getMobstatStatus() != null) statuses.add(entry.getMobstatStatus());
-        if (entry.getPrintStatus() != null) statuses.add(entry.getPrintStatus());
-        if (entry.getArchiveStatus() != null) statuses.add(entry.getArchiveStatus());
+        if (entry.getEmailStatus() != null && !entry.getEmailStatus().isEmpty()) statuses.add(entry.getEmailStatus());
+        if (entry.getMobstatStatus() != null && !entry.getMobstatStatus().isEmpty()) statuses.add(entry.getMobstatStatus());
+        if (entry.getPrintStatus() != null && !entry.getPrintStatus().isEmpty()) statuses.add(entry.getPrintStatus());
+        if (entry.getArchiveStatus() != null && !entry.getArchiveStatus().isEmpty()) statuses.add(entry.getArchiveStatus());
 
         boolean allSuccess = !statuses.isEmpty() && statuses.stream().allMatch(s -> "SUCCESS".equalsIgnoreCase(s));
         boolean anyFailed = statuses.stream().anyMatch(s -> "FAILED".equalsIgnoreCase(s));
@@ -198,3 +203,4 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
 
     return new ArrayList<>(grouped.values());
 }
+
