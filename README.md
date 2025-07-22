@@ -11,26 +11,35 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         entry.setCustomerId(file.getCustomerId());
         entry.setAccountNumber(file.getAccountNumber());
 
-        // Attach the blobUrl + status based on output type
-        String outputType = file.getOutputType();
-        if ("EMAIL".equalsIgnoreCase(outputType)) {
-            entry.setEmailBlobUrl(file.getBlobUrl());
-            entry.setEmailStatus(file.getStatus());
-        } else if ("ARCHIVE".equalsIgnoreCase(outputType)) {
-            entry.setArchiveBlobUrl(file.getBlobUrl());
-            entry.setArchiveStatus(file.getStatus());
-        } else if ("PRINT".equalsIgnoreCase(outputType)) {
-            entry.setPrintBlobUrl(file.getBlobUrl());
-            entry.setPrintStatus(file.getStatus());
-        } else if ("MOBSTAT".equalsIgnoreCase(outputType)) {
-            entry.setMobstatBlobUrl(file.getBlobUrl());
-            entry.setMobstatStatus(file.getStatus());
+        String outputType = file.getOutputType() != null ? file.getOutputType().toUpperCase(Locale.ROOT) : "";
+        String blobUrl = file.getBlobUrl();
+        String status = file.getStatus();
+
+        System.out.println("Processing file for key: " + key + " | outputType: " + outputType + " | blobUrl: " + blobUrl + " | status: " + status);
+
+        switch (outputType) {
+            case "EMAIL":
+                entry.setEmailBlobUrl(blobUrl);
+                entry.setEmailStatus(status);
+                break;
+            case "ARCHIVE":
+                entry.setArchiveBlobUrl(blobUrl);
+                entry.setArchiveStatus(status);
+                break;
+            case "PRINT":
+                entry.setPrintBlobUrl(blobUrl);
+                entry.setPrintStatus(status);
+                break;
+            case "MOBSTAT":
+                entry.setMobstatBlobUrl(blobUrl);
+                entry.setMobstatStatus(status);
+                break;
         }
 
         grouped.put(key, entry);
     }
 
-    // Final pass to compute overallStatus
+    // Final pass: calculate overall status
     for (Map.Entry<String, ProcessedFileEntry> mapEntry : grouped.entrySet()) {
         ProcessedFileEntry entry = mapEntry.getValue();
 
@@ -42,10 +51,12 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
 
         String overallStatus;
 
-        if ("SUCCESS".equalsIgnoreCase(emailStatus) && "SUCCESS".equalsIgnoreCase(archiveStatus)) {
+        if (isErrorPresent) {
+            overallStatus = "FAILED";
+        } else if ("SUCCESS".equalsIgnoreCase(emailStatus) && "SUCCESS".equalsIgnoreCase(archiveStatus)) {
             overallStatus = "SUCCESS";
         } else if ("SUCCESS".equalsIgnoreCase(archiveStatus) && (emailStatus == null || emailStatus.isEmpty())) {
-            overallStatus = isErrorPresent ? "FAILED" : "SUCCESS";
+            overallStatus = "SUCCESS";
         } else if ("FAILED".equalsIgnoreCase(emailStatus) && "FAILED".equalsIgnoreCase(archiveStatus)) {
             overallStatus = "FAILED";
         } else if ("SUCCESS".equalsIgnoreCase(emailStatus) && !"SUCCESS".equalsIgnoreCase(archiveStatus)) {
