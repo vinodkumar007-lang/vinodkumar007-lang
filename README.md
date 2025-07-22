@@ -79,76 +79,91 @@ public static SummaryPayload buildPayload(
 
 private static List<ProcessedFileEntry> buildProcessedFileEntries(
         List<SummaryProcessedFile> processedFiles,
-        Map<String, String> errorMap) {
-
+        Map<String, Map<String, String>> errorReportMap
+) {
     Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
 
     for (SummaryProcessedFile file : processedFiles) {
         String key = file.getCustomerId() + "-" + file.getAccountNumber();
-
         ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
+
         entry.setCustomerId(file.getCustomerId());
         entry.setAccountNumber(file.getAccountNumber());
 
-        String outputType = file.getOutputType();
-        String blobUrl = file.getBlobUrl();
-        String status = file.getStatus();
-
-        // Set blob URL and status based on outputType
-        switch (outputType) {
+        switch (file.getOutputType()) {
             case "EMAIL":
-                entry.setEmailBlobUrl(blobUrl);
-                entry.setEmailStatus(status);
+                entry.setEmailBlobUrl(file.getBlobUrl());
+                entry.setEmailStatus(file.getStatus());
                 break;
             case "ARCHIVE":
-                entry.setArchiveBlobUrl(blobUrl);
-                entry.setArchiveStatus(status);
+                entry.setArchiveBlobUrl(file.getBlobUrl());
+                entry.setArchiveStatus(file.getStatus());
                 break;
             case "PRINT":
-                entry.setPrintBlobUrl(blobUrl);
-                entry.setPrintStatus(status);
+                entry.setPrintBlobUrl(file.getBlobUrl());
+                entry.setPrintStatus(file.getStatus());
                 break;
             case "MOBSTAT":
-                entry.setMobstatBlobUrl(blobUrl);
-                entry.setMobstatStatus(status);
+                entry.setMobstatBlobUrl(file.getBlobUrl());
+                entry.setMobstatStatus(file.getStatus());
                 break;
         }
 
         grouped.put(key, entry);
     }
 
-    // Post-processing for each entry to apply edge-case rules
+    // Finalize statuses
     for (ProcessedFileEntry entry : grouped.values()) {
-        String overallStatus = "FAILED"; // default
         boolean archiveSuccess = "SUCCESS".equalsIgnoreCase(entry.getArchiveStatus());
-        boolean emailSuccess = "SUCCESS".equalsIgnoreCase(entry.getEmailStatus());
-        boolean emailExists = entry.getEmailBlobUrl() != null && !entry.getEmailBlobUrl().isEmpty();
-        boolean hasError = errorMap.containsKey(entry.getAccountNumber());
 
-        // Case 1: Both email & archive are success
-        if (archiveSuccess && emailSuccess) {
-            overallStatus = "SUCCESS";
-        }
-        // Case 2: Email not found but account in errorMap => FAILED
-        else if (archiveSuccess && (entry.getEmailBlobUrl() == null || entry.getEmailBlobUrl().isEmpty())) {
-            if (hasError) {
-                entry.setEmailStatus("FAILED");
-                overallStatus = "FAILED";
-            } else {
-                // File missing but not in error list — consider as partial
-                entry.setEmailStatus("NOT_FOUND");
-                overallStatus = "PARTIAL";
-            }
-        }
-        // Case 3: One success, one fail => PARTIAL
-        else if ((emailSuccess && !archiveSuccess) || (!emailSuccess && archiveSuccess)) {
-            overallStatus = "PARTIAL";
-        }
+        boolean emailFailed = isFailedOrMissing(entry.getEmailStatus(), entry.getCustomerId(), entry.getAccountNumber(), "EMAIL", errorReportMap);
+        boolean printFailed = isFailedOrMissing(entry.getPrintStatus(), entry.getCustomerId(), entry.getAccountNumber(), "PRINT", errorReportMap);
+        boolean mobstatFailed = isFailedOrMissing(entry.getMobstatStatus(), entry.getCustomerId(), entry.getAccountNumber(), "MOBSTAT", errorReportMap);
 
-        entry.setOverallStatus(overallStatus);
+        boolean anyFailed = emailFailed || printFailed || mobstatFailed;
+        boolean allMissing = isAllMissing(entry);
+
+        if (!archiveSuccess) {
+            entry.setOverallStatus("FAILED");
+        } else if (anyFailed) {
+            entry.setOverallStatus("FAILED"); // You can switch this to "PARTIAL" if your rule permits
+        } else if (archiveSuccess) {
+            entry.setOverallStatus("SUCCESS");
+        } else {
+            entry.setOverallStatus("FAILED");
+        }
     }
 
     return new ArrayList<>(grouped.values());
+}
+
+private static boolean isFailedOrMissing(
+        String status,
+        String customerId,
+        String accountNumber,
+        String type,
+        Map<String, Map<String, String>> errorMap
+) {
+    if ("FAILED".equalsIgnoreCase(status)) return true;
+
+    boolean isMissing = (status == null || status.isEmpty());
+
+    if (isMissing) {
+        Map<String, String> customerErrors = errorMap.getOrDefault(customerId, Collections.emptyMap());
+        return customerErrors.containsKey(accountNumber);
+    }
+
+    return false;
+}
+
+private static boolean isAllMissing(ProcessedFileEntry entry) {
+    return isNullOrEmpty(entry.getEmailStatus()) &&
+           isNullOrEmpty(entry.getPrintStatus()) &&
+           isNullOrEmpty(entry.getMobstatStatus());
+}
+
+private static boolean isNullOrEmpty(String s) {
+    return s == null || s.trim().isEmpty();
 }
 
 
