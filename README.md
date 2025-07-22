@@ -1,51 +1,49 @@
-public static List<ProcessedFileEntry> buildProcessedFileEntriesGrouped(
-        List<SummaryProcessedFile> summaryFiles
-) {
-    Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
+ private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedFiles) {
+        Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
 
-    for (SummaryProcessedFile file : summaryFiles) {
-        String key = file.getCustomerId() + "-" + file.getAccountNumber();
+        for (SummaryProcessedFile file : processedFiles) {
+            String key = file.getCustomerId() + "-" + file.getAccountNumber();
+            ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
 
-        grouped.computeIfAbsent(key, k -> {
-            ProcessedFileEntry entry = new ProcessedFileEntry();
             entry.setCustomerId(file.getCustomerId());
             entry.setAccountNumber(file.getAccountNumber());
-            entry.setDeliveryStatuses(new ArrayList<>());
-            return entry;
-        });
 
-        DeliveryStatus status = new DeliveryStatus();
-        status.setOutputType(file.getOutputType());
-        status.setBlobUrl(file.getBlobUrl());
-        status.setStatus(file.getStatus());
+            switch (file.getOutputType()) {
+                case "EMAIL":
+                    entry.setPdfEmailFileUrl(file.getBlobURL());
+                    entry.setPdfEmailFileUrlStatus(file.getStatus());
+                    break;
+                case "ARCHIVE":
+                    entry.setArchiveBlobUrl(file.getBlobURL());
+                    entry.setArchiveStatus(file.getStatus());
+                    break;
+                case "MOBSTAT":
+                    entry.setPdfMobstatFileUrl(file.getBlobURL());
+                    entry.setPdfMobstatFileUrlStatus(file.getStatus());
+                    break;
+                // Leave PRINT for later
+            }
 
-        grouped.get(key).getDeliveryStatuses().add(status);
-    }
+            grouped.put(key, entry);
+        }
 
-    // Now calculate overallStatus for each entry
-    for (ProcessedFileEntry entry : grouped.values()) {
-        boolean hasSuccess = false;
-        boolean hasFailed = false;
+        for (ProcessedFileEntry entry : grouped.values()) {
+            String emailStatus = entry.getPdfEmailFileUrlStatus();
+            String archiveStatus = entry.getArchiveStatus();
+            String mobstatStatus = entry.getPdfMobstatFileUrlStatus();
 
-        for (DeliveryStatus d : entry.getDeliveryStatuses()) {
-            if ("SUCCESS".equalsIgnoreCase(d.getStatus())) {
-                hasSuccess = true;
-            } else if ("FAILED".equalsIgnoreCase(d.getStatus())) {
-                hasFailed = true;
+            boolean emailSuccess = "SUCCESS".equalsIgnoreCase(emailStatus);
+            boolean archiveSuccess = "SUCCESS".equalsIgnoreCase(archiveStatus);
+            boolean mobstatSuccess = mobstatStatus == null || "SUCCESS".equalsIgnoreCase(mobstatStatus);
+
+            if (emailSuccess && archiveSuccess && mobstatSuccess) {
+                entry.setOverallStatus("SUCCESS");
+            } else if ("FAILED".equalsIgnoreCase(emailStatus)) {
+                entry.setOverallStatus("FAILED");
+            } else {
+                entry.setOverallStatus("PARTIAL");
             }
         }
 
-        String overall;
-        if (hasSuccess && hasFailed) {
-            overall = "PARTIAL";
-        } else if (hasSuccess) {
-            overall = "SUCCESS";
-        } else {
-            overall = "FAILED";
-        }
-
-        entry.setOverallStatus(overall);
+        return new ArrayList<>(grouped.values());
     }
-
-    return new ArrayList<>(grouped.values());
-}
