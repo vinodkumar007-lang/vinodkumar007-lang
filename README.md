@@ -1,6 +1,6 @@
 private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedFiles) {
     Map<String, List<SummaryProcessedFile>> grouped = processedFiles.stream()
-            .collect(Collectors.groupingBy(p -> p.getCustomerId() + "|" + p.getAccountNumber()));
+        .collect(Collectors.groupingBy(p -> p.getCustomerId() + "|" + p.getAccountNumber()));
 
     List<ProcessedFileEntry> result = new ArrayList<>();
 
@@ -9,78 +9,46 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryPr
         if (groupList.isEmpty()) continue;
 
         SummaryProcessedFile first = groupList.get(0);
-
         ProcessedFileEntry processedEntry = new ProcessedFileEntry();
         processedEntry.setCustomerId(first.getCustomerId());
         processedEntry.setAccountNumber(first.getAccountNumber());
 
-        String emailStatus = null, mobstatStatus = null, printStatus = null, archiveStatus = null;
-        String emailUrl = null, mobstatUrl = null, printUrl = null, archiveUrl = null;
-
-        for (SummaryProcessedFile file : groupList) {
-            switch (file.getOutputType()) {
-                case "EMAIL":
-                    emailStatus = file.getStatus();
-                    emailUrl = file.getBlobURL();
-                    break;
-                case "MOBSTAT":
-                    mobstatStatus = file.getStatus();
-                    mobstatUrl = file.getBlobURL();
-                    break;
-                case "PRINT":
-                    printStatus = file.getStatus();
-                    printUrl = file.getBlobURL();
-                    break;
-            }
-
-            if (file.getArchiveBlobUrl() != null) {
-                archiveUrl = file.getArchiveBlobUrl();
-                archiveStatus = file.getArchiveStatus();
-            }
-        }
-
-        // Set individual URLs and statuses
-        processedEntry.setPdfEmailFileUrl(emailUrl);
-        processedEntry.setPdfEmailFileUrlStatus(emailStatus);
-        processedEntry.setPdfMobstatFileUrl(mobstatUrl);
-        processedEntry.setPdfMobstatFileUrlStatus(mobstatStatus);
-        processedEntry.setPrintFileUrl(printUrl);
-        processedEntry.setPrintFileUrlStatus(printStatus);
-        processedEntry.setArchiveBlobUrl(archiveUrl);
-        processedEntry.setArchiveStatus(archiveStatus);
-
-        // Determine overall status
-        boolean hasFailure = false;
+        boolean hasFailed = false;
         boolean hasPartial = false;
 
-        // EMAIL
-        if (emailStatus == null && emailUrl == null) {
-            hasPartial = true;
-        } else if ("FAILED".equalsIgnoreCase(emailStatus)) {
-            hasFailure = true;
+        for (SummaryProcessedFile file : groupList) {
+            String type = file.getOutputType();
+            String status = file.getStatus();
+
+            switch (type) {
+                case "EMAIL":
+                    processedEntry.setPdfEmailFileUrl(file.getBlobURL());
+                    processedEntry.setPdfEmailFileUrlStatus(status);
+                    break;
+                case "MOBSTAT":
+                    processedEntry.setPdfMobstatFileUrl(file.getBlobURL());
+                    processedEntry.setPdfMobstatFileUrlStatus(status);
+                    break;
+                case "PRINT":
+                    processedEntry.setPrintFileUrl(file.getBlobURL());
+                    processedEntry.setPrintFileUrlStatus(status);
+                    break;
+            }
+
+            // Always add archive if available
+            if (file.getArchiveBlobUrl() != null) {
+                processedEntry.setArchiveBlobUrl(file.getArchiveBlobUrl());
+                processedEntry.setArchiveStatus(file.getArchiveStatus());
+            }
+
+            if ("FAILED".equalsIgnoreCase(status)) {
+                hasFailed = true;
+            } else if ("NOT-FOUND".equalsIgnoreCase(status)) {
+                hasPartial = true;
+            }
         }
 
-        // MOBSTAT
-        if (mobstatStatus == null && mobstatUrl == null) {
-            hasPartial = true;
-        } else if ("FAILED".equalsIgnoreCase(mobstatStatus)) {
-            hasFailure = true;
-        }
-
-        // PRINT
-        if (printStatus == null && printUrl == null) {
-            hasPartial = true;
-        } else if ("FAILED".equalsIgnoreCase(printStatus)) {
-            hasFailure = true;
-        }
-
-        // ARCHIVE — always must exist
-        if (archiveStatus == null || !"SUCCESS".equalsIgnoreCase(archiveStatus)) {
-            hasFailure = true; // archive is mandatory
-        }
-
-        // Final decision
-        if (hasFailure) {
+        if (hasFailed) {
             processedEntry.setOverallStatus("FAILED");
         } else if (hasPartial) {
             processedEntry.setOverallStatus("PARTIAL");
