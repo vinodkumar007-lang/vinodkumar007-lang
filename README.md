@@ -11,56 +11,45 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         entry.setCustomerId(file.getCustomerId());
         entry.setAccountNumber(file.getAccountNumber());
 
-        String errorKey = file.getCustomerId() + "-" + file.getAccountNumber();
-
-        // Set fields based on output type
-        switch (file.getOutputType()) {
-            case "EMAIL":
-                entry.setEmailBlobUrl(file.getBlobUrl());
-                entry.setEmailStatus(file.getStatus());
-                break;
-
-            case "ARCHIVE":
-                entry.setArchiveBlobUrl(file.getBlobUrl());
-                entry.setArchiveStatus(file.getStatus());
-                break;
-
-            case "PRINT":
-                entry.setPrintBlobUrl(file.getBlobUrl());
-                entry.setPrintStatus(file.getStatus());
-                break;
-
-            case "MOBSTAT":
-                entry.setMobstatBlobUrl(file.getBlobUrl());
-                entry.setMobstatStatus(file.getStatus());
-                break;
+        // Attach the blobUrl + status based on output type
+        String outputType = file.getOutputType();
+        if ("EMAIL".equalsIgnoreCase(outputType)) {
+            entry.setEmailBlobUrl(file.getBlobUrl());
+            entry.setEmailStatus(file.getStatus());
+        } else if ("ARCHIVE".equalsIgnoreCase(outputType)) {
+            entry.setArchiveBlobUrl(file.getBlobUrl());
+            entry.setArchiveStatus(file.getStatus());
+        } else if ("PRINT".equalsIgnoreCase(outputType)) {
+            entry.setPrintBlobUrl(file.getBlobUrl());
+            entry.setPrintStatus(file.getStatus());
+        } else if ("MOBSTAT".equalsIgnoreCase(outputType)) {
+            entry.setMobstatBlobUrl(file.getBlobUrl());
+            entry.setMobstatStatus(file.getStatus());
         }
 
-        grouped.put(key, entry); // Always put back to update
+        grouped.put(key, entry);
     }
 
-    // Final pass to determine overallStatus
-    for (ProcessedFileEntry entry : grouped.values()) {
+    // Final pass to compute overallStatus
+    for (Map.Entry<String, ProcessedFileEntry> mapEntry : grouped.entrySet()) {
+        ProcessedFileEntry entry = mapEntry.getValue();
+
         String errorKey = entry.getCustomerId() + "-" + entry.getAccountNumber();
-        boolean isError = errorMap.containsKey(errorKey);
+        boolean isErrorPresent = errorMap.containsKey(errorKey);
 
         String emailStatus = entry.getEmailStatus();
         String archiveStatus = entry.getArchiveStatus();
 
-        String overallStatus = "SUCCESS";
+        String overallStatus;
 
         if ("SUCCESS".equalsIgnoreCase(emailStatus) && "SUCCESS".equalsIgnoreCase(archiveStatus)) {
             overallStatus = "SUCCESS";
+        } else if ("SUCCESS".equalsIgnoreCase(archiveStatus) && (emailStatus == null || emailStatus.isEmpty())) {
+            overallStatus = isErrorPresent ? "FAILED" : "SUCCESS";
         } else if ("FAILED".equalsIgnoreCase(emailStatus) && "FAILED".equalsIgnoreCase(archiveStatus)) {
             overallStatus = "FAILED";
         } else if ("SUCCESS".equalsIgnoreCase(emailStatus) && !"SUCCESS".equalsIgnoreCase(archiveStatus)) {
             overallStatus = "PARTIAL";
-        } else if (emailStatus == null && archiveStatus != null && archiveStatus.equals("SUCCESS")) {
-            if (isError) {
-                overallStatus = "FAILED";
-            } else {
-                overallStatus = "SUCCESS"; // fallback if no email but no error reported
-            }
         } else {
             overallStatus = "FAILED";
         }
