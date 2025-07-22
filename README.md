@@ -1,62 +1,61 @@
-private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedFiles) {
+private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedFiles, Map<String, String> errorMap) {
     Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
 
     for (SummaryProcessedFile file : processedFiles) {
-        String key = file.getCustomerId() + "-" + file.getAccountNumber();
+        String key = file.getCustomerId() + "::" + file.getAccountNumber();
         ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
 
         entry.setCustomerId(file.getCustomerId());
         entry.setAccountNumber(file.getAccountNumber());
 
-        // Set archiveBlobUrl only once (from any record)
-        if (entry.getArchiveBlobUrl() == null && file.getArchiveBlobUrl() != null) {
-            entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
-            entry.setArchiveStatus(file.getArchiveStatus());
+        List<OutputDetail> outputDetails = entry.getOutputs() != null ? entry.getOutputs() : new ArrayList<>();
+
+        String outputType = file.getOutputType();
+        String blobUrl = file.getBlobUrl();
+        String status;
+        boolean shouldAdd = true;
+
+        if ("ARCHIVE".equalsIgnoreCase(outputType)) {
+            // ARCHIVE always present and always SUCCESS
+            status = "SUCCESS";
+        } else {
+            if (blobUrl != null && !blobUrl.isEmpty()) {
+                status = "SUCCESS";
+            } else {
+                String errorKey = file.getCustomerId() + "::" + file.getAccountNumber();
+                if (errorMap.containsKey(errorKey)) {
+                    status = "FAILED";
+                } else {
+                    shouldAdd = false; // Skip adding this output type
+                }
+            }
         }
 
-        // Set individual delivery method outputs
-        switch (file.getOutputType()) {
-            case "EMAIL":
-                entry.setPdfEmailFileUrl(file.getBlobURL());
-                entry.setPdfEmailFileUrlStatus(file.getStatus());
-                break;
-            case "MOBSTAT":
-                entry.setPdfMobstatFileUrl(file.getBlobURL());
-                entry.setPdfMobstatFileUrlStatus(file.getStatus());
-                break;
-            case "PRINT":
-                // Optional: Add if needed
-                break;
+        if (shouldAdd) {
+            OutputDetail detail = new OutputDetail();
+            detail.setOutputType(outputType);
+            detail.setBlobUrl(blobUrl);
+            detail.setStatus(status);
+            outputDetails.add(detail);
         }
+
+        entry.setOutputs(outputDetails);
+        // Calculate overallStatus
+        String overallStatus = calculateOverallStatus(outputDetails);
+        entry.setOverallStatus(overallStatus);
 
         grouped.put(key, entry);
     }
 
-    // Set overallStatus for each grouped customer
-    for (ProcessedFileEntry entry : grouped.values()) {
-        String emailStatus = entry.getPdfEmailFileUrlStatus();
-        String archiveStatus = entry.getArchiveStatus();
-        String mobstatStatus = entry.getPdfMobstatFileUrlStatus();
-
-        boolean emailOk = emailStatus == null || "SUCCESS".equalsIgnoreCase(emailStatus);
-        boolean archiveOk = "SUCCESS".equalsIgnoreCase(archiveStatus);
-        boolean mobstatOk = mobstatStatus == null || "SUCCESS".equalsIgnoreCase(mobstatStatus);
-
-        boolean emailFailed = "FAILED".equalsIgnoreCase(emailStatus);
-
-        // Logic based on combinations
-        if (emailOk && archiveOk && mobstatOk) {
-            entry.setOverallStatus("SUCCESS");
-        } else if (emailFailed) {
-            entry.setOverallStatus("FAILED");
-        } else if (!emailOk && archiveOk) {
-            entry.setOverallStatus("SUCCESS");
-        } else if (!emailOk && !archiveOk) {
-            entry.setOverallStatus("FAILED");
-        } else {
-            entry.setOverallStatus("PARTIAL");
-        }
-    }
-
     return new ArrayList<>(grouped.values());
+}
+
+private static String calculateOverallStatus(List<OutputDetail> outputs) {
+    long total = outputs.size();
+    long success = outputs.stream().filter(o -> "SUCCESS".equalsIgnoreCase(o.getStatus())).count();
+    long failed = outputs.stream().filter(o -> "FAILED".equalsIgnoreCase(o.getStatus())).count();
+
+    if (success == total) return "SUCCESS";
+    if (failed == total) return "FAILED";
+    return "PARTIAL";
 }
