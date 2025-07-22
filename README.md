@@ -1,74 +1,159 @@
-private static List<ProcessedFileEntry> buildProcessedFileEntries(
-        List<SummaryProcessedFile> processedList,
-        Map<String, Map<String, String>> errorMap // key = customerId::accountNumber, value = Map<outputType, reason>
-) {
-    List<ProcessedFileEntry> finalList = new ArrayList<>();
+private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+            Path jobDir,
+            List<SummaryProcessedFile> customerList,
+            Map<String, Map<String, String>> errorMap,
+            KafkaMessage msg) throws IOException {
 
-    // Group by customerId::accountNumber
-    Map<String, List<SummaryProcessedFile>> grouped = processedList.stream()
-            .filter(f -> f.getCustomerId() != null && f.getAccountNumber() != null)
-            .collect(Collectors.groupingBy(f -> f.getCustomerId() + "::" + f.getAccountNumber()));
+        List<String> folders = List.of("email", "archive", "mobstat", "print");
+        Map<String, String> folderToOutputMethod = Map.of(
+                "email", "EMAIL",
+                "archive", "ARCHIVE",
+                "mobstat", "MOBSTAT",
+                "print", "PRINT"
+        );
 
-    for (Map.Entry<String, List<SummaryProcessedFile>> entry : grouped.entrySet()) {
-        String[] parts = entry.getKey().split("::");
-        String customerId = parts[0];
-        String accountNumber = parts[1];
-        List<SummaryProcessedFile> records = entry.getValue();
+        List<SummaryProcessedFile> finalList = new ArrayList<>();
 
-        // Map of outputType -> SummaryProcessedFile
-        Map<String, SummaryProcessedFile> typeMap = records.stream()
-                .collect(Collectors.toMap(SummaryProcessedFile::getOutputType, f -> f, (a, b) -> a));
+        for (SummaryProcessedFile customer : customerList) {
+            String account = customer.getAccountNumber();
+            String customerId = customer.getCustomerId();
+            Map<String, Boolean> methodAdded = new HashMap<>();
 
-        SummaryProcessedFile archive = typeMap.get("ARCHIVE");
-        if (archive == null) continue; // Archive is mandatory
+            // Step 1: check all folders and add successful or errorMap-driven entries
+            for (String folder : folders) {
+                methodAdded.put(folder, false);
+                Path folderPath = jobDir.resolve(folder);
+                if (!Files.exists(folderPath)) continue;
 
-        // Collect all requested output types, including EMAIL/PRINT/MOBSTAT and any extras
-        Set<String> requestedOutputs = new HashSet<>(errorMap.getOrDefault(entry.getKey(), Collections.emptyMap()).keySet());
-        requestedOutputs.addAll(typeMap.keySet());
-        requestedOutputs.remove("ARCHIVE"); // Exclude archive from outputs
+                Optional<Path> match = Files.list(folderPath)
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().contains(account))
+                        .findFirst();
 
-        for (String outputMethod : requestedOutputs) {
-            ProcessedFileEntry entryObj = new ProcessedFileEntry();
-            entryObj.setCustomerId(customerId);
-            entryObj.setAccountNumber(accountNumber);
-            entryObj.setOutputMethod(outputMethod);
+                String method = folderToOutputMethod.get(folder);
 
-            // Archive info
-            entryObj.setArchiveBlobUrl(archive.getBlobURL());
-            entryObj.setArchiveStatus(archive.getStatus());
+                if (match.isPresent()) {
+                    Path filePath = match.get();
+                    File file = filePath.toFile();
+                    String blobUrl = blobStorageService.uploadFileByMessage(file, folder, msg);
 
-            SummaryProcessedFile output = typeMap.get(outputMethod);
-            if (output != null) {
-                entryObj.setOutputBlobUrl(output.getBlobURL());
-                entryObj.setOutputStatus(output.getStatus());
-            } else {
-                String key = customerId + "::" + accountNumber;
-                Map<String, String> failedMap = errorMap.getOrDefault(key, Collections.emptyMap());
+                    SummaryProcessedFile entry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, entry);
+                    entry.setOutputMethod(method);
+                    entry.setBlobURL(blobUrl);
 
-                entryObj.setOutputBlobUrl(null);
+                    if (errorMap.containsKey(account) && errorMap.get(account).containsKey(method)) {
+                        String status = errorMap.get(account).get(method);
+                        if ("FAILED".equalsIgnoreCase(status)) {
+                            entry.setStatus("FAILED");
+                            entry.setStatusDescription("Marked as FAILED from ErrorReport");
+                        } else {
+                            entry.setStatus("PARTIAL");
+                            entry.setStatusDescription("Marked as PARTIAL from ErrorReport");
+                        }
+                    } else {
+                        entry.setStatus("SUCCESS");
+                        entry.setStatusDescription("No error found in ErrorReport");
+                    }
 
-                if (failedMap.containsKey(outputMethod)) {
-                    entryObj.setOutputStatus("FAILED");
-                } else {
-                    entryObj.setOutputStatus("NOT-FOUND");
+                    if ("archive".equals(folder)) {
+                        for (String deliveryFolder : List.of("email", "mobstat", "print")) {
+                            Path deliveryPath = jobDir.resolve(deliveryFolder);
+                            if (Files.exists(deliveryPath)) {
+                                boolean found = Files.list(deliveryPath)
+                                        .filter(Files::isRegularFile)
+                                        .anyMatch(p -> p.getFileName().toString().contains(account));
+                                if (found) {
+                                    entry.setLinkedDeliveryType(deliveryFolder.toUpperCase());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    finalList.add(entry);
+                    methodAdded.put(folder, true);
                 }
             }
 
-            // Overall Status computation
-            String archiveStatus = entryObj.getArchiveStatus();
-            String outputStatus = entryObj.getOutputStatus();
+            // Step 2: Add entries from errorMap where files were not found
+            if (errorMap.containsKey(account)) {
+                Map<String, String> methodErrors = errorMap.get(account);
 
-            if ("SUCCESS".equalsIgnoreCase(outputStatus) && "SUCCESS".equalsIgnoreCase(archiveStatus)) {
-                entryObj.setOverallStatus("SUCCESS");
-            } else if ("FAILED".equalsIgnoreCase(outputStatus)) {
-                entryObj.setOverallStatus("FAILED");
-            } else {
-                entryObj.setOverallStatus("PARTIAL");
+                for (String folder : folders) {
+                    if (methodAdded.getOrDefault(folder, false)) continue;
+
+                    String method = folderToOutputMethod.get(folder);
+                    if (!methodErrors.containsKey(method)) continue;
+
+                    Path folderPath = jobDir.resolve(folder);
+                    if (!Files.exists(folderPath)) continue;
+
+                    SummaryProcessedFile entry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, entry);
+                    entry.setOutputMethod(method);
+                    entry.setBlobURL(null);
+
+                    String status = methodErrors.get(method);
+                    if ("FAILED".equalsIgnoreCase(status)) {
+                        entry.setStatus("FAILED");
+                        entry.setStatusDescription("Marked as FAILED from ErrorReport (file not found)");
+                    } else {
+                        entry.setStatus("PARTIAL");
+                        entry.setStatusDescription("Marked as PARTIAL from ErrorReport (file not found)");
+                    }
+
+                    if ("archive".equals(folder)) {
+                        for (String deliveryFolder : List.of("email", "mobstat", "print")) {
+                            Path deliveryPath = jobDir.resolve(deliveryFolder);
+                            if (Files.exists(deliveryPath)) {
+                                boolean found = Files.list(deliveryPath)
+                                        .filter(Files::isRegularFile)
+                                        .anyMatch(p -> p.getFileName().toString().contains(account));
+                                if (found) {
+                                    entry.setLinkedDeliveryType(deliveryFolder.toUpperCase());
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    finalList.add(entry);
+                    methodAdded.put(folder, true);
+                }
             }
 
-            finalList.add(entryObj);
-        }
-    }
+            // Step 3: Add default NOT_FOUND for remaining methods
+            for (String folder : folders) {
+                if (methodAdded.getOrDefault(folder, false)) continue;
 
-    return finalList;
-}
+                String method = folderToOutputMethod.get(folder);
+
+                SummaryProcessedFile entry = new SummaryProcessedFile();
+                BeanUtils.copyProperties(customer, entry);
+                entry.setOutputMethod(method);
+                entry.setBlobURL(null);
+                entry.setStatus("NOT_FOUND");
+                entry.setStatusDescription("No file found and not listed in ErrorReport");
+
+                if ("archive".equals(folder)) {
+                    for (String deliveryFolder : List.of("email", "mobstat", "print")) {
+                        Path deliveryPath = jobDir.resolve(deliveryFolder);
+                        if (Files.exists(deliveryPath)) {
+                            boolean found = Files.list(deliveryPath)
+                                    .filter(Files::isRegularFile)
+                                    .anyMatch(p -> p.getFileName().toString().contains(account));
+                            if (found) {
+                                entry.setLinkedDeliveryType(deliveryFolder.toUpperCase());
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                finalList.add(entry);
+            }
+        }
+
+        return finalList;
+    }
