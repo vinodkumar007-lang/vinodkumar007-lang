@@ -1,59 +1,94 @@
-    private static List<ProcessedFileEntry> buildProcessedFileEntries(
-            List<SummaryProcessedFile> processedFiles,
-            Map<String, Map<String, String>> errorReportMap
-    ) {
-        Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
+private static List<ProcessedFileEntry> buildProcessedFileEntries(List<SummaryProcessedFile> processedFiles,
+                                                                   Map<String, String> errorMap) {
+    Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
 
-        for (SummaryProcessedFile file : processedFiles) {
-            String key = file.getCustomerId() + "-" + file.getAccountNumber();
-            ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
+    for (SummaryProcessedFile file : processedFiles) {
+        String key = file.getCustomerId() + "-" + file.getAccountNumber();
+        ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
 
-            entry.setCustomerId(file.getCustomerId());
-            entry.setAccountNumber(file.getAccountNumber());
+        entry.setCustomerId(file.getCustomerId());
+        entry.setAccountNumber(file.getAccountNumber());
 
-            switch (file.getOutputType()) {
-                case "EMAIL":
-                    entry.setEmailBlobUrl(file.getBlobUrl());
-                    entry.setEmailStatus(file.getStatus());
-                    break;
-                case "ARCHIVE":
-                    entry.setArchiveBlobUrl(file.getBlobUrl());
-                    entry.setArchiveStatus(file.getStatus());
-                    break;
-                case "PRINT":
-                    entry.setPrintBlobUrl(file.getBlobUrl());
-                    entry.setPrintStatus(file.getStatus());
-                    break;
-                case "MOBSTAT":
-                    entry.setMobstatBlobUrl(file.getBlobUrl());
-                    entry.setMobstatStatus(file.getStatus());
-                    break;
-            }
-
-            grouped.put(key, entry);
+        switch (file.getOutputType()) {
+            case "EMAIL":
+                if (isBlank(entry.getEmailBlobUrl())) {
+                    entry.setEmailBlobUrl(file.getBlobUrl() != null ? file.getBlobUrl() : "");
+                    entry.setEmailStatus(file.getStatus() != null ? file.getStatus() : "");
+                }
+                break;
+            case "ARCHIVE":
+                if (isBlank(entry.getArchiveBlobUrl())) {
+                    entry.setArchiveBlobUrl(file.getBlobUrl() != null ? file.getBlobUrl() : "");
+                    entry.setArchiveStatus(file.getStatus() != null ? file.getStatus() : "");
+                }
+                break;
+            case "PRINT":
+                if (isBlank(entry.getPrintBlobUrl())) {
+                    entry.setPrintBlobUrl(file.getBlobUrl() != null ? file.getBlobUrl() : "");
+                    entry.setPrintStatus(file.getStatus() != null ? file.getStatus() : "");
+                }
+                break;
+            case "MOBSTAT":
+                if (isBlank(entry.getMobstatBlobUrl())) {
+                    entry.setMobstatBlobUrl(file.getBlobUrl() != null ? file.getBlobUrl() : "");
+                    entry.setMobstatStatus(file.getStatus() != null ? file.getStatus() : "");
+                }
+                break;
         }
 
-        // Finalize statuses
-        for (ProcessedFileEntry entry : grouped.values()) {
-            boolean archiveSuccess = "SUCCESS".equalsIgnoreCase(entry.getArchiveStatus());
-
-            boolean emailFailed = isFailedOrMissing(entry.getEmailStatus(), entry.getCustomerId(), entry.getAccountNumber(), "EMAIL", errorReportMap);
-            boolean printFailed = isFailedOrMissing(entry.getPrintStatus(), entry.getCustomerId(), entry.getAccountNumber(), "PRINT", errorReportMap);
-            boolean mobstatFailed = isFailedOrMissing(entry.getMobstatStatus(), entry.getCustomerId(), entry.getAccountNumber(), "MOBSTAT", errorReportMap);
-
-            boolean anyFailed = emailFailed || printFailed || mobstatFailed;
-            boolean allMissing = isAllMissing(entry);
-
-            if (!archiveSuccess) {
-                entry.setOverallStatus("FAILED");
-            } else if (anyFailed) {
-                entry.setOverallStatus("FAILED"); // You can switch this to "PARTIAL" if your rule permits
-            } else if (archiveSuccess) {
-                entry.setOverallStatus("SUCCESS");
-            } else {
-                entry.setOverallStatus("FAILED");
-            }
-        }
-
-        return new ArrayList<>(grouped.values());
+        grouped.put(key, entry);
     }
+
+    // Inject FAILED records from errorMap if EMAIL/PRINT/MOBSTAT missing
+    for (Map.Entry<String, String> errorEntry : errorMap.entrySet()) {
+        String[] parts = errorEntry.getKey().split("-");
+        if (parts.length != 3) continue;
+
+        String customerId = parts[0];
+        String accountNumber = parts[1];
+        String outputType = parts[2];
+
+        String key = customerId + "-" + accountNumber;
+        ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
+        entry.setCustomerId(customerId);
+        entry.setAccountNumber(accountNumber);
+
+        // Only set FAILED status if not already set
+        switch (outputType) {
+            case "EMAIL":
+                if (isBlank(entry.getEmailBlobUrl()) && isBlank(entry.getEmailStatus())) {
+                    entry.setEmailBlobUrl("");
+                    entry.setEmailStatus("FAILED");
+                }
+                break;
+            case "PRINT":
+                if (isBlank(entry.getPrintBlobUrl()) && isBlank(entry.getPrintStatus())) {
+                    entry.setPrintBlobUrl("");
+                    entry.setPrintStatus("FAILED");
+                }
+                break;
+            case "MOBSTAT":
+                if (isBlank(entry.getMobstatBlobUrl()) && isBlank(entry.getMobstatStatus())) {
+                    entry.setMobstatBlobUrl("");
+                    entry.setMobstatStatus("FAILED");
+                }
+                break;
+        }
+
+        grouped.put(key, entry);
+    }
+
+    // Always ensure ARCHIVE has URL and status set (even if missing)
+    for (ProcessedFileEntry entry : grouped.values()) {
+        if (entry.getArchiveBlobUrl() == null) entry.setArchiveBlobUrl("");
+        if (entry.getArchiveStatus() == null) entry.setArchiveStatus("");
+        if (entry.getEmailBlobUrl() == null) entry.setEmailBlobUrl("");
+        if (entry.getEmailStatus() == null) entry.setEmailStatus("");
+        if (entry.getPrintBlobUrl() == null) entry.setPrintBlobUrl("");
+        if (entry.getPrintStatus() == null) entry.setPrintStatus("");
+        if (entry.getMobstatBlobUrl() == null) entry.setMobstatBlobUrl("");
+        if (entry.getMobstatStatus() == null) entry.setMobstatStatus("");
+    }
+
+    return new ArrayList<>(grouped.values());
+}
