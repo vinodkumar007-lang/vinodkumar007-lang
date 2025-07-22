@@ -18,7 +18,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         String account = customer.getAccountNumber();
         String customerId = customer.getCustomerId();
 
-        // ARCHIVE block
+        // 1. ARCHIVE (always try to add)
         String archiveBlobUrl = null;
         String archiveStatus = "NOT-FOUND";
 
@@ -35,7 +35,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             }
         }
 
-        // EMAIL, MOBSTAT, PRINT
+        // 2. Loop through EMAIL, MOBSTAT, PRINT
         for (String folder : deliveryFolders) {
             String outputMethod = folderToOutputMethod.get(folder);
             Path methodPath = jobDir.resolve(folder);
@@ -43,7 +43,6 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             String blobUrl = "";
             String deliveryStatus = "SUCCESS";
 
-            boolean fileFound = false;
             if (Files.exists(methodPath)) {
                 Optional<Path> match = Files.list(methodPath)
                         .filter(Files::isRegularFile)
@@ -52,19 +51,22 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 
                 if (match.isPresent()) {
                     blobUrl = blobStorageService.uploadFileByMessage(match.get().toFile(), folder, msg);
-                    fileFound = true;
                 }
             }
 
-            if (!fileFound) {
-                Map<String, String> customerErrors = errorMap.getOrDefault(account, Collections.emptyMap());
-                String errorStatus = customerErrors.getOrDefault(outputMethod, null);
-                if ("FAILED".equalsIgnoreCase(errorStatus)) {
-                    deliveryStatus = "FAILED";
-                }
+            // If blobUrl is still blank, mark as SUCCESS (as per rule)
+            if (blobUrl.isEmpty()) {
+                deliveryStatus = "SUCCESS"; // no PARTIAL anymore
             }
 
-            // Set overallStatus
+            // Check errorMap — if found in errorMap and status = FAILED, override
+            Map<String, String> customerErrors = errorMap.getOrDefault(account, Collections.emptyMap());
+            String errorStatus = customerErrors.getOrDefault(outputMethod, null);
+            if ("FAILED".equalsIgnoreCase(errorStatus)) {
+                deliveryStatus = "FAILED";
+            }
+
+            // Final overall status logic
             String overallStatus = "SUCCESS";
             if ("FAILED".equals(deliveryStatus)) {
                 overallStatus = "FAILED";
@@ -86,4 +88,3 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 
     return finalList;
 }
-
