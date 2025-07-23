@@ -1,8 +1,7 @@
 private static List<ProcessedFileEntry> buildProcessedFileEntries(
         List<SummaryProcessedFile> processedFiles,
-        Map<String, Map<String, String>> errorMap,
-        String requestedMethod
-) {
+        Map<String, Map<String, String>> errorMap) {
+
     Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
 
     for (SummaryProcessedFile file : processedFiles) {
@@ -12,101 +11,93 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         entry.setCustomerId(file.getCustomerId());
         entry.setAccountNumber(file.getAccountNumber());
 
-        String method = file.getOutputMethod();
-        String blobUrl = file.getBlobUrl();
+        String outputMethod = file.getOutputMethod();
         String status = file.getStatus();
+        String blobUrl = file.getBlobUrl();
 
-        switch (method.toUpperCase()) {
+        switch (outputMethod.toUpperCase()) {
             case "EMAIL":
-                entry.setEmailBlobUrl(blobUrl);
                 entry.setEmailStatus(status);
+                entry.setEmailUrl(blobUrl);
                 break;
             case "PRINT":
-                entry.setPrintBlobUrl(blobUrl);
                 entry.setPrintStatus(status);
+                entry.setPrintUrl(blobUrl);
                 break;
             case "MOBSTAT":
-                entry.setMobstatBlobUrl(blobUrl);
                 entry.setMobstatStatus(status);
+                entry.setMobstatUrl(blobUrl);
                 break;
             case "ARCHIVE":
-                entry.setArchiveBlobUrl(blobUrl);
                 entry.setArchiveStatus(status);
+                entry.setArchiveUrl(blobUrl);
                 break;
         }
 
         grouped.put(key, entry);
     }
 
-    // After collecting from processedFiles, handle missing method or archive using errorMap
+    // Now determine overallStatus for each entry
     for (ProcessedFileEntry entry : grouped.values()) {
-        String key = entry.getCustomerId() + "-" + entry.getAccountNumber();
-        Map<String, String> errorEntry = errorMap.getOrDefault(key, Collections.emptyMap());
-
-        // Handle missing requested method
-        if ("EMAIL".equalsIgnoreCase(requestedMethod) && isBlank(entry.getEmailStatus())) {
-            if (errorEntry.containsKey("EMAIL")) {
-                entry.setEmailStatus("FAILED");
-            }
-        }
-        if ("PRINT".equalsIgnoreCase(requestedMethod) && isBlank(entry.getPrintStatus())) {
-            if (errorEntry.containsKey("PRINT")) {
-                entry.setPrintStatus("FAILED");
-            }
-        }
-        if ("MOBSTAT".equalsIgnoreCase(requestedMethod) && isBlank(entry.getMobstatStatus())) {
-            if (errorEntry.containsKey("MOBSTAT")) {
-                entry.setMobstatStatus("FAILED");
-            }
-        }
-
-        // ARCHIVE always expected, fallback to FAILED if present in error
-        if (isBlank(entry.getArchiveStatus())) {
-            if (errorEntry.containsKey("ARCHIVE")) {
-                entry.setArchiveStatus("FAILED");
-            }
-        }
-
-        // Now set overall status
-        String overall = determineOverallStatus(entry, requestedMethod);
-        entry.setOverallStatus(overall);
+        String overallStatus = determineOverallStatus(entry, errorMap);
+        entry.setOverallStatus(overallStatus);
     }
 
     return new ArrayList<>(grouped.values());
 }
 
-private static String determineOverallStatus(ProcessedFileEntry entry, String requestedMethod) {
-    String archiveStatus = normalize(entry.getArchiveStatus());
-    String reqStatus = switch (requestedMethod.toUpperCase()) {
-        case "EMAIL" -> normalize(entry.getEmailStatus());
-        case "PRINT" -> normalize(entry.getPrintStatus());
-        case "MOBSTAT" -> normalize(entry.getMobstatStatus());
-        default -> "";
-    };
+private static String determineOverallStatus(ProcessedFileEntry entry, Map<String, Map<String, String>> errorMap) {
+    String email = safeStatus(entry.getEmailStatus());
+    String print = safeStatus(entry.getPrintStatus());
+    String mobstat = safeStatus(entry.getMobstatStatus());
+    String archive = safeStatus(entry.getArchiveStatus());
 
-    // Rule 1: both present and success
-    if ("SUCCESS".equals(reqStatus) && "SUCCESS".equals(archiveStatus)) {
+    String customerId = entry.getCustomerId();
+    String accountNumber = entry.getAccountNumber();
+
+    boolean hasFailed = false;
+    boolean hasSuccess = false;
+
+    List<String> allStatuses = Arrays.asList(email, print, mobstat, archive);
+    for (String status : allStatuses) {
+        if ("SUCCESS".equals(status)) hasSuccess = true;
+        if ("FAILED".equals(status)) hasFailed = true;
+    }
+
+    // Generic check: if at least two output methods have SUCCESS, and rest are "", it's SUCCESS
+    long nonBlankCount = allStatuses.stream().filter(s -> !s.isEmpty()).count();
+    long successCount = allStatuses.stream().filter(s -> "SUCCESS".equals(s)).count();
+    if (successCount >= 2 && successCount == nonBlankCount) {
         return "SUCCESS";
     }
 
-    // Rule 2: requested method FAILED and archive SUCCESS
-    if ("FAILED".equals(reqStatus) && "SUCCESS".equals(archiveStatus)) {
+    // If any method is FAILED, it's at least PARTIAL
+    if (hasFailed) {
         return "PARTIAL";
     }
 
-    // Rule 3: requested method blank, archive success (but account found in errorMap)
-    if (reqStatus.isEmpty() && "SUCCESS".equals(archiveStatus)) {
-        return "PARTIAL";
+    // Check errorMap for entries with same customer + account
+    Map<String, String> errorEntries = errorMap.getOrDefault(customerId + "-" + accountNumber, Collections.emptyMap());
+
+    for (Map.Entry<String, String> e : errorEntries.entrySet()) {
+        String method = e.getKey();
+        String error = e.getValue();
+        if (("EMAIL".equalsIgnoreCase(method) && email.isEmpty())
+                || ("PRINT".equalsIgnoreCase(method) && print.isEmpty())
+                || ("MOBSTAT".equalsIgnoreCase(method) && mobstat.isEmpty())) {
+            return "PARTIAL";
+        }
     }
 
-    // Final fallback
-    return "FAILED";
+    // Default SUCCESS if archive is SUCCESS and other methods are empty
+    if ("SUCCESS".equals(archive) &&
+        email.isEmpty() && print.isEmpty() && mobstat.isEmpty()) {
+        return "SUCCESS";
+    }
+
+    return "PARTIAL";
 }
 
-private static String normalize(String status) {
+private static String safeStatus(String status) {
     return status != null ? status.trim().toUpperCase() : "";
-}
-
-private static boolean isBlank(String str) {
-    return str == null || str.trim().isEmpty();
 }
