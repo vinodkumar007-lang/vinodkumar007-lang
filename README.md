@@ -4,6 +4,24 @@ for (ProcessedFileEntry entry : grouped.values()) {
     String mobstat = entry.getMobstatStatus();
     String archive = entry.getArchiveStatus();
 
+    // ✅ Fix NOT_FOUND → NA for unused channels
+    if ("SUCCESS".equals(email) && "SUCCESS".equals(archive)) {
+        if ("NOT_FOUND".equals(mobstat) || mobstat == null) entry.setMobstatStatus("NA");
+        if ("NOT_FOUND".equals(print) || print == null) entry.setPrintStatus("NA");
+    } else if ("SUCCESS".equals(mobstat) && "SUCCESS".equals(archive)) {
+        if ("NOT_FOUND".equals(email) || email == null) entry.setEmailStatus("NA");
+        if ("NOT_FOUND".equals(print) || print == null) entry.setPrintStatus("NA");
+    } else if ("SUCCESS".equals(print) && "SUCCESS".equals(archive)) {
+        if ("NOT_FOUND".equals(email) || email == null) entry.setEmailStatus("NA");
+        if ("NOT_FOUND".equals(mobstat) || mobstat == null) entry.setMobstatStatus("NA");
+    }
+
+    // ❗ Re-fetch updated values
+    email = entry.getEmailStatus();
+    print = entry.getPrintStatus();
+    mobstat = entry.getMobstatStatus();
+    archive = entry.getArchiveStatus();
+
     boolean isEmailSuccess = "SUCCESS".equals(email);
     boolean isPrintSuccess = "SUCCESS".equals(print);
     boolean isMobstatSuccess = "SUCCESS".equals(mobstat);
