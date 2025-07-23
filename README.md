@@ -11,93 +11,132 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
             entry.setCustomerId(file.getCustomerId());
             entry.setAccountNumber(file.getAccountNumber());
 
-            String outputMethod = file.getOutputMethod();
-            String status = file.getStatus();
+            String outputType = file.getOutputType();
             String blobUrl = file.getBlobUrl();
 
-            if (outputMethod != null) {
-                switch (outputMethod.trim().toUpperCase()) {
-                    case "EMAIL":
-                        entry.setEmailStatus(status);
+            switch (outputType) {
+                case "EMAIL":
+                    if (!isNonEmpty(entry.getEmailBlobUrl())) {
                         entry.setEmailBlobUrl(blobUrl);
-                        break;
-                    case "PRINT":
-                        entry.setPrintStatus(status);
-                        entry.setPrintFileUrl(blobUrl);
-                        break;
-                    case "MOBSTAT":
-                        entry.setMobstatStatus(status);
-                        entry.setMobstatBlobUrl(blobUrl);
-                        break;
-                    case "ARCHIVE":
-                        entry.setArchiveStatus(status);
+                    }
+                    break;
+                case "ARCHIVE":
+                    if (!isNonEmpty(entry.getArchiveBlobUrl())) {
                         entry.setArchiveBlobUrl(blobUrl);
-                        break;
-                }
+                    }
+                    break;
+                case "PRINT":
+                    if (!isNonEmpty(entry.getPrintBlobUrl())) {
+                        entry.setPrintBlobUrl(blobUrl);
+                    }
+                    break;
+                case "MOBSTAT":
+                    if (!isNonEmpty(entry.getMobstatBlobUrl())) {
+                        entry.setMobstatBlobUrl(blobUrl);
+                    }
+                    break;
             }
 
             grouped.put(key, entry);
         }
 
-        for (ProcessedFileEntry entry : grouped.values()) {
-            String overallStatus = determineOverallStatus(entry, errorMap);
-            entry.setOverallStatus(overallStatus);
+        for (Map.Entry<String, ProcessedFileEntry> group : grouped.entrySet()) {
+            String key = group.getKey();
+            ProcessedFileEntry entry = group.getValue();
+            Map<String, String> errorMapForKey = errorMap.getOrDefault(key, Collections.emptyMap());
+
+            // EMAIL
+            if (isNonEmpty(entry.getEmailBlobUrl())) {
+                entry.setEmailStatus("SUCCESS");
+            } else if (errorMapForKey.containsKey("EMAIL")) {
+                entry.setEmailStatus("FAILED");
+            } else {
+                entry.setEmailStatus("");
+            }
+
+            // ARCHIVE
+            if (isNonEmpty(entry.getArchiveBlobUrl())) {
+                entry.setArchiveStatus("SUCCESS");
+            } else if (errorMapForKey.containsKey("ARCHIVE")) {
+                entry.setArchiveStatus("FAILED");
+            } else {
+                entry.setArchiveStatus("");
+            }
+
+            // PRINT
+            if (isNonEmpty(entry.getPrintBlobUrl())) {
+                entry.setPrintStatus("SUCCESS");
+            } else if (errorMapForKey.containsKey("PRINT")) {
+                entry.setPrintStatus("FAILED");
+            } else {
+                entry.setPrintStatus("");
+            }
+
+            // MOBSTAT
+            if (isNonEmpty(entry.getMobstatBlobUrl())) {
+                entry.setMobstatStatus("SUCCESS");
+            } else if (errorMapForKey.containsKey("MOBSTAT")) {
+                entry.setMobstatStatus("FAILED");
+            } else {
+                entry.setMobstatStatus("");
+            }
+
+            // ✅ FIX: Set overall status
+            entry.setOverallStatus(determineOverallStatus(entry));
+
+            //determineOverallStatus(entry);
         }
 
         return new ArrayList<>(grouped.values());
     }
 
-    private static String determineOverallStatus(ProcessedFileEntry entry, Map<String, Map<String, String>> errorMap) {
+    private static boolean isNonEmpty(String val) {
+        return val != null && !val.trim().isEmpty();
+    }
+
+
+    private static String determineOverallStatus(ProcessedFileEntry entry) {
         String email = safeStatus(entry.getEmailStatus());
         String print = safeStatus(entry.getPrintStatus());
         String mobstat = safeStatus(entry.getMobstatStatus());
         String archive = safeStatus(entry.getArchiveStatus());
 
-        String customerId = entry.getCustomerId();
-        String accountNumber = entry.getAccountNumber();
+        int successCount = 0;
+        int failedCount = 0;
+        int notFoundCount = 0;
 
         List<String> allStatuses = Arrays.asList(email, print, mobstat, archive);
-
-        // ✅ Rule: if any status is FAILED → overall FAILED
-        boolean hasFailed = allStatuses.stream().anyMatch(s -> "FAILED".equalsIgnoreCase(s));
-        if (hasFailed) {
-            return "FAILED";
-        }
-
-        // ✅ Generic rule: if at least two SUCCESS and all statuses present → SUCCESS
-        long nonBlankCount = allStatuses.stream().filter(s -> !s.isEmpty()).count();
-        long successCount = allStatuses.stream().filter(s -> "SUCCESS".equals(s)).count();
-        if (successCount >= 2 && successCount == nonBlankCount) {
-            return "SUCCESS";
-        }
-
-        // ✅ Check errorMap → if error present for missing output method → PARTIAL
-        Map<String, String> errorEntries = errorMap.getOrDefault(customerId + "-" + accountNumber, Collections.emptyMap());
-        for (Map.Entry<String, String> e : errorEntries.entrySet()) {
-            String method = e.getKey();
-            if (("EMAIL".equalsIgnoreCase(method) && email.isEmpty())
-                    || ("PRINT".equalsIgnoreCase(method) && print.isEmpty())
-                    || ("MOBSTAT".equalsIgnoreCase(method) && mobstat.isEmpty())) {
-                return "PARTIAL";
+        for (String status : allStatuses) {
+            if ("SUCCESS".equalsIgnoreCase(status)) {
+                successCount++;
+            } else if ("FAILED".equalsIgnoreCase(status)) {
+                failedCount++;
+            } else {
+                // Covers "" or null or unknown statuses
+                notFoundCount++;
             }
         }
 
-        // ✅ Special rule: archive SUCCESS and everything else blank → SUCCESS
-        if ("SUCCESS".equals(archive)
-                && email.isEmpty() && print.isEmpty() && mobstat.isEmpty()) {
+        // ✅ All 4 methods successful
+        if (successCount == 4) {
             return "SUCCESS";
         }
 
-        // ✅ If any method is missing (empty) but not in error map → PARTIAL
-        boolean anyMissing = allStatuses.stream().anyMatch(s -> s.isEmpty());
-        if (anyMissing) {
+        // ❌ At least one failed, none success
+        if (failedCount > 0 && successCount == 0) {
+            return "FAILED";
+        }
+
+        // ⚠️ At least one success, and at least one failed or not-found
+        if (successCount > 0 && (failedCount > 0 || notFoundCount > 0)) {
             return "PARTIAL";
         }
 
-        // ✅ Fallback
-        return "PARTIAL";
-    }
+        // ❌ All methods are not found or empty
+        if (notFoundCount == 4) {
+            return "FAILED";
+        }
 
-    private static String safeStatus(String status) {
-        return status != null ? status.trim().toUpperCase() : "";
+        // Fallback
+        return "PARTIAL";
     }
