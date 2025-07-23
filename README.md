@@ -1,109 +1,89 @@
 private static List<ProcessedFileEntry> buildProcessedFileEntries(
-            List<SummaryProcessedFile> processedFiles,
-            Map<String, Map<String, String>> errorMap) {
+        List<SummaryProcessedFile> processedFiles,
+        Map<String, Map<String, String>> errorMap) {
 
-        Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
+    Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
 
-        for (SummaryProcessedFile file : processedFiles) {
-            String key = file.getCustomerId() + "-" + file.getAccountNumber();
-            ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
-            entry.setCustomerId(file.getCustomerId());
-            entry.setAccountNumber(file.getAccountNumber());
+    for (SummaryProcessedFile file : processedFiles) {
+        String key = file.getCustomerId() + "-" + file.getAccountNumber();
+        ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
 
-            // Initialize outputType blob URLs
-            if ("EMAIL".equalsIgnoreCase(file.getOutputType())) {
-                entry.setEmailBlobUrl(file.getBlobUrl());
-            } else if ("PRINT".equalsIgnoreCase(file.getOutputType())) {
-                entry.setPrintBlobUrl(file.getBlobUrl());
-            } else if ("MOBSTAT".equalsIgnoreCase(file.getOutputType())) {
-                entry.setMobstatBlobUrl(file.getBlobUrl());
-            } else if ("ARCHIVE".equalsIgnoreCase(file.getOutputType())) {
-                entry.setArchiveBlobUrl(file.getBlobUrl());
-            }
+        entry.setCustomerId(file.getCustomerId());
+        entry.setAccountNumber(file.getAccountNumber());
 
-            grouped.put(key, entry);
+        String outputType = file.getOutputType();
+        String blobUrl = file.getBlobUrl();
+
+        // Avoid duplicate override
+        switch (outputType) {
+            case "EMAIL":
+                if (!isNonEmpty(entry.getEmailBlobUrl())) {
+                    entry.setEmailBlobUrl(blobUrl);
+                }
+                break;
+            case "ARCHIVE":
+                if (!isNonEmpty(entry.getArchiveBlobUrl())) {
+                    entry.setArchiveBlobUrl(blobUrl);
+                }
+                break;
+            case "PRINT":
+                if (!isNonEmpty(entry.getPrintBlobUrl())) {
+                    entry.setPrintBlobUrl(blobUrl);
+                }
+                break;
+            case "MOBSTAT":
+                if (!isNonEmpty(entry.getMobstatBlobUrl())) {
+                    entry.setMobstatBlobUrl(blobUrl);
+                }
+                break;
         }
 
-        // Evaluate statuses
-        for (Map.Entry<String, ProcessedFileEntry> e : grouped.entrySet()) {
-            String key = e.getKey();
-            ProcessedFileEntry entry = e.getValue();
-            Map<String, String> methodErrors = errorMap.getOrDefault(key, Collections.emptyMap());
-
-            // EMAIL
-            if (isNonEmpty(entry.getEmailBlobUrl())) {
-                entry.setEmailStatus("SUCCESS");
-            } else {
-                String error = methodErrors.getOrDefault("EMAIL", "");
-                entry.setEmailStatus("FAILED".equalsIgnoreCase(error) ? "FAILED" : "NOT-FOUND");
-            }
-
-            // PRINT
-            if (isNonEmpty(entry.getPrintBlobUrl())) {
-                entry.setPrintStatus("SUCCESS");
-            } else {
-                String error = methodErrors.getOrDefault("PRINT", "");
-                entry.setPrintStatus("FAILED".equalsIgnoreCase(error) ? "FAILED" : "NOT-FOUND");
-            }
-
-            // MOBSTAT
-            if (isNonEmpty(entry.getMobstatBlobUrl())) {
-                entry.setMobstatStatus("SUCCESS");
-            } else {
-                String error = methodErrors.getOrDefault("MOBSTAT", "");
-                entry.setMobstatStatus("FAILED".equalsIgnoreCase(error) ? "FAILED" : "NOT-FOUND");
-            }
-
-            // ARCHIVE (always present according to spec)
-            entry.setArchiveStatus(isNonEmpty(entry.getArchiveBlobUrl()) ? "SUCCESS" : "FAILED");
-
-            // Compute overall status
-            entry.setOverallStatus(determineOverallStatus(entry));
-        }
-
-        return new ArrayList<>(grouped.values());
+        grouped.put(key, entry);
     }
-    private static String determineOverallStatus(ProcessedFileEntry entry) {
-        String email = entry.getEmailStatus();
-        String print = entry.getPrintStatus();
-        String mobstat = entry.getMobstatStatus();
-        String archive = entry.getArchiveStatus();
 
-        int successCount = 0;
-        int failedCount = 0;
-        int notFoundCount = 0;
+    for (Map.Entry<String, ProcessedFileEntry> group : grouped.entrySet()) {
+        String key = group.getKey();
+        ProcessedFileEntry entry = group.getValue();
 
-        List<String> allStatuses = Arrays.asList(email, print, mobstat, archive);
-        for (String status : allStatuses) {
-            if ("SUCCESS".equalsIgnoreCase(status)) {
-                successCount++;
-            } else if ("FAILED".equalsIgnoreCase(status)) {
-                failedCount++;
-            } else if ("NOT-FOUND".equalsIgnoreCase(status) || status == null || status.trim().isEmpty()) {
-                notFoundCount++;
-            }
+        // EMAIL
+        if (isNonEmpty(entry.getEmailBlobUrl())) {
+            entry.setEmailStatus("SUCCESS");
+        } else {
+            String emailError = errorMap.getOrDefault(key, Collections.emptyMap()).get("EMAIL");
+            entry.setEmailStatus(emailError != null ? "FAILED" : "NOT-FOUND");
         }
 
-        // ✅ All 4 methods successful
-        if (successCount == 4) {
-            return "SUCCESS";
+        // ARCHIVE
+        if (isNonEmpty(entry.getArchiveBlobUrl())) {
+            entry.setArchiveStatus("SUCCESS");
+        } else {
+            String archiveError = errorMap.getOrDefault(key, Collections.emptyMap()).get("ARCHIVE");
+            entry.setArchiveStatus(archiveError != null ? "FAILED" : "NOT-FOUND");
         }
 
-        // ❌ At least one failed, none success
-        if (failedCount > 0 && successCount == 0) {
-            return "FAILED";
+        // PRINT
+        if (isNonEmpty(entry.getPrintBlobUrl())) {
+            entry.setPrintStatus("SUCCESS");
+        } else {
+            String printError = errorMap.getOrDefault(key, Collections.emptyMap()).get("PRINT");
+            entry.setPrintStatus(printError != null ? "FAILED" : "NOT-FOUND");
         }
 
-        // ⚠️ At least one success, and at least one failed or not-found
-        if (successCount > 0 && (failedCount > 0 || notFoundCount > 0)) {
-            return "PARTIAL";
+        // MOBSTAT
+        if (isNonEmpty(entry.getMobstatBlobUrl())) {
+            entry.setMobstatStatus("SUCCESS");
+        } else {
+            String mobstatError = errorMap.getOrDefault(key, Collections.emptyMap()).get("MOBSTAT");
+            entry.setMobstatStatus(mobstatError != null ? "FAILED" : "NOT-FOUND");
         }
 
-        // ❌ All methods are NOT-FOUND (no outputs generated)
-        if (notFoundCount == 4) {
-            return "FAILED";
-        }
-
-        // Fallback safety
-        return "PARTIAL";
+        // Set overall status
+        setOverallStatus(entry);
     }
+
+    return new ArrayList<>(grouped.values());
+}
+
+private static boolean isNonEmpty(String val) {
+    return val != null && !val.trim().isEmpty();
+}
