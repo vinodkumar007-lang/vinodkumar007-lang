@@ -4,24 +4,6 @@ for (ProcessedFileEntry entry : grouped.values()) {
     String mobstat = entry.getMobstatStatus();
     String archive = entry.getArchiveStatus();
 
-    // ✅ Fix NOT_FOUND → NA for unused channels
-    if ("SUCCESS".equals(email) && "SUCCESS".equals(archive)) {
-        if ("NOT_FOUND".equals(mobstat) || mobstat == null) entry.setMobstatStatus("NA");
-        if ("NOT_FOUND".equals(print) || print == null) entry.setPrintStatus("NA");
-    } else if ("SUCCESS".equals(mobstat) && "SUCCESS".equals(archive)) {
-        if ("NOT_FOUND".equals(email) || email == null) entry.setEmailStatus("NA");
-        if ("NOT_FOUND".equals(print) || print == null) entry.setPrintStatus("NA");
-    } else if ("SUCCESS".equals(print) && "SUCCESS".equals(archive)) {
-        if ("NOT_FOUND".equals(email) || email == null) entry.setEmailStatus("NA");
-        if ("NOT_FOUND".equals(mobstat) || mobstat == null) entry.setMobstatStatus("NA");
-    }
-
-    // ❗ Re-fetch updated values
-    email = entry.getEmailStatus();
-    print = entry.getPrintStatus();
-    mobstat = entry.getMobstatStatus();
-    archive = entry.getArchiveStatus();
-
     boolean isEmailSuccess = "SUCCESS".equals(email);
     boolean isPrintSuccess = "SUCCESS".equals(print);
     boolean isMobstatSuccess = "SUCCESS".equals(mobstat);
@@ -31,17 +13,28 @@ for (ProcessedFileEntry entry : grouped.values()) {
     boolean isPrintMissingOrFailed = print == null || "FAILED".equals(print) || "NOT_FOUND".equals(print);
     boolean isMobstatMissingOrFailed = mobstat == null || "FAILED".equals(mobstat) || "NOT_FOUND".equals(mobstat);
 
-    if (isEmailSuccess && isArchiveSuccess) {
+    boolean isEmailNA = "NA".equals(email);
+    boolean isPrintNA = "NA".equals(print);
+    boolean isMobstatNA = "NA".equals(mobstat);
+
+    // ✅ SUCCESS cases: one delivery + archive + others NA
+    if (isEmailSuccess && isArchiveSuccess && isPrintNA && isMobstatNA) {
         entry.setOverallStatus("SUCCESS");
-    } else if (isMobstatSuccess && isArchiveSuccess && isEmailMissingOrFailed && isPrintMissingOrFailed) {
+    } else if (isMobstatSuccess && isArchiveSuccess && isEmailNA && isPrintNA) {
         entry.setOverallStatus("SUCCESS");
-    } else if (isPrintSuccess && isArchiveSuccess && isEmailMissingOrFailed && isMobstatMissingOrFailed) {
+    } else if (isPrintSuccess && isArchiveSuccess && isEmailNA && isMobstatNA) {
         entry.setOverallStatus("SUCCESS");
-    } else if (isArchiveSuccess && isEmailMissingOrFailed && isMobstatMissingOrFailed && isPrintMissingOrFailed) {
+    }
+
+    // ✅ PARTIAL if archive success but others missing or failed (not NA)
+    else if (isArchiveSuccess && isEmailMissingOrFailed && isMobstatMissingOrFailed && isPrintMissingOrFailed) {
         entry.setOverallStatus("PARTIAL");
     } else if (isArchiveSuccess) {
         entry.setOverallStatus("PARTIAL");
-    } else {
+    }
+
+    // ❌ All failed
+    else {
         entry.setOverallStatus("FAILED");
     }
 }
