@@ -1,110 +1,109 @@
-private static List<ProcessedFileEntry> buildDetailedProcessedFileEntries(
-        List<SummaryProcessedFile> processedFiles,
-        Map<String, Map<String, String>> errorMap) {
+private static List<ProcessedFileEntry> buildProcessedFileEntries(
+            List<SummaryProcessedFile> processedFiles,
+            Map<String, Map<String, String>> errorMap) {
 
-    Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
+        Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
 
-    for (SummaryProcessedFile file : processedFiles) {
-        String key = file.getCustomerId() + "-" + file.getAccountNumber();
-        ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
+        for (SummaryProcessedFile file : processedFiles) {
+            String key = file.getCustomerId() + "-" + file.getAccountNumber();
+            ProcessedFileEntry entry = grouped.getOrDefault(key, new ProcessedFileEntry());
+            entry.setCustomerId(file.getCustomerId());
+            entry.setAccountNumber(file.getAccountNumber());
 
-        entry.setCustomerId(file.getCustomerId());
-        entry.setAccountNumber(file.getAccountNumber());
-
-        String method = file.getOutputMethod();
-        String blobUrl = file.getBlobUrl();
-
-        if ("ARCHIVE".equalsIgnoreCase(method)) {
-            entry.setArchiveBlobUrl(blobUrl);
-            entry.setArchiveStatus((blobUrl != null && !blobUrl.isEmpty()) ? "SUCCESS" : "");
-        } else if ("EMAIL".equalsIgnoreCase(method)) {
-            entry.setEmailBlobUrl(blobUrl);
-            entry.setEmailStatus((blobUrl != null && !blobUrl.isEmpty()) ? "SUCCESS" : "");
-        } else if ("PRINT".equalsIgnoreCase(method)) {
-            entry.setPrintBlobUrl(blobUrl);
-            entry.setPrintStatus((blobUrl != null && !blobUrl.isEmpty()) ? "SUCCESS" : "");
-        } else if ("MOBSTAT".equalsIgnoreCase(method)) {
-            entry.setMobstatBlobUrl(blobUrl);
-            entry.setMobstatStatus((blobUrl != null && !blobUrl.isEmpty()) ? "SUCCESS" : "");
-        }
-
-        grouped.put(key, entry);
-    }
-
-    for (ProcessedFileEntry entry : grouped.values()) {
-        String key = entry.getCustomerId() + "-" + entry.getAccountNumber();
-        Map<String, String> errorMethods = errorMap.getOrDefault(key, new HashMap<>());
-
-        // EMAIL
-        if (entry.getEmailBlobUrl() == null || entry.getEmailBlobUrl().isEmpty()) {
-            if ("EMAIL".equalsIgnoreCase(errorMethods.get("method"))) {
-                entry.setEmailStatus("FAILED");
-            } else if (errorMethods.isEmpty()) {
-                entry.setEmailStatus("FAILED");
-            } else {
-                entry.setEmailStatus("NOT-FOUND");
+            // Initialize outputType blob URLs
+            if ("EMAIL".equalsIgnoreCase(file.getOutputType())) {
+                entry.setEmailBlobUrl(file.getBlobUrl());
+            } else if ("PRINT".equalsIgnoreCase(file.getOutputType())) {
+                entry.setPrintBlobUrl(file.getBlobUrl());
+            } else if ("MOBSTAT".equalsIgnoreCase(file.getOutputType())) {
+                entry.setMobstatBlobUrl(file.getBlobUrl());
+            } else if ("ARCHIVE".equalsIgnoreCase(file.getOutputType())) {
+                entry.setArchiveBlobUrl(file.getBlobUrl());
             }
-            entry.setEmailBlobUrl("");
+
+            grouped.put(key, entry);
         }
 
-        // PRINT
-        if (entry.getPrintBlobUrl() == null || entry.getPrintBlobUrl().isEmpty()) {
-            if ("PRINT".equalsIgnoreCase(errorMethods.get("method"))) {
-                entry.setPrintStatus("FAILED");
-            } else if (errorMethods.isEmpty()) {
-                entry.setPrintStatus("FAILED");
+        // Evaluate statuses
+        for (Map.Entry<String, ProcessedFileEntry> e : grouped.entrySet()) {
+            String key = e.getKey();
+            ProcessedFileEntry entry = e.getValue();
+            Map<String, String> methodErrors = errorMap.getOrDefault(key, Collections.emptyMap());
+
+            // EMAIL
+            if (isNonEmpty(entry.getEmailBlobUrl())) {
+                entry.setEmailStatus("SUCCESS");
             } else {
-                entry.setPrintStatus("NOT-FOUND");
+                String error = methodErrors.getOrDefault("EMAIL", "");
+                entry.setEmailStatus("FAILED".equalsIgnoreCase(error) ? "FAILED" : "NOT-FOUND");
             }
-            entry.setPrintBlobUrl("");
-        }
 
-        // MOBSTAT
-        if (entry.getMobstatBlobUrl() == null || entry.getMobstatBlobUrl().isEmpty()) {
-            if ("MOBSTAT".equalsIgnoreCase(errorMethods.get("method"))) {
-                entry.setMobstatStatus("FAILED");
-            } else if (errorMethods.isEmpty()) {
-                entry.setMobstatStatus("FAILED");
+            // PRINT
+            if (isNonEmpty(entry.getPrintBlobUrl())) {
+                entry.setPrintStatus("SUCCESS");
             } else {
-                entry.setMobstatStatus("NOT-FOUND");
+                String error = methodErrors.getOrDefault("PRINT", "");
+                entry.setPrintStatus("FAILED".equalsIgnoreCase(error) ? "FAILED" : "NOT-FOUND");
             }
-            entry.setMobstatBlobUrl("");
+
+            // MOBSTAT
+            if (isNonEmpty(entry.getMobstatBlobUrl())) {
+                entry.setMobstatStatus("SUCCESS");
+            } else {
+                String error = methodErrors.getOrDefault("MOBSTAT", "");
+                entry.setMobstatStatus("FAILED".equalsIgnoreCase(error) ? "FAILED" : "NOT-FOUND");
+            }
+
+            // ARCHIVE (always present according to spec)
+            entry.setArchiveStatus(isNonEmpty(entry.getArchiveBlobUrl()) ? "SUCCESS" : "FAILED");
+
+            // Compute overall status
+            entry.setOverallStatus(determineOverallStatus(entry));
         }
 
-        // ARCHIVE must always be SUCCESS (based on assumption)
-        if (entry.getArchiveBlobUrl() == null || entry.getArchiveBlobUrl().isEmpty()) {
-            entry.setArchiveBlobUrl("");
-            entry.setArchiveStatus("FAILED"); // safety fallback if missing
+        return new ArrayList<>(grouped.values());
+    }
+    private static String determineOverallStatus(ProcessedFileEntry entry) {
+        String email = entry.getEmailStatus();
+        String print = entry.getPrintStatus();
+        String mobstat = entry.getMobstatStatus();
+        String archive = entry.getArchiveStatus();
+
+        int successCount = 0;
+        int failedCount = 0;
+        int notFoundCount = 0;
+
+        List<String> allStatuses = Arrays.asList(email, print, mobstat, archive);
+        for (String status : allStatuses) {
+            if ("SUCCESS".equalsIgnoreCase(status)) {
+                successCount++;
+            } else if ("FAILED".equalsIgnoreCase(status)) {
+                failedCount++;
+            } else if ("NOT-FOUND".equalsIgnoreCase(status) || status == null || status.trim().isEmpty()) {
+                notFoundCount++;
+            }
         }
 
-        // Now determine overall status
-        entry.setOverallStatus(determineOverallStatus(
-                entry.getEmailStatus(),
-                entry.getPrintStatus(),
-                entry.getMobstatStatus(),
-                entry.getArchiveStatus()
-        ));
-    }
+        // ✅ All 4 methods successful
+        if (successCount == 4) {
+            return "SUCCESS";
+        }
 
-    return new ArrayList<>(grouped.values());
-}
+        // ❌ At least one failed, none success
+        if (failedCount > 0 && successCount == 0) {
+            return "FAILED";
+        }
 
-===========
+        // ⚠️ At least one success, and at least one failed or not-found
+        if (successCount > 0 && (failedCount > 0 || notFoundCount > 0)) {
+            return "PARTIAL";
+        }
 
-private static String determineOverallStatus(String emailStatus, String printStatus, String mobstatStatus, String archiveStatus) {
-    if (!"SUCCESS".equalsIgnoreCase(archiveStatus)) {
-        return "FAILED"; // archive is mandatory
-    }
+        // ❌ All methods are NOT-FOUND (no outputs generated)
+        if (notFoundCount == 4) {
+            return "FAILED";
+        }
 
-    List<String> statuses = Arrays.asList(emailStatus, printStatus, mobstatStatus);
-    boolean allSuccessOrBlank = statuses.stream().allMatch(s -> s.equalsIgnoreCase("SUCCESS") || s.isEmpty());
-    boolean anyFailed = statuses.stream().anyMatch(s -> s.equalsIgnoreCase("FAILED"));
-    boolean anyPartial = statuses.stream().anyMatch(s -> s.equalsIgnoreCase("FAILED") || s.equalsIgnoreCase("NOT-FOUND"));
-
-    if (allSuccessOrBlank) {
-        return "SUCCESS";
-    } else if (anyFailed || anyPartial) {
+        // Fallback safety
         return "PARTIAL";
     }
-    return "FAILED";
-}
