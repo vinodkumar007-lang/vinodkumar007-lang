@@ -1,59 +1,64 @@
-private List<CustomerSummary> parseSTDXml(File xmlFile, Map<String, Map<String, String>> errorMap) {
-        List<CustomerSummary> list = new ArrayList<>();
-        try {
-            Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile);
-            doc.getDocumentElement().normalize();
+private List<CustomerSummary> parseAndUploadPrintFiles(File xmlFile) {
+    List<CustomerSummary> list = new ArrayList<>();
 
-            NodeList customers = doc.getElementsByTagName("customer");
-            for (int i = 0; i < customers.getLength(); i++) {
-                Element cust = (Element) customers.item(i);
+    try {
+        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile);
+        doc.getDocumentElement().normalize();
 
-                String acc = null, cis = null;
-                List<String> methods = new ArrayList<>();
+        NodeList queueNodes = doc.getElementsByTagName("queue");
 
-                NodeList keys = cust.getElementsByTagName("key");
-                for (int j = 0; j < keys.getLength(); j++) {
-                    Element k = (Element) keys.item(j);
-                    if ("AccountNumber".equalsIgnoreCase(k.getAttribute("name"))) acc = k.getTextContent();
-                    if ("CISNumber".equalsIgnoreCase(k.getAttribute("name"))) cis = k.getTextContent();
-                }
+        for (int i = 0; i < queueNodes.getLength(); i++) {
+            Element queueElement = (Element) queueNodes.item(i);
+            String queueName = queueElement.getAttribute("name");
 
-                NodeList queues = cust.getElementsByTagName("queueName");
-                for (int q = 0; q < queues.getLength(); q++) {
-                    String val = queues.item(q).getTextContent().trim().toUpperCase();
-                    if (!val.isEmpty()) methods.add(val);
-                }
+            if (!"print".equalsIgnoreCase(queueName)) continue;
 
-                if (acc != null && cis != null) {
-                    CustomerSummary cs = new CustomerSummary();
-                    cs.setAccountNumber(acc);
-                    cs.setCisNumber(cis);
-                    cs.setCustomerId(acc);
+            NodeList fileNodes = queueElement.getElementsByTagName("file");
 
-                    // Merge error report
-                    Map<String, String> deliveryStatus = errorMap.getOrDefault(acc, new HashMap<>());
-                    cs.setDeliveryStatus(deliveryStatus); // for logs only
+            for (int j = 0; j < fileNodes.getLength(); j++) {
+                Element fileElement = (Element) fileNodes.item(j);
+                String filePath = fileElement.getAttribute("name");
 
-                    long failed = methods.stream()
-                            .filter(m -> "FAILED".equalsIgnoreCase(deliveryStatus.getOrDefault(m, "")))
-                            .count();
+                // Upload the print file to blob and get URL
+                String printBlobUrl = uploadFileToBlob(filePath);
 
-                    if (failed == methods.size()) {
-                        cs.setStatus("FAILED");
-                    } else if (failed > 0) {
-                        cs.setStatus("PARTIAL");
-                    } else {
-                        cs.setStatus("SUCCESS");
+                NodeList customerNodes = fileElement.getElementsByTagName("customer");
+
+                for (int k = 0; k < customerNodes.getLength(); k++) {
+                    Element customerElement = (Element) customerNodes.item(k);
+                    String accountNumber = "";
+                    String cisNumber = "";
+                    String customerId = customerElement.getAttribute("number");
+
+                    NodeList keyNodes = customerElement.getElementsByTagName("key");
+                    for (int m = 0; m < keyNodes.getLength(); m++) {
+                        Element keyElement = (Element) keyNodes.item(m);
+                        String keyName = keyElement.getAttribute("name");
+                        String keyValue = keyElement.getTextContent();
+
+                        if ("AccountNumber".equals(keyName)) accountNumber = keyValue;
+                        if ("CISNumber".equals(keyName)) cisNumber = keyValue;
                     }
+
+                    CustomerSummary cs = new CustomerSummary();
+                    cs.setCustomerId(customerId);
+                    cs.setAccountNumber(accountNumber);
+                    cs.setCisNumber(cisNumber);
+                    cs.setStatus("SUCCESS");
+                    cs.setPrintFileURL(printBlobUrl);
 
                     list.add(cs);
 
-                    logger.debug("📋 Customer: {}, CIS: {}, Methods: {}, Failed: {}, FinalStatus: {}",
-                            acc, cis, methods, failed, cs.getStatus());
+                    logger.debug("✅ Uploaded for customer {}, printBlob={}", customerId, printBlobUrl);
                 }
             }
-        } catch (Exception e) {
-            logger.error("❌ Failed parsing STD XML", e);
         }
-        return list;
+
+    } catch (Exception e) {
+        logger.error("❌ Failed to parse and upload print files from XML", e);
     }
+
+    return list;
+}
+
+List<CustomerSummary> printCustomers = parseAndUploadPrintFiles(stdliXmlFile);
