@@ -1,4 +1,4 @@
-$ git clone https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Filemanager
-Cloning into 'ECM_comp_Filemanager'...
-git: 'credential-manager-core' is not a git command. See 'git --help'.
-fatal: Authentication failed for 'https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Filemanager/'
+proxy.host=proxyprod.africa.nedcor.net
+proxy.port=80
+proxy.username=CC437236
+proxy.password=34dYaB@jEh56
