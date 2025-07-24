@@ -1,98 +1,59 @@
-private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
+private List<CustomerSummary> parseSTDXml(File xmlFile, Map<String, Map<String, String>> errorMap) {
+        List<CustomerSummary> list = new ArrayList<>();
         try {
-            logger.info("⏳ Waiting for XML for jobId={}, id={}", otResponse.getJobId(), otResponse.getId());
-            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
-            if (xmlFile == null) throw new IllegalStateException("XML not found");
-            logger.info("✅ Found XML file: {}", xmlFile);
+            Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile);
+            doc.getDocumentElement().normalize();
 
-            // ✅ Parse error report (already used in buildDetailedProcessedFiles)
-            Map<String, Map<String, String>> errorMap = parseErrorReport(message);
-            logger.info("🧾 Parsed error report with {} entries", errorMap.size());
+            NodeList customers = doc.getElementsByTagName("customer");
+            for (int i = 0; i < customers.getLength(); i++) {
+                Element cust = (Element) customers.item(i);
 
-            // ✅ Parse STDXML and extract basic customer summaries
-            List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile, errorMap);
-            logger.info("📊 Total customerSummaries parsed: {}", customerSummaries.size());
+                String acc = null, cis = null;
+                List<String> methods = new ArrayList<>();
 
-            List<PrintFileEntry> printFileEntryList = parsePrintQueueXml(xmlFile,mountPath);
-            logger.info("Print PDF- customer count{}", printFileEntryList.size());
-            // ✅ Convert to basic SummaryProcessedFile list
-            List<SummaryProcessedFile> customerList = customerSummaries.stream()
-                    .map(cs -> {
-                        SummaryProcessedFile spf = new SummaryProcessedFile();
-                        spf.setAccountNumber(cs.getAccountNumber());
-                        spf.setCustomerId(cs.getCisNumber());
-                        return spf;
-                    })
-                    .collect(Collectors.toList());
+                NodeList keys = cust.getElementsByTagName("key");
+                for (int j = 0; j < keys.getLength(); j++) {
+                    Element k = (Element) keys.item(j);
+                    if ("AccountNumber".equalsIgnoreCase(k.getAttribute("name"))) acc = k.getTextContent();
+                    if ("CISNumber".equalsIgnoreCase(k.getAttribute("name"))) cis = k.getTextContent();
+                }
 
-            // ✅ Locate output job directory
-            Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
+                NodeList queues = cust.getElementsByTagName("queueName");
+                for (int q = 0; q < queues.getLength(); q++) {
+                    String val = queues.item(q).getTextContent().trim().toUpperCase();
+                    if (!val.isEmpty()) methods.add(val);
+                }
 
-            // ✅ Build processedFiles with output-specific blob URLs and status (SUCCESS/ERROR)
-            List<SummaryProcessedFile> processedFiles =
-                    buildDetailedProcessedFiles(jobDir, customerList, errorMap, message);
-            logger.info("📦 Processed {} customer records", processedFiles.size());
+                if (acc != null && cis != null) {
+                    CustomerSummary cs = new CustomerSummary();
+                    cs.setAccountNumber(acc);
+                    cs.setCisNumber(cis);
+                    cs.setCustomerId(acc);
 
-            // ✅ Upload print files and track their URLs
-            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
-            logger.info("🖨️ Uploaded {} print files", printFiles.size());
+                    // Merge error report
+                    Map<String, String> deliveryStatus = errorMap.getOrDefault(acc, new HashMap<>());
+                    cs.setDeliveryStatus(deliveryStatus); // for logs only
 
-            // ✅ Upload MobStat trigger file if present
-            String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
+                    long failed = methods.stream()
+                            .filter(m -> "FAILED".equalsIgnoreCase(deliveryStatus.getOrDefault(m, "")))
+                            .count();
 
-            // ✅ Extract counts from <outputList> inside STD XML
-            Map<String, Integer> summaryCounts = extractSummaryCountsFromXml(xmlFile);
-            String customersProcessed = String.valueOf(summaryCounts.getOrDefault("customersProcessed", processedFiles.size()));
-            String pagesProcessed = String.valueOf(summaryCounts.getOrDefault("pagesProcessed", 0));
+                    if (failed == methods.size()) {
+                        cs.setStatus("FAILED");
+                    } else if (failed > 0) {
+                        cs.setStatus("PARTIAL");
+                    } else {
+                        cs.setStatus("SUCCESS");
+                    }
 
-            // ✅ Create payload for summary.json
-            SummaryPayload payload = SummaryJsonWriter.buildPayload(
-                    message,
-                    processedFiles,      // ✅ Now includes blob URLs + status from buildDetailedProcessedFiles
-                    pagesProcessed,
-                    printFiles.toString(),
-                    mobstatTriggerUrl,
-                    customersProcessed,
-                    errorMap,
-                    printFileEntryList,
-                    printFiles
-            );
+                    list.add(cs);
 
-            String currentTimestamp = DateTimeFormatter.ISO_INSTANT.format(Instant.now());
-            payload.setFileName(message.getBatchFiles().get(0).getFilename());
-            payload.setTimestamp(currentTimestamp);
-            if (payload.getHeader() != null) {
-                payload.getHeader().setTimestamp(currentTimestamp);
+                    logger.debug("📋 Customer: {}, CIS: {}, Methods: {}, Failed: {}, FinalStatus: {}",
+                            acc, cis, methods, failed, cs.getStatus());
+                }
             }
-
-            // ✅ Write and upload summary.json
-            String fileName = "summary_" + message.getBatchId() + ".json";
-            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
-            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, fileName);
-            payload.setSummaryFileURL(decodeUrl(summaryUrl));
-            logger.info("📁 Summary JSON uploaded to: {}", decodeUrl(summaryUrl));
-
-            // ✅ Final beautified payload log
-            logger.info("📄 Final Summary Payload:\n{}",
-                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
-
-            // ✅ Send final response to Kafka
-            SummaryResponse response = new SummaryResponse();
-            response.setBatchID(message.getBatchId());
-            response.setFileName(payload.getFileName());
-            response.setHeader(payload.getHeader());
-            response.setMetadata(payload.getMetadata());
-            response.setPayload(payload.getPayload());
-            response.setSummaryFileURL(decodeUrl(summaryUrl));
-            response.setTimestamp(currentTimestamp);
-
-            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
-                    new ApiResponse("Summary generated", "COMPLETED", response)));
-
-            logger.info("✅ Kafka output sent for batch {} with response: {}", message.getBatchId(),
-                    objectMapper.writeValueAsString(response));
-
         } catch (Exception e) {
-            logger.error("❌ Error post-OT summary generation", e);
+            logger.error("❌ Failed parsing STD XML", e);
         }
+        return list;
     }
