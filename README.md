@@ -1,59 +1,89 @@
-private List<CustomerSummary> parseSTDXml(File xmlFile, Map<String, Map<String, String>> errorMap) {
-        List<CustomerSummary> list = new ArrayList<>();
-        try {
-            Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile);
-            doc.getDocumentElement().normalize();
+private static List<ProcessedFileEntry> buildProcessedFileEntries(
+            List<SummaryProcessedFile> processedFiles,
+            Map<String, Map<String, String>> errorMap,
+            List<PrintFileEntry> printFileEntryList) {
 
-            NodeList customers = doc.getElementsByTagName("customer");
-            for (int i = 0; i < customers.getLength(); i++) {
-                Element cust = (Element) customers.item(i);
+        Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
 
-                String acc = null, cis = null;
-                List<String> methods = new ArrayList<>();
+        for (SummaryProcessedFile file : processedFiles) {
+            String key = file.getCustomerId() + "-" + file.getAccountNumber();
+            ProcessedFileEntry entry = grouped.computeIfAbsent(key, k -> {
+                ProcessedFileEntry newEntry = new ProcessedFileEntry();
+                newEntry.setCustomerId(file.getCustomerId());
+                newEntry.setAccountNumber(file.getAccountNumber());
+                return newEntry;
+            });
 
-                NodeList keys = cust.getElementsByTagName("key");
-                for (int j = 0; j < keys.getLength(); j++) {
-                    Element k = (Element) keys.item(j);
-                    if ("AccountNumber".equalsIgnoreCase(k.getAttribute("name"))) acc = k.getTextContent();
-                    if ("CISNumber".equalsIgnoreCase(k.getAttribute("name"))) cis = k.getTextContent();
+            String outputType = file.getOutputType();
+            String blobUrl = file.getBlobUrl();
+            Map<String, String> errors = errorMap.getOrDefault(file.getAccountNumber(), Collections.emptyMap());
+
+            String status;
+            if (isNonEmpty(blobUrl)) {
+                status = "SUCCESS";
+            } else if ("FAILED".equalsIgnoreCase(errors.getOrDefault(outputType, ""))) {
+                status = "FAILED";
+            } else {
+                status = "";  // ✅ Replaced "NOT_FOUND" with ""
+            }
+
+            switch (outputType) {
+                case "EMAIL" -> {
+                    entry.setEmailBlobUrl(blobUrl);
+                    entry.setEmailStatus(status);
                 }
-
-                NodeList queues = cust.getElementsByTagName("queueName");
-                for (int q = 0; q < queues.getLength(); q++) {
-                    String val = queues.item(q).getTextContent().trim().toUpperCase();
-                    if (!val.isEmpty()) methods.add(val);
+                case "PRINT" -> //entry.setPrintFileUrl(blobUrl); // might be null
+                        entry.setPrintStatus(status);
+                case "MOBSTAT" -> {
+                    entry.setMobstatBlobUrl(blobUrl);
+                    entry.setMobstatStatus(status);
                 }
-
-                if (acc != null && cis != null) {
-                    CustomerSummary cs = new CustomerSummary();
-                    cs.setAccountNumber(acc);
-                    cs.setCisNumber(cis);
-                    cs.setCustomerId(acc);
-
-                    // Merge error report
-                    Map<String, String> deliveryStatus = errorMap.getOrDefault(acc, new HashMap<>());
-                    cs.setDeliveryStatus(deliveryStatus); // for logs only
-
-                    long failed = methods.stream()
-                            .filter(m -> "FAILED".equalsIgnoreCase(deliveryStatus.getOrDefault(m, "")))
-                            .count();
-
-                    if (failed == methods.size()) {
-                        cs.setStatus("FAILED");
-                    } else if (failed > 0) {
-                        cs.setStatus("PARTIAL");
-                    } else {
-                        cs.setStatus("SUCCESS");
-                    }
-
-                    list.add(cs);
-
-                    logger.debug("📋 Customer: {}, CIS: {}, Methods: {}, Failed: {}, FinalStatus: {}",
-                            acc, cis, methods, failed, cs.getStatus());
+                case "ARCHIVE" -> {
+                    entry.setArchiveBlobUrl(blobUrl);
+                    entry.setArchiveStatus(status);
                 }
             }
-        } catch (Exception e) {
-            logger.error("❌ Failed parsing STD XML", e);
         }
-        return list;
+
+        // ✅ Override only PRINT status using printFileEntryList (if matching entry exists)
+        for (PrintFileEntry printEntry : printFileEntryList) {
+            String key = printEntry.getCisNumber() + "-" + printEntry.getAccountNumber();
+            ProcessedFileEntry entry = grouped.get(key);
+            if (entry != null) {
+                entry.setPrintStatus("SUCCESS"); // ✅ Status only, do NOT touch URL
+            }
+        }
+
+        // ✅ Overall status logic (unchanged)
+        for (ProcessedFileEntry entry : grouped.values()) {
+            String email = entry.getEmailStatus();
+            String print = entry.getPrintStatus();
+            String mobstat = entry.getMobstatStatus();
+            String archive = entry.getArchiveStatus();
+
+            boolean isEmailSuccess = "SUCCESS".equals(email);
+            boolean isPrintSuccess = "SUCCESS".equals(print);
+            boolean isMobstatSuccess = "SUCCESS".equals(mobstat);
+            boolean isArchiveSuccess = "SUCCESS".equals(archive);
+
+            boolean isEmailMissingOrFailed = email == null || "FAILED".equals(email) || "".equals(email);
+            boolean isPrintMissingOrFailed = print == null || "FAILED".equals(print) || "".equals(print);
+            boolean isMobstatMissingOrFailed = mobstat == null || "FAILED".equals(mobstat) || "".equals(mobstat);
+
+            if (isEmailSuccess && isArchiveSuccess) {
+                entry.setOverallStatus("SUCCESS");
+            } else if (isMobstatSuccess && isArchiveSuccess && isEmailMissingOrFailed && isPrintMissingOrFailed) {
+                entry.setOverallStatus("SUCCESS");
+            } else if (isPrintSuccess && isArchiveSuccess && isEmailMissingOrFailed && isMobstatMissingOrFailed) {
+                entry.setOverallStatus("SUCCESS");
+            } else if (isArchiveSuccess && isEmailMissingOrFailed && isMobstatMissingOrFailed && isPrintMissingOrFailed) {
+                entry.setOverallStatus("PARTIAL");
+            } else if (isArchiveSuccess) {
+                entry.setOverallStatus("PARTIAL");
+            } else {
+                entry.setOverallStatus("FAILED");
+            }
+        }
+
+        return new ArrayList<>(grouped.values());
     }
