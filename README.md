@@ -1,5 +1,5 @@
-git config --global http.proxy http://CC437236:34dYaB%40jEh56@proxyprod.africa.nedcor.net:80
-git config --global https.proxy http://CC437236:34dYaB%40jEh56@proxyprod.africa.nedcor.net:80
+$ git clone https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Filemanager
+Cloning into 'ECM_comp_Filemanager'...
+git: 'credential-manager-core' is not a git command. See 'git --help'.
+fatal: unable to access 'https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Filemanager/': CONNECT tunnel failed, response 407
 
-git config --global --get http.proxy
-git config --global --get https.proxy
