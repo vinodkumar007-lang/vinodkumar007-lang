@@ -1,78 +1,82 @@
-public List<PrintFileEntry> parsePrintQueueXml(File xmlFile, String mountPath) {
-    List<PrintFileEntry> printFiles = new ArrayList<>();
+ private static List<ProcessedFileEntry> buildProcessedFileEntries(
+            List<SummaryProcessedFile> processedFiles,
+            Map<String, Map<String, String>> errorMap,
+            List<PrintFileEntry> printFileEntryList) {
 
-    try {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-        DocumentBuilder builder = factory.newDocumentBuilder();
-        Document doc = builder.parse(xmlFile);
-        doc.getDocumentElement().normalize();
+        Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
 
-        NodeList queueList = doc.getElementsByTagName("queue");
+        for (SummaryProcessedFile file : processedFiles) {
+            String key = file.getCustomerId() + "-" + file.getAccountNumber();
+            ProcessedFileEntry entry = grouped.computeIfAbsent(key, k -> {
+                ProcessedFileEntry newEntry = new ProcessedFileEntry();
+                newEntry.setCustomerId(file.getCustomerId());
+                newEntry.setAccountNumber(file.getAccountNumber());
+                return newEntry;
+            });
 
-        for (int i = 0; i < queueList.getLength(); i++) {
-            Element queueElement = (Element) queueList.item(i);
-            String queueName = queueElement.getAttribute("name");
+            String outputType = file.getOutputType();
+            String blobUrl = file.getBlobUrl();
+            Map<String, String> errors = errorMap.getOrDefault(file.getAccountNumber(), Collections.emptyMap());
 
-            // Only process <queue name="print">
-            if (!"print".equalsIgnoreCase(queueName)) continue;
+            String status;
+            if (isNonEmpty(blobUrl)) {
+                status = "SUCCESS";
+            } else if ("FAILED".equalsIgnoreCase(errors.getOrDefault(outputType, ""))) {
+                status = "FAILED";
+            } else {
+                status = "";  // ✅ Replaced "NOT_FOUND" with ""
+            }
 
-            NodeList fileList = queueElement.getElementsByTagName("file");
-
-            for (int j = 0; j < fileList.getLength(); j++) {
-                Element fileElement = (Element) fileList.item(j);
-                String filePath = fileElement.getAttribute("name");
-
-                File localFile = new File(filePath); // absolute path already includes mount
-                if (!localFile.exists()) {
-                    System.err.println("Print file not found: " + filePath);
-                    continue;
+            switch (outputType) {
+                case "EMAIL" -> {
+                    entry.setEmailBlobUrl(blobUrl);
+                    entry.setEmailStatus(status);
                 }
-
-                String targetPath = "print/" + LocalDate.now() + "/" + localFile.getName();
-                String printBlobUrl = uploadFileToBlob(localFile, targetPath);
-
-                NodeList customerNodes = fileElement.getElementsByTagName("customer");
-
-                for (int k = 0; k < customerNodes.getLength(); k++) {
-                    Element customerElement = (Element) customerNodes.item(k);
-                    String customerNumber = customerElement.getAttribute("number");
-
-                    Map<String, String> keys = new HashMap<>();
-                    NodeList keyList = customerElement.getElementsByTagName("key");
-                    for (int l = 0; l < keyList.getLength(); l++) {
-                        Element keyElement = (Element) keyList.item(l);
-                        keys.put(keyElement.getAttribute("name"), keyElement.getTextContent());
-                    }
-
-                    // Build the DTO
-                    PrintFileEntry entry = new PrintFileEntry();
-                    entry.setCustomerNumber(customerNumber);
-                    entry.setBlobUrl(printBlobUrl);
-                    entry.setFileName(localFile.getName());
-                    entry.setAccountNumber(keys.get("AccountNumber"));
-                    entry.setCisNumber(keys.get("CISNumber"));
-                    entry.setStartPage(keys.get("StartPageCustomer"));
-                    entry.setTotalPages(keys.get("TotalPagesInDocument"));
-
-                    printFiles.add(entry);
+                case "PRINT" -> {
+                    entry.setPrintFileUrl(blobUrl);
+                    entry.setPrintStatus(status);
+                }
+                case "MOBSTAT" -> {
+                    entry.setMobstatBlobUrl(blobUrl);
+                    entry.setMobstatStatus(status);
+                }
+                case "ARCHIVE" -> {
+                    entry.setArchiveBlobUrl(blobUrl);
+                    entry.setArchiveStatus(status);
                 }
             }
         }
-    } catch (Exception e) {
-        e.printStackTrace();
+
+        // ✅ Overall status logic (unchanged)
+        for (ProcessedFileEntry entry : grouped.values()) {
+            String email = entry.getEmailStatus();
+            String print = entry.getPrintStatus();
+            String mobstat = entry.getMobstatStatus();
+            String archive = entry.getArchiveStatus();
+
+            boolean isEmailSuccess = "SUCCESS".equals(email);
+            boolean isPrintSuccess = "SUCCESS".equals(print);
+            boolean isMobstatSuccess = "SUCCESS".equals(mobstat);
+            boolean isArchiveSuccess = "SUCCESS".equals(archive);
+
+            boolean isEmailMissingOrFailed = email == null || "FAILED".equals(email) || "".equals(email);
+            boolean isPrintMissingOrFailed = print == null || "FAILED".equals(print) || "".equals(print);
+            boolean isMobstatMissingOrFailed = mobstat == null || "FAILED".equals(mobstat) || "".equals(mobstat);
+
+            if (isEmailSuccess && isArchiveSuccess) {
+                entry.setOverallStatus("SUCCESS");
+            } else if (isMobstatSuccess && isArchiveSuccess && isEmailMissingOrFailed && isPrintMissingOrFailed) {
+                entry.setOverallStatus("SUCCESS");
+            } else if (isPrintSuccess && isArchiveSuccess && isEmailMissingOrFailed && isMobstatMissingOrFailed) {
+                entry.setOverallStatus("SUCCESS");
+            } else if (isArchiveSuccess && isEmailMissingOrFailed && isMobstatMissingOrFailed && isPrintMissingOrFailed) {
+                entry.setOverallStatus("PARTIAL");
+            } else if (isArchiveSuccess) {
+                entry.setOverallStatus("PARTIAL");
+            } else {
+                entry.setOverallStatus("FAILED");
+            }
+        }
+
+        return new ArrayList<>(grouped.values());
     }
-
-    return printFiles;
-}
-
-public class PrintFileEntry {
-    private String customerNumber;
-    private String accountNumber;
-    private String cisNumber;
-    private String startPage;
-    private String totalPages;
-    private String fileName;
-    private String blobUrl;
-
-    // Getters and setters...
-}
