@@ -23,6 +23,16 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
 
+/**
+ * Service for interacting with Azure Blob Storage.
+ * Handles uploading and downloading files and content,
+ * fetching secrets from Azure Key Vault, and constructing blob paths based on KafkaMessage metadata.
+ *
+ * Uploads include text, binary, file path-based, and summary JSONs. 
+ * Downloads stream content directly to local file system to minimize memory usage.
+ *
+ * Dependencies: Azure Blob Storage SDK, Azure Key Vault SDK.
+ */
 @Service
 public class BlobStorageService {
 
@@ -53,6 +63,10 @@ public class BlobStorageService {
         this.restTemplate = restTemplate;
     }
 
+    /**
+     * Initializes secret values from Azure Key Vault (account key, name, container).
+     * Called lazily before blob operations if not already initialized.
+     */
     private void initSecrets() {
         if (accountKey != null && accountName != null && containerName != null) return;
 
@@ -78,6 +92,13 @@ public class BlobStorageService {
         }
     }
 
+    /**
+     * Fetches a specific secret from Azure Key Vault.
+     *
+     * @param client     The initialized SecretClient.
+     * @param secretName The name of the secret to retrieve.
+     * @return The secret value.
+     */
     private String getSecret(SecretClient client, String secretName) {
         try {
             return client.getSecret(secretName).getValue();
@@ -87,6 +108,13 @@ public class BlobStorageService {
         }
     }
 
+    /**
+     * Uploads text content to Azure Blob Storage.
+     *
+     * @param content    The text content to upload.
+     * @param targetPath The destination blob path.
+     * @return The uploaded blob URL.
+     */
     public String uploadFile(String content, String targetPath) {
         try {
             initSecrets();
@@ -105,6 +133,14 @@ public class BlobStorageService {
             throw new CustomAppException("Upload failed", 602, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
     }
+
+    /**
+     * Uploads binary content to Azure Blob Storage.
+     *
+     * @param content    The binary content as byte array.
+     * @param targetPath The destination blob path.
+     * @return The uploaded blob URL.
+     */
     public String uploadFile(byte[] content, String targetPath) {
         try {
             initSecrets();
@@ -124,6 +160,14 @@ public class BlobStorageService {
         }
     }
 
+    /**
+     * Uploads a file based on KafkaMessage context to a constructed blob path.
+     *
+     * @param file       The file to upload.
+     * @param folderName The target subfolder in blob.
+     * @param msg        The Kafka message for metadata.
+     * @return The uploaded blob URL.
+     */
     public String uploadFileByMessage(File file, String folderName, KafkaMessage msg) {
         try {
             byte[] content = Files.readAllBytes(file.toPath());
@@ -134,13 +178,29 @@ public class BlobStorageService {
             throw new CustomAppException("File read failed", 603, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
     }
+
+    /**
+     * Constructs a blob path using file name and KafkaMessage fields.
+     *
+     * @param fileName   The name of the file.
+     * @param folderName Folder name to be included in path.
+     * @param msg        Kafka message with metadata.
+     * @return Formatted blob path.
+     */
     private String buildBlobPath(String fileName, String folderName, KafkaMessage msg) {
         return msg.getSourceSystem() + "/" +
                 msg.getUniqueConsumerRef() + "/" +
                 folderName + "/" +
                 fileName;
     }
-    // ✅ Upload FILE content (e.g. PDFs, HTML, binary)
+
+    /**
+     * Uploads a file using Path reference to Azure Blob Storage.
+     *
+     * @param filePath   Local file path.
+     * @param targetPath Target path in blob storage.
+     * @return Blob URL after upload.
+     */
     public String uploadFile(Path filePath, String targetPath) {
         try {
             initSecrets();
@@ -162,6 +222,13 @@ public class BlobStorageService {
         }
     }
 
+    /**
+     * Uploads a Java File object to Azure Blob Storage.
+     *
+     * @param file       The file to upload.
+     * @param targetPath Blob destination path.
+     * @return The uploaded blob URL.
+     */
     public String uploadFile(File file, String targetPath) {
         try {
             initSecrets();
@@ -183,6 +250,13 @@ public class BlobStorageService {
         }
     }
 
+    /**
+     * Downloads a file from blob storage to a local path using streaming.
+     *
+     * @param blobUrl       Blob URL of the file.
+     * @param localFilePath Local path where file will be stored.
+     * @return Path to the downloaded file.
+     */
     public Path downloadFileToLocal(String blobUrl, Path localFilePath) {
         try {
             initSecrets();
@@ -217,6 +291,14 @@ public class BlobStorageService {
         }
     }
 
+    /**
+     * Uploads summary.json from either a file path or URL into a target blob path.
+     *
+     * @param filePathOrUrl File path or URL of summary JSON.
+     * @param message       KafkaMessage used to construct remote blob path.
+     * @param fileName      Target file name in blob.
+     * @return Uploaded blob URL.
+     */
     public String uploadSummaryJson(String filePathOrUrl, KafkaMessage message, String fileName) {
         initSecrets();
         String remotePath = String.format("%s/%s/%s/%s",
