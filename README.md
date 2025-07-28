@@ -15,12 +15,25 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+/**
+ * Utility class responsible for:
+ * - Building the SummaryPayload object from processed data
+ * - Writing the summary JSON file to a local temporary directory
+ * - Decoding and organizing final print file URLs
+ * - Calculating metadata such as total customers processed, file count, and overall status
+ */
 @Component
 public class SummaryJsonWriter {
 
     private static final Logger logger = LoggerFactory.getLogger(SummaryJsonWriter.class);
     private static final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 
+    /**
+     * Writes a SummaryPayload object as a formatted JSON file to a temp directory.
+     *
+     * @param payload The SummaryPayload object to be serialized
+     * @return Absolute path to the written JSON file
+     */
     public static String writeSummaryJsonToFile(SummaryPayload payload) {
         if (payload == null) {
             logger.error("SummaryPayload is null. Cannot write summary.json.");
@@ -31,6 +44,7 @@ public class SummaryJsonWriter {
             String batchId = Optional.ofNullable(payload.getBatchID()).orElse("unknown");
             String fileName = "summary_" + batchId + ".json";
 
+            // Create temp dir and resolve full path
             Path tempDir = Files.createTempDirectory("summaryFiles");
             Path summaryFilePath = tempDir.resolve(fileName);
 
@@ -51,6 +65,18 @@ public class SummaryJsonWriter {
         }
     }
 
+    /**
+     * Constructs a SummaryPayload object from various input values.
+     *
+     * @param kafkaMessage Kafka input message object
+     * @param processedList List of processed file entries
+     * @param fileName Output summary file name
+     * @param batchId Batch identifier
+     * @param timestamp Timestamp string
+     * @param errorMap Map of errors keyed by account and delivery method
+     * @param printFiles List of print file URLs
+     * @return SummaryPayload object
+     */
     public static SummaryPayload buildPayload(
             KafkaMessage kafkaMessage,
             List<SummaryProcessedFile> processedList,
@@ -65,6 +91,7 @@ public class SummaryJsonWriter {
         payload.setFileName(fileName);
         payload.setTimestamp(timestamp);
 
+        // Populate header metadata
         Header header = new Header();
         header.setTenantCode(kafkaMessage.getTenantCode());
         header.setChannelID(kafkaMessage.getChannelID());
@@ -75,9 +102,11 @@ public class SummaryJsonWriter {
         header.setJobName(kafkaMessage.getSourceSystem());
         payload.setHeader(header);
 
+        // Build processed file entries from summary list
         List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList, errorMap);
         payload.setProcessedFileList(processedFileEntries);
 
+        // Count successful file URLs for final payload
         int totalFileUrls = (int) processedFileEntries.stream()
                 .flatMap(entry -> Stream.of(
                         new AbstractMap.SimpleEntry<>(entry.getEmailBlobUrl(), entry.getEmailStatus()),
@@ -89,6 +118,7 @@ public class SummaryJsonWriter {
                         && "SUCCESS".equalsIgnoreCase(e.getValue()))
                 .count();
 
+        // Populate payload details from KafkaMessage
         Payload payloadInfo = new Payload();
         payloadInfo.setUniqueECPBatchRef(kafkaMessage.getUniqueECPBatchRef());
         payloadInfo.setRunPriority(kafkaMessage.getRunPriority());
@@ -98,18 +128,17 @@ public class SummaryJsonWriter {
         payloadInfo.setFileCount(totalFileUrls);
         payload.setPayload(payloadInfo);
 
+        // Metadata: count distinct customers and determine final status
         Metadata metadata = new Metadata();
         metadata.setTotalCustomersProcessed((int) processedFileEntries.stream()
                 .map(pf -> pf.getCustomerId() + "::" + pf.getAccountNumber())
                 .distinct()
                 .count());
 
-        // Collect all overallStatuses for individual records
         Set<String> statuses = processedFileEntries.stream()
                 .map(ProcessedFileEntry::getOverallStatus)
                 .collect(Collectors.toSet());
 
-// Final overall status for the payload
         String overallStatus;
         if (statuses.size() == 1) {
             overallStatus = statuses.iterator().next();
@@ -126,6 +155,7 @@ public class SummaryJsonWriter {
         metadata.setEventOutcomeDescription(overallStatus.toLowerCase());
         payload.setMetadata(metadata);
 
+        // Decode and attach print file URLs
         List<PrintFile> printFileList = new ArrayList<>();
         for (PrintFile pf : printFiles) {
             if (pf.getPrintFileURL() != null) {
@@ -136,9 +166,18 @@ public class SummaryJsonWriter {
             }
         }
         payload.setPrintFiles(printFileList);
+
         return payload;
     }
 
+    /**
+     * Groups SummaryProcessedFile list into ProcessedFileEntry list by customer/account,
+     * maps delivery statuses, and assigns overall status.
+     *
+     * @param processedFiles List of files that were processed
+     * @param errorMap Map of errors for each delivery method
+     * @return List of grouped ProcessedFileEntry objects with status and blob URLs
+     */
     private static List<ProcessedFileEntry> buildProcessedFileEntries(
             List<SummaryProcessedFile> processedFiles,
             Map<String, Map<String, String>> errorMap) {
@@ -147,6 +186,8 @@ public class SummaryJsonWriter {
 
         for (SummaryProcessedFile file : processedFiles) {
             String key = file.getCustomerId() + "-" + file.getAccountNumber();
+
+            // Group by customer-account pair
             ProcessedFileEntry entry = grouped.computeIfAbsent(key, k -> {
                 ProcessedFileEntry newEntry = new ProcessedFileEntry();
                 newEntry.setCustomerId(file.getCustomerId());
@@ -158,15 +199,17 @@ public class SummaryJsonWriter {
             String blobUrl = file.getBlobUrl();
             Map<String, String> errors = errorMap.getOrDefault(file.getAccountNumber(), Collections.emptyMap());
 
+            // Determine delivery status
             String status;
             if (isNonEmpty(blobUrl)) {
                 status = "SUCCESS";
             } else if ("FAILED".equalsIgnoreCase(errors.getOrDefault(outputType, ""))) {
                 status = "FAILED";
             } else {
-                status = "";  // ✅ Replaced "NOT_FOUND" with ""
+                status = "";  // Neutral/missing status
             }
 
+            // Assign blob URL and status based on type
             switch (outputType) {
                 case "EMAIL" -> {
                     entry.setEmailBlobUrl(blobUrl);
@@ -186,7 +229,7 @@ public class SummaryJsonWriter {
             }
         }
 
-        // ✅ Overall status logic
+        // Assign overall status based on channel-specific outcomes
         for (ProcessedFileEntry entry : grouped.values()) {
             String email = entry.getEmailStatus();
             String print = entry.getPrintStatus();
@@ -220,6 +263,12 @@ public class SummaryJsonWriter {
         return new ArrayList<>(grouped.values());
     }
 
+    /**
+     * Utility method to check if a string is non-null and non-blank.
+     *
+     * @param value The input string
+     * @return true if not null or blank
+     */
     private static boolean isNonEmpty(String value) {
         return value != null && !value.trim().isEmpty();
     }
