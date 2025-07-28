@@ -1,321 +1,605 @@
 package com.nedbank.kafka.filemanage.service;
 
-import com.azure.identity.DefaultAzureCredentialBuilder;
-import com.azure.security.keyvault.secrets.SecretClient;
-import com.azure.security.keyvault.secrets.SecretClientBuilder;
-import com.azure.storage.blob.*;
-import com.azure.storage.common.StorageSharedKeyCredential;
-import com.nedbank.kafka.filemanage.exception.CustomAppException;
-import com.nedbank.kafka.filemanage.model.KafkaMessage;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.*;
+import com.nedbank.kafka.filemanage.utils.SummaryJsonWriter;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.HttpStatus;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.*;
+import org.springframework.http.*;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import org.w3c.dom.*;
 
+import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.*;
-import java.net.URI;
-import java.net.URL;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.Arrays;
+import java.nio.file.*;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.stream.*;
 
-/**
- * Service for interacting with Azure Blob Storage.
- * Handles uploading and downloading files and content,
- * fetching secrets from Azure Key Vault, and constructing blob paths based on KafkaMessage metadata.
- *
- * Uploads include text, binary, file path-based, and summary JSONs. 
- * Downloads stream content directly to local file system to minimize memory usage.
- *
- * Dependencies: Azure Blob Storage SDK, Azure Key Vault SDK.
- */
 @Service
-public class BlobStorageService {
+public class KafkaListenerService {
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
 
-    private static final Logger logger = LoggerFactory.getLogger(BlobStorageService.class);
+    @Value("${mount.path}")
+    private String mountPath;
 
-    private final RestTemplate restTemplate;
+    @Value("${kafka.topic.output}")
+    private String kafkaOutputTopic;
 
-    @Value("${azure.keyvault.url}")
-    private String keyVaultUrl;
+    @Value("${rpt.max.wait.seconds}")
+    private int rptMaxWaitSeconds;
 
-    @Value("${azure.blob.storage.format}")
-    private String azureStorageFormat;
+    @Value("${rpt.poll.interval.millis}")
+    private int rptPollIntervalMillis;
 
-    @Value("${azure.keyvault.accountKey}")
-    private String fmAccountKey;
+    @Value("${ot.orchestration.api.url}")
+    private String otOrchestrationApiUrl;
 
-    @Value("${azure.keyvault.accountName}")
-    private String fmAccountName;
+    @Value("${ot.service.mfc.url}")
+    private String orchestrationMfcUrl;
 
-    @Value("${azure.keyvault.containerName}")
-    private String fmContainerName;
+    @Value("${ot.auth.token}")
+    private String orchestrationAuthToken;
 
-    private String accountKey;
-    private String accountName;
-    private String containerName;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final BlobStorageService blobStorageService;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ExecutorService executor = Executors.newFixedThreadPool(5);
 
-    public BlobStorageService(RestTemplate restTemplate) {
-        this.restTemplate = restTemplate;
+    @Autowired
+    public KafkaListenerService(BlobStorageService blobStorageService, KafkaTemplate<String, String> kafkaTemplate) {
+        this.blobStorageService = blobStorageService;
+        this.kafkaTemplate = kafkaTemplate;
     }
 
-    /**
-     * Initializes secret values from Azure Key Vault (account key, name, container).
-     * Called lazily before blob operations if not already initialized.
-     */
-    private void initSecrets() {
-        if (accountKey != null && accountName != null && containerName != null) return;
-
+    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
+    public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
         try {
-            logger.info("🔐 Fetching secrets from Azure Key Vault...");
-            SecretClient secretClient = new SecretClientBuilder()
-                    .vaultUrl(keyVaultUrl)
-                    .credential(new DefaultAzureCredentialBuilder().build())
-                    .buildClient();
+            logger.info("\uD83D\uDCE5 Received Kafka message: {}", rawMessage);
+            KafkaMessage message = objectMapper.readValue(rawMessage, KafkaMessage.class);
+            String batchId = message.getBatchId();
 
-            accountKey = getSecret(secretClient, fmAccountKey);
-            accountName = getSecret(secretClient, fmAccountName);
-            containerName = getSecret(secretClient, fmContainerName);
-
-            if (accountKey == null || accountName == null || containerName == null) {
-                throw new CustomAppException("Secrets missing from Key Vault", 400, HttpStatus.BAD_REQUEST);
+            List<BatchFile> batchFiles = message.getBatchFiles();
+            if (batchFiles == null || batchFiles.isEmpty()) {
+                logger.error("❌ Rejected batch {} - Empty BatchFiles", batchId);
+                ack.acknowledge();
+                return;
             }
 
-            logger.info("✅ Secrets fetched successfully from Key Vault.");
-        } catch (Exception e) {
-            logger.error("❌ Failed to initialize secrets: {}", e.getMessage(), e);
-            throw new CustomAppException("Key Vault integration failure", 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            long dataCount = batchFiles.stream()
+                    .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
+                    .count();
+            long refCount = batchFiles.stream()
+                    .filter(f -> "REF".equalsIgnoreCase(f.getFileType()))
+                    .count();
+
+            // 1. DATA only ✅
+            if (dataCount == 1 && refCount == 0) {
+                logger.info("✅ Valid batch {} with 1 DATA file", batchId);
+            }
+            // 2. Multiple DATA ❌
+            else if (dataCount > 1) {
+                logger.error("❌ Rejected batch {} - Multiple DATA files", batchId);
+                ack.acknowledge();
+                return;
+            }
+            // 3. REF only ❌
+            else if (dataCount == 0 && refCount > 0) {
+                logger.error("❌ Rejected batch {} - Only REF files", batchId);
+                ack.acknowledge();
+                return;
+            }
+            // 4. REF + DATA ✅ (but ignore REF)
+            else if (dataCount == 1 && refCount > 0) {
+                logger.info("✅ Valid batch {} with DATA + REF (REF will be ignored)", batchId);
+                message.setBatchFiles(
+                        batchFiles.stream()
+                                .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
+                                .toList()
+                );
+            }
+            // 5. Unknown or empty file types ❌
+            else {
+                logger.error("❌ Rejected batch {} - Invalid or unsupported file type combination", batchId);
+                ack.acknowledge();
+                return;
+            }
+
+            // ✅ Create input folder
+            Path batchDir = Paths.get(mountPath, "input", message.getSourceSystem(), batchId);
+            Files.createDirectories(batchDir);
+            logger.info("\uD83D\uDCC1 Created input directory: {}", batchDir);
+
+            for (BatchFile file : message.getBatchFiles()) {
+                String blobUrl = file.getBlobUrl();
+                Path localPath = batchDir.resolve(file.getFilename());
+
+                // ✅ Stream-based download
+                blobStorageService.downloadFileToLocal(blobUrl, localPath);
+                file.setBlobUrl(localPath.toString());
+
+                logger.info("⬇️ Downloaded file {} to local path {}", blobUrl, localPath);
+            }
+
+            String url = switch (message.getSourceSystem().toUpperCase()) {
+                case "DEBTMAN" -> otOrchestrationApiUrl;
+                case "MFC" -> orchestrationMfcUrl;
+                default -> throw new IllegalArgumentException("Unsupported source system: " + message.getSourceSystem());
+            };
+
+            logger.info("\uD83D\uDE80 Calling Orchestration API: {}", url);
+            OTResponse otResponse = callOrchestrationBatchApi(orchestrationAuthToken, url, message);
+
+            if (otResponse == null) {
+                logger.error("❌ OT orchestration failed for batch {}", batchId);
+                kafkaTemplate.send(kafkaOutputTopic, "{\"status\":\"FAILURE\",\"message\":\"OT call failed\"}");
+                ack.acknowledge();
+                return;
+            }
+
+            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(Map.of(
+                    "batchID", batchId,
+                    "status", "PENDING",
+                    "message", "OT Request Sent"
+            )));
+            logger.info("\uD83D\uDCE4 OT request sent for batch {}", batchId);
+            ack.acknowledge();
+            executor.submit(() -> processAfterOT(message, otResponse));
+
+        } catch (Exception ex) {
+            logger.error("❌ Kafka processing failed", ex);
         }
     }
 
-    /**
-     * Fetches a specific secret from Azure Key Vault.
-     *
-     * @param client     The initialized SecretClient.
-     * @param secretName The name of the secret to retrieve.
-     * @return The secret value.
-     */
-    private String getSecret(SecretClient client, String secretName) {
+    private List<CustomerSummary> parseSTDXml(File xmlFile, Map<String, Map<String, String>> errorMap) {
+        List<CustomerSummary> list = new ArrayList<>();
         try {
-            return client.getSecret(secretName).getValue();
+            Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile);
+            doc.getDocumentElement().normalize();
+
+            NodeList customers = doc.getElementsByTagName("customer");
+            for (int i = 0; i < customers.getLength(); i++) {
+                Element cust = (Element) customers.item(i);
+
+                String acc = null, cis = null;
+                List<String> methods = new ArrayList<>();
+
+                NodeList keys = cust.getElementsByTagName("key");
+                for (int j = 0; j < keys.getLength(); j++) {
+                    Element k = (Element) keys.item(j);
+                    if ("AccountNumber".equalsIgnoreCase(k.getAttribute("name"))) acc = k.getTextContent();
+                    if ("CISNumber".equalsIgnoreCase(k.getAttribute("name"))) cis = k.getTextContent();
+                }
+
+                NodeList queues = cust.getElementsByTagName("queueName");
+                for (int q = 0; q < queues.getLength(); q++) {
+                    String val = queues.item(q).getTextContent().trim().toUpperCase();
+                    if (!val.isEmpty()) methods.add(val);
+                }
+
+                if (acc != null && cis != null) {
+                    CustomerSummary cs = new CustomerSummary();
+                    cs.setAccountNumber(acc);
+                    cs.setCisNumber(cis);
+                    cs.setCustomerId(acc);
+
+                    // Merge error report
+                    Map<String, String> deliveryStatus = errorMap.getOrDefault(acc, new HashMap<>());
+                    cs.setDeliveryStatus(deliveryStatus); // for logs only
+
+                    long failed = methods.stream()
+                            .filter(m -> "FAILED".equalsIgnoreCase(deliveryStatus.getOrDefault(m, "")))
+                            .count();
+
+                    if (failed == methods.size()) {
+                        cs.setStatus("FAILED");
+                    } else if (failed > 0) {
+                        cs.setStatus("PARTIAL");
+                    } else {
+                        cs.setStatus("SUCCESS");
+                    }
+
+                    list.add(cs);
+
+                    logger.debug("📋 Customer: {}, CIS: {}, Methods: {}, Failed: {}, FinalStatus: {}",
+                            acc, cis, methods, failed, cs.getStatus());
+                }
+            }
         } catch (Exception e) {
-            logger.error("❌ Failed to fetch secret '{}': {}", secretName, e.getMessage(), e);
-            throw new CustomAppException("Failed to fetch secret: " + secretName, 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            logger.error("❌ Failed parsing STD XML", e);
+        }
+        return list;
+    }
+
+    private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
+        try {
+            logger.info("⏳ Waiting for XML for jobId={}, id={}", otResponse.getJobId(), otResponse.getId());
+            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
+            if (xmlFile == null) throw new IllegalStateException("XML not found");
+            logger.info("✅ Found XML file: {}", xmlFile);
+
+            // ✅ Parse error report (already used in buildDetailedProcessedFiles)
+            Map<String, Map<String, String>> errorMap = parseErrorReport(message);
+            logger.info("🧾 Parsed error report with {} entries", errorMap.size());
+
+            // ✅ Parse STDXML and extract basic customer summaries
+            List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile, errorMap);
+            logger.info("📊 Total customerSummaries parsed: {}", customerSummaries.size());
+
+            // ✅ Convert to basic SummaryProcessedFile list
+            List<SummaryProcessedFile> customerList = customerSummaries.stream()
+                    .map(cs -> {
+                        SummaryProcessedFile spf = new SummaryProcessedFile();
+                        spf.setAccountNumber(cs.getAccountNumber());
+                        spf.setCustomerId(cs.getCisNumber());
+                        return spf;
+                    })
+                    .collect(Collectors.toList());
+
+            // ✅ Locate output job directory
+            Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
+
+            // ✅ Build processedFiles with output-specific blob URLs and status (SUCCESS/ERROR)
+            List<SummaryProcessedFile> processedFiles =
+                    buildDetailedProcessedFiles(jobDir, customerList, errorMap, message);
+            logger.info("📦 Processed {} customer records", processedFiles.size());
+
+            // ✅ Upload print files and track their URLs
+            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
+            logger.info("🖨️ Uploaded {} print files", printFiles.size());
+
+            // ✅ Upload MobStat trigger file if present
+            String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
+
+            // ✅ Extract counts from <outputList> inside STD XML
+            Map<String, Integer> summaryCounts = extractSummaryCountsFromXml(xmlFile);
+            // ✅ Create payload for summary.json
+            String allFileNames = message.getBatchFiles().stream() .map(BatchFile::getFilename) .collect(Collectors.joining(", "));
+            SummaryPayload payload = SummaryJsonWriter.buildPayload(
+                    message,
+                    processedFiles,      // ✅ Now includes blob URLs + status from buildDetailedProcessedFiles
+                    allFileNames,
+                    message.getBatchId(),
+                    String.valueOf(message.getTimestamp()),
+                    errorMap,
+                    printFiles
+            );
+            if (payload.getHeader() != null) {
+                payload.getHeader().setTimestamp(String.valueOf(message.getTimestamp()));
+            }
+
+            // ✅ Write and upload summary.json
+            String fileName = "summary_" + message.getBatchId() + ".json";
+            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
+            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, fileName);
+            payload.setSummaryFileURL(decodeUrl(summaryUrl));
+            logger.info("📁 Summary JSON uploaded to: {}", decodeUrl(summaryUrl));
+
+            // ✅ Final beautified payload log
+            logger.info("📄 Final Summary Payload:\n{}",
+                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
+
+            // ✅ Send final response to Kafka
+            SummaryResponse response = new SummaryResponse();
+            response.setBatchID(message.getBatchId());
+            response.setFileName(payload.getFileName());
+            response.setHeader(payload.getHeader());
+            response.setMetadata(payload.getMetadata());
+            response.setPayload(payload.getPayload());
+            response.setSummaryFileURL(decodeUrl(summaryUrl));
+            response.setTimestamp(String.valueOf(message.getTimestamp()));
+
+            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
+                    new ApiResponse("Summary generated", "COMPLETED", response)));
+
+            logger.info("✅ Kafka output sent for batch {} with response: {}", message.getBatchId(),
+                    objectMapper.writeValueAsString(response));
+
+        } catch (Exception e) {
+            logger.error("❌ Error post-OT summary generation", e);
         }
     }
 
-    /**
-     * Uploads text content to Azure Blob Storage.
-     *
-     * @param content    The text content to upload.
-     * @param targetPath The destination blob path.
-     * @return The uploaded blob URL.
-     */
-    public String uploadFile(String content, String targetPath) {
-        try {
-            initSecrets();
-            BlobServiceClient blobClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format(azureStorageFormat, accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobClient blob = blobClient.getBlobContainerClient(containerName).getBlobClient(targetPath);
-            blob.upload(new ByteArrayInputStream(content.getBytes(StandardCharsets.UTF_8)), content.length(), true);
-
-            logger.info("📤 Uploaded TEXT file to '{}'", blob.getBlobUrl());
-            return blob.getBlobUrl();
-        } catch (Exception e) {
-            logger.error("❌ Upload failed: {}", e.getMessage(), e);
-            throw new CustomAppException("Upload failed", 602, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
-    }
-
-    /**
-     * Uploads binary content to Azure Blob Storage.
-     *
-     * @param content    The binary content as byte array.
-     * @param targetPath The destination blob path.
-     * @return The uploaded blob URL.
-     */
-    public String uploadFile(byte[] content, String targetPath) {
-        try {
-            initSecrets();
-            BlobServiceClient blobClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format(azureStorageFormat, accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobClient blob = blobClient.getBlobContainerClient(containerName).getBlobClient(targetPath);
-            blob.upload(new ByteArrayInputStream(content), content.length, true);
-
-            logger.info("📤 Uploaded BINARY file to '{}'", blob.getBlobUrl());
-            return blob.getBlobUrl();
-        } catch (Exception e) {
-            logger.error("❌ Upload failed: {}", e.getMessage(), e);
-            throw new CustomAppException("Upload failed", 602, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
-    }
-
-    /**
-     * Uploads a file based on KafkaMessage context to a constructed blob path.
-     *
-     * @param file       The file to upload.
-     * @param folderName The target subfolder in blob.
-     * @param msg        The Kafka message for metadata.
-     * @return The uploaded blob URL.
-     */
-    public String uploadFileByMessage(File file, String folderName, KafkaMessage msg) {
-        try {
-            byte[] content = Files.readAllBytes(file.toPath());
-            String targetPath = buildBlobPath(file.getName(), folderName, msg);
-            return uploadFile(content, targetPath);
+    private String findAndUploadMobstatTriggerFile(Path jobDir, KafkaMessage message) {
+        try (Stream<Path> stream = Files.list(jobDir)) {
+            Optional<Path> trigger = stream.filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().toLowerCase().endsWith(".trigger"))
+                    .findFirst();
+            if (trigger.isPresent()) {
+                String blobUrl = blobStorageService.uploadFile(trigger.get().toFile(),
+                        message.getSourceSystem() + "/" + message.getBatchId() + "/" + trigger.get().getFileName());
+                return decodeUrl(blobUrl);
+            } else {
+                logger.info("ℹ️ No .trigger file found in jobDir: {}", jobDir);
+            }
         } catch (IOException e) {
-            logger.error("❌ Error reading file for upload: {}", file.getAbsolutePath(), e);
-            throw new CustomAppException("File read failed", 603, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            logger.warn("⚠️ Failed to scan for .trigger file", e);
         }
+        return null;
     }
 
-    /**
-     * Constructs a blob path using file name and KafkaMessage fields.
-     *
-     * @param fileName   The name of the file.
-     * @param folderName Folder name to be included in path.
-     * @param msg        Kafka message with metadata.
-     * @return Formatted blob path.
-     */
-    private String buildBlobPath(String fileName, String folderName, KafkaMessage msg) {
-        return msg.getSourceSystem() + "/" +
-                msg.getUniqueConsumerRef() + "/" +
-                folderName + "/" +
-                fileName;
-    }
-
-    /**
-     * Uploads a file using Path reference to Azure Blob Storage.
-     *
-     * @param filePath   Local file path.
-     * @param targetPath Target path in blob storage.
-     * @return Blob URL after upload.
-     */
-    public String uploadFile(Path filePath, String targetPath) {
+    private OTResponse callOrchestrationBatchApi(String token, String url, KafkaMessage msg) {
         try {
-            initSecrets();
-            byte[] data = Files.readAllBytes(filePath);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Authorization", "Bearer " + token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
 
-            BlobServiceClient blobClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format(azureStorageFormat, accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
+            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, request, Map.class);
 
-            BlobClient blob = blobClient.getBlobContainerClient(containerName).getBlobClient(targetPath);
-            blob.upload(new ByteArrayInputStream(data), data.length, true);
-
-            logger.info("📤 Uploaded FILE to '{}'", blob.getBlobUrl());
-            return blob.getBlobUrl();
+            List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get("data");
+            if (data != null && !data.isEmpty()) {
+                Map<String, Object> item = data.get(0);
+                OTResponse otResponse = new OTResponse();
+                otResponse.setJobId((String) item.get("jobId"));
+                otResponse.setId((String) item.get("id"));
+                msg.setJobName(otResponse.getJobId());
+                return otResponse;
+            } else {
+                logger.error("❌ No data in OT orchestration response");
+            }
         } catch (Exception e) {
-            logger.error("❌ File Upload failed: {}", e.getMessage(), e);
-            throw new CustomAppException("File Upload failed", 602, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            logger.error("❌ Failed OT Orchestration call", e);
         }
+        return null;
     }
 
-    /**
-     * Uploads a Java File object to Azure Blob Storage.
-     *
-     * @param file       The file to upload.
-     * @param targetPath Blob destination path.
-     * @return The uploaded blob URL.
-     */
-    public String uploadFile(File file, String targetPath) {
-        try {
-            initSecrets();
-            BlobServiceClient blobClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format(azureStorageFormat, accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
+    private File waitForXmlFile(String jobId, String id) throws InterruptedException {
+        Path docgenRoot = Paths.get(mountPath, "jobs", jobId, id, "docgen");
+        long startTime = System.currentTimeMillis();
+        File xmlFile = null;
 
-            BlobClient blob = blobClient.getBlobContainerClient(containerName).getBlobClient(targetPath);
-            try (InputStream inputStream = new FileInputStream(file)) {
-                blob.upload(inputStream, file.length(), true);
+        while ((System.currentTimeMillis() - startTime) < rptMaxWaitSeconds * 1000L) {
+            if (Files.exists(docgenRoot)) {
+                try (Stream<Path> paths = Files.walk(docgenRoot)) {
+                    Optional<Path> xmlPath = paths
+                            .filter(Files::isRegularFile)
+                            .filter(p -> p.getFileName().toString().equalsIgnoreCase("_STDDELIVERYFILE.xml"))
+                            .findFirst();
+
+                    if (xmlPath.isPresent()) {
+                        xmlFile = xmlPath.get().toFile();
+
+                        // ✅ Check file size is stable (not growing)
+                        long size1 = xmlFile.length();
+                        TimeUnit.SECONDS.sleep(1); // wait a second
+                        long size2 = xmlFile.length();
+
+                        if (size1 > 0 && size1 == size2) {
+                            logger.info("✅ Found stable XML file: {}", xmlFile.getAbsolutePath());
+                            return xmlFile;
+                        } else {
+                            logger.info("⌛ XML file still being written (size changing): {}", xmlFile.getAbsolutePath());
+                        }
+                    }
+                } catch (IOException e) {
+                    logger.warn("⚠️ Error scanning docgen folder", e);
+                }
+            } else {
+                logger.debug("🔍 docgen folder not found yet: {}", docgenRoot);
             }
 
-            logger.info("Uploaded binary file to '{}'", blob.getBlobUrl());
-            return blob.getBlobUrl();
+            TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
+        }
+
+        logger.error("❌ Timed out waiting for complete XML file in {}", docgenRoot);
+        return null;
+    }
+
+    private Map<String, Map<String, String>> parseErrorReport(KafkaMessage msg) {
+        Map<String, Map<String, String>> result = new HashMap<>();
+        try {
+            String jobRootPath = mountPath+"/jobs"; //"/mnt/nfs/dev-exstream/dev-SA/jobs";
+            Path jobRoot = Paths.get(jobRootPath);
+            String jobId = msg.getJobName();
+
+            // Find all ErrorReport.csv files under this job's path
+            Path jobPath = jobRoot.resolve(jobId);
+            if (!Files.exists(jobPath)) {
+                logger.warn("❌ Job path not found: {}", jobPath);
+                return result;
+            }
+
+            logger.info("🔍 Searching ErrorReport.csv under: {}", jobPath);
+
+            try (Stream<Path> stream = Files.walk(jobPath)) {
+                Optional<Path> reportFile = stream
+                        .filter(path -> path.getFileName().toString().equalsIgnoreCase("ErrorReport.csv"))
+                        .findFirst();
+
+                if (reportFile.isEmpty()) {
+                    logger.warn("⚠️ ErrorReport.csv not found under job {}", jobId);
+                    return result;
+                }
+
+                Path reportPath = reportFile.get();
+                logger.info("✅ Found ErrorReport.csv at: {}", reportPath);
+
+                try (BufferedReader reader = Files.newBufferedReader(reportPath)) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        String[] parts = line.split("\\|");
+
+                        if (parts.length >= 3) {
+                            String account = parts[0].trim();
+                            String method = (parts.length >= 4 ? parts[3] : parts[2]).trim().toUpperCase();
+                            String status = (parts.length >= 5 ? parts[4] : (parts.length >= 4 ? parts[3] : "Failed")).trim();
+
+                            if (method.isEmpty()) method = "UNKNOWN";
+                            if (status.isEmpty()) status = "Failed";
+
+                            result.computeIfAbsent(account, k -> new HashMap<>()).put(method, status);
+                        }
+                    }
+                } catch (IOException e) {
+                    logger.error("❌ Error reading ErrorReport.csv: {}", e.getMessage(), e);
+                }
+            }
+        } catch (Exception ex) {
+            logger.error("❌ Failed to parse error report: {}", ex.getMessage(), ex);
+        }
+
+        return result;
+    }
+
+    private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+            Path jobDir,
+            List<SummaryProcessedFile> customerList,
+            Map<String, Map<String, String>> errorMap,
+            KafkaMessage msg) throws IOException {
+
+        List<SummaryProcessedFile> finalList = new ArrayList<>();
+        List<String> deliveryFolders = List.of("email", "mobstat", "print");
+        Map<String, String> folderToOutputMethod = Map.of(
+                "email", "EMAIL",
+                "mobstat", "MOBSTAT",
+                "print", "PRINT"
+        );
+
+        Path archivePath = jobDir.resolve("archive");
+
+        for (SummaryProcessedFile customer : customerList) {
+            String account = customer.getAccountNumber();
+
+            // Archive upload
+            String archiveBlobUrl = null;
+
+            if (Files.exists(archivePath)) {
+                Optional<Path> archiveFile = Files.list(archivePath)
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().contains(account))
+                        .findFirst();
+
+                if (archiveFile.isPresent()) {
+                    archiveBlobUrl = blobStorageService.uploadFileByMessage(
+                            archiveFile.get().toFile(), "archive", msg);
+
+                    SummaryProcessedFile archiveEntry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, archiveEntry);
+                    archiveEntry.setOutputType("ARCHIVE");
+                    archiveEntry.setBlobUrl(decodeUrl(archiveBlobUrl));
+
+                    finalList.add(archiveEntry);
+                }
+            }
+
+            // EMAIL, MOBSTAT, PRINT
+            for (String folder : deliveryFolders) {
+                String outputMethod = folderToOutputMethod.get(folder);
+                Path methodPath = jobDir.resolve(folder);
+
+                String blobUrl = null;
+
+                if (Files.exists(methodPath)) {
+                    Optional<Path> match = Files.list(methodPath)
+                            .filter(Files::isRegularFile)
+                            .filter(p -> p.getFileName().toString().contains(account))
+                            .findFirst();
+
+                    if (match.isPresent()) {
+                        blobUrl = blobStorageService.uploadFileByMessage(match.get().toFile(), folder, msg);
+                    }
+                }
+
+                SummaryProcessedFile entry = new SummaryProcessedFile();
+                BeanUtils.copyProperties(customer, entry);
+                entry.setOutputType(outputMethod);
+                entry.setBlobUrl(decodeUrl(blobUrl));
+
+                if (archiveBlobUrl != null) {
+                    entry.setArchiveOutputType("ARCHIVE");
+                    entry.setArchiveBlobUrl(archiveBlobUrl);
+                }
+
+                finalList.add(entry);
+            }
+        }
+
+        return finalList;
+    }
+    // Helper methods
+    private boolean isNumeric(String str) {
+        return str != null && str.matches("\\d+");
+    }
+
+    private SummaryProcessedFile buildCopy(SummaryProcessedFile original) {
+        SummaryProcessedFile copy = new SummaryProcessedFile();
+        BeanUtils.copyProperties(original, copy);
+        return copy;
+    }
+
+    private List<PrintFile> uploadPrintFiles(Path jobDir, KafkaMessage msg) {
+        List<PrintFile> printFiles = new ArrayList<>();
+        Path printDir = jobDir.resolve("print");
+        if (!Files.exists(printDir)) return printFiles;
+        try (Stream<Path> stream = Files.list(printDir)) {
+            stream.filter(Files::isRegularFile).forEach(f -> {
+                try {
+                    String blob = blobStorageService.uploadFile(f.toFile(), msg.getSourceSystem() + "/print/" + f.getFileName());
+                    printFiles.add(new PrintFile(blob));
+                } catch (Exception e) {
+                    logger.warn("⚠️ Print upload failed", e);
+                }
+            });
+        } catch (IOException ignored) {}
+        return printFiles;
+    }
+
+    private Map<String, Integer> extractSummaryCountsFromXml(File xmlFile) {
+        Map<String, Integer> summaryCounts = new HashMap<>();
+        try {
+            Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile);
+            doc.getDocumentElement().normalize();
+            NodeList outputListNodes = doc.getElementsByTagName("outputList");
+            if (outputListNodes.getLength() > 0) {
+                Element outputList = (Element) outputListNodes.item(0);
+                String customersProcessed = outputList.getAttribute("customersProcessed");
+                String pagesProcessed = outputList.getAttribute("pagesProcessed");
+
+                int custCount = customersProcessed != null && !customersProcessed.isBlank()
+                        ? Integer.parseInt(customersProcessed) : 0;
+                int pageCount = pagesProcessed != null && !pagesProcessed.isBlank()
+                        ? Integer.parseInt(pagesProcessed) : 0;
+
+                summaryCounts.put("customersProcessed", custCount);
+                summaryCounts.put("pagesProcessed", pageCount);
+            }
         } catch (Exception e) {
-            logger.error("Upload failed for binary file: {}", e.getMessage(), e);
-            throw new CustomAppException("Binary upload failed", 605, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            logger.warn("⚠️ Unable to extract summary counts from XML", e);
+        }
+        return summaryCounts;
+    }
+
+    private String decodeUrl(String url) {
+        try {
+            return URLDecoder.decode(url, StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return url;
         }
     }
 
-    /**
-     * Downloads a file from blob storage to a local path using streaming.
-     *
-     * @param blobUrl       Blob URL of the file.
-     * @param localFilePath Local path where file will be stored.
-     * @return Path to the downloaded file.
-     */
-    public Path downloadFileToLocal(String blobUrl, Path localFilePath) {
-        try {
-            initSecrets();
-            String container = containerName;
-            String blobPath = blobUrl;
-
-            if (blobUrl.startsWith("http")) {
-                URI uri = new URI(blobUrl);
-                String[] segments = uri.getPath().split("/");
-                if (segments.length < 3) throw new CustomAppException("Invalid blob URL", 400, HttpStatus.BAD_REQUEST);
-                container = segments[1];
-                blobPath = String.join("/", Arrays.copyOfRange(segments, 2, segments.length));
-            }
-
-            BlobServiceClient blobClient = new BlobServiceClientBuilder()
-                    .endpoint(String.format(azureStorageFormat, accountName))
-                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
-                    .buildClient();
-
-            BlobClient blob = blobClient.getBlobContainerClient(container).getBlobClient(blobPath);
-            if (!blob.exists()) throw new CustomAppException("Blob not found", 404, HttpStatus.NOT_FOUND);
-
-            try (OutputStream outputStream = new FileOutputStream(localFilePath.toFile())) {
-                blob.download(outputStream); // ✅ Streaming, no memory load
-            }
-
-            return localFilePath;
-
-        } catch (Exception e) {
-            logger.error("❌ Download to local failed: {}", e.getMessage(), e);
-            throw new CustomAppException("Download failed", 603, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
+    @PreDestroy
+    public void shutdownExecutor() {
+        logger.info("⚠️ Shutting down executor service");
+        executor.shutdown();
     }
 
-    /**
-     * Uploads summary.json from either a file path or URL into a target blob path.
-     *
-     * @param filePathOrUrl File path or URL of summary JSON.
-     * @param message       KafkaMessage used to construct remote blob path.
-     * @param fileName      Target file name in blob.
-     * @return Uploaded blob URL.
-     */
-    public String uploadSummaryJson(String filePathOrUrl, KafkaMessage message, String fileName) {
-        initSecrets();
-        String remotePath = String.format("%s/%s/%s/%s",
-                message.getSourceSystem(),
-                message.getBatchId(),
-                message.getUniqueConsumerRef(),
-                fileName);
-
-        try {
-            String json = filePathOrUrl.startsWith("http")
-                    ? new String(new URL(filePathOrUrl).openStream().readAllBytes(), StandardCharsets.UTF_8)
-                    : Files.readString(Paths.get(filePathOrUrl));
-
-            return uploadFile(json, remotePath);
-        } catch (Exception e) {
-            logger.error("❌ Failed reading summary JSON: {}", e.getMessage(), e);
-            throw new CustomAppException("Failed reading summary JSON", 604, HttpStatus.INTERNAL_SERVER_ERROR, e);
-        }
+    static class OTResponse {
+        private String jobId;
+        private String id;
+        public String getJobId() { return jobId; }
+        public void setJobId(String jobId) { this.jobId = jobId; }
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
     }
 }
