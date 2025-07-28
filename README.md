@@ -1,1 +1,1 @@
-summary_54bf11dc-a912-490b-b02f-7a0aa228ee06.json
+Could you please share some batch IDs with failed, partial, and success scenarios in the ETE environment, similar to the ones in DEV, so we can start testing?
