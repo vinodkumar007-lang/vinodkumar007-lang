@@ -1,8 +1,7 @@
-switch (outputType) {
-                case "EMAIL" -> {
-                    entry.setEmailBlobUrl(blobUrl);
-                    entry.setEmailStatus(status);
-                }
-                case "PRINT" -> {
-                    entry.setPrintStatus("SUCCESS");
-                }
+case "PRINT" -> {
+        if (printFiles != null && !printFiles.isEmpty()) {
+            entry.setPrintStatus("SUCCESS");
+        } else {
+            entry.setPrintStatus("");
+        }
+    }
