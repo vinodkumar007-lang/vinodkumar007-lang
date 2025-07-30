@@ -1,34 +1,24 @@
-private List<PrintFile> uploadPrintFiles(Path jobDir, KafkaMessage msg) {
-    List<PrintFile> printFiles = new ArrayList<>();
+ private Map<String, Integer> extractSummaryCountsFromXml(File xmlFile) {
+        Map<String, Integer> summaryCounts = new HashMap<>();
+        try {
+            Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(xmlFile);
+            doc.getDocumentElement().normalize();
+            NodeList outputListNodes = doc.getElementsByTagName("outputList");
+            if (outputListNodes.getLength() > 0) {
+                Element outputList = (Element) outputListNodes.item(0);
+                String customersProcessed = outputList.getAttribute("customersProcessed");
+                String pagesProcessed = outputList.getAttribute("pagesProcessed");
 
-    if (jobDir == null || msg == null || msg.getSourceSystem() == null) {
-        logger.error("❌ Invalid input: jobDir={}, msg={}, sourceSystem={}", jobDir, msg, msg != null ? msg.getSourceSystem() : null);
-        return printFiles;
-    }
+                int custCount = customersProcessed != null && !customersProcessed.isBlank()
+                        ? Integer.parseInt(customersProcessed) : 0;
+                int pageCount = pagesProcessed != null && !pagesProcessed.isBlank()
+                        ? Integer.parseInt(pagesProcessed) : 0;
 
-    Path printDir = jobDir.resolve("print");
-    if (!Files.exists(printDir)) {
-        logger.info("ℹ️ No 'print' directory found in jobDir: {}", jobDir);
-        return printFiles;
-    }
-
-    try (Stream<Path> stream = Files.list(printDir)) {
-        stream.filter(Files::isRegularFile).forEach(f -> {
-            try {
-                String fileName = f.getFileName() != null ? f.getFileName().toString() : "unknown_file";
-                String uploadPath = msg.getSourceSystem() + "/print/" + fileName;
-
-                String blob = blobStorageService.uploadFile(f.toFile(), uploadPath);
-                printFiles.add(new PrintFile(blob));
-
-                logger.info("📤 Uploaded print file: {} -> {}", fileName, blob);
-            } catch (Exception e) {
-                logger.warn("⚠️ Failed to upload print file: {}", f, e);
+                summaryCounts.put("customersProcessed", custCount);
+                summaryCounts.put("pagesProcessed", pageCount);
             }
-        });
-    } catch (IOException e) {
-        logger.error("❌ Failed to list files in print directory: {}", printDir, e);
+        } catch (Exception e) {
+            logger.warn("⚠️ Unable to extract summary counts from XML", e);
+        }
+        return summaryCounts;
     }
-
-    return printFiles;
-}
