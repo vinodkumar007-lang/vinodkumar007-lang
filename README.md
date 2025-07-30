@@ -1,39 +1,75 @@
-private Map<String, Integer> extractSummaryCountsFromXml(File xmlFile) {
-    Map<String, Integer> summaryCounts = new HashMap<>();
+    private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+            Path jobDir,
+            List<SummaryProcessedFile> customerList,
+            Map<String, Map<String, String>> errorMap,
+            KafkaMessage msg) throws IOException {
 
-    if (xmlFile == null || !xmlFile.exists() || !xmlFile.canRead()) {
-        logger.warn("⚠️ Invalid or unreadable XML file: {}", xmlFile);
-        return summaryCounts;
-    }
+        List<SummaryProcessedFile> finalList = new ArrayList<>();
+        List<String> deliveryFolders = List.of("email", "mobstat", "print");
+        Map<String, String> folderToOutputMethod = Map.of(
+                "email", "EMAIL",
+                "mobstat", "MOBSTAT",
+                "print", "PRINT"
+        );
 
-    try {
-        Document doc = DocumentBuilderFactory.newInstance()
-                .newDocumentBuilder()
-                .parse(xmlFile);
-        doc.getDocumentElement().normalize();
+        Path archivePath = jobDir.resolve("archive");
 
-        NodeList outputListNodes = doc.getElementsByTagName("outputList");
-        if (outputListNodes.getLength() > 0) {
-            Element outputList = (Element) outputListNodes.item(0);
-            String customersProcessed = outputList.getAttribute("customersProcessed");
-            String pagesProcessed = outputList.getAttribute("pagesProcessed");
+        for (SummaryProcessedFile customer : customerList) {
+            String account = customer.getAccountNumber();
 
-            int custCount = (customersProcessed != null && !customersProcessed.isBlank())
-                    ? Integer.parseInt(customersProcessed.trim()) : 0;
-            int pageCount = (pagesProcessed != null && !pagesProcessed.isBlank())
-                    ? Integer.parseInt(pagesProcessed.trim()) : 0;
+            // Archive upload
+            String archiveBlobUrl = null;
 
-            summaryCounts.put("customersProcessed", custCount);
-            summaryCounts.put("pagesProcessed", pageCount);
+            if (Files.exists(archivePath)) {
+                Optional<Path> archiveFile = Files.list(archivePath)
+                        .filter(Files::isRegularFile)
+                        .filter(p -> p.getFileName().toString().contains(account))
+                        .findFirst();
 
-            logger.info("📄 Extracted summary counts from {}: customersProcessed={}, pagesProcessed={}",
-                        xmlFile.getName(), custCount, pageCount);
-        } else {
-            logger.info("ℹ️ No <outputList> found in XML: {}", xmlFile.getName());
+                if (archiveFile.isPresent()) {
+                    archiveBlobUrl = blobStorageService.uploadFileByMessage(
+                            archiveFile.get().toFile(), "archive", msg);
+
+                    SummaryProcessedFile archiveEntry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, archiveEntry);
+                    archiveEntry.setOutputType("ARCHIVE");
+                    archiveEntry.setBlobUrl(decodeUrl(archiveBlobUrl));
+
+                    finalList.add(archiveEntry);
+                }
+            }
+
+            // EMAIL, MOBSTAT, PRINT
+            for (String folder : deliveryFolders) {
+                String outputMethod = folderToOutputMethod.get(folder);
+                Path methodPath = jobDir.resolve(folder);
+
+                String blobUrl = null;
+
+                if (Files.exists(methodPath)) {
+                    Optional<Path> match = Files.list(methodPath)
+                            .filter(Files::isRegularFile)
+                            .filter(p -> p.getFileName().toString().contains(account))
+                            .findFirst();
+
+                    if (match.isPresent()) {
+                        blobUrl = blobStorageService.uploadFileByMessage(match.get().toFile(), folder, msg);
+                    }
+                }
+
+                SummaryProcessedFile entry = new SummaryProcessedFile();
+                BeanUtils.copyProperties(customer, entry);
+                entry.setOutputType(outputMethod);
+                entry.setBlobUrl(decodeUrl(blobUrl));
+
+                if (archiveBlobUrl != null) {
+                    entry.setArchiveOutputType("ARCHIVE");
+                    entry.setArchiveBlobUrl(archiveBlobUrl);
+                }
+
+                finalList.add(entry);
+            }
         }
-    } catch (Exception e) {
-        logger.warn("⚠️ Unable to extract summary counts from XML file: {}", xmlFile.getName(), e);
-    }
 
-    return summaryCounts;
-}
+        return finalList;
+    }
