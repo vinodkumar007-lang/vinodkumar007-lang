@@ -1,95 +1,55 @@
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        Path jobDir,
-        List<SummaryProcessedFile> customerList,
-        Map<String, Map<String, String>> errorMap,
-        KafkaMessage msg) throws IOException {
-
-    List<SummaryProcessedFile> finalList = new ArrayList<>();
-    List<String> deliveryFolders = List.of("email", "mobstat", "print");
-    Map<String, String> folderToOutputMethod = Map.of(
-            "email", "EMAIL",
-            "mobstat", "MOBSTAT",
-            "print", "PRINT"
-    );
-
-    if (jobDir == null || customerList == null || msg == null) {
-        logger.warn("⚠️ One or more input parameters are null: jobDir={}, customerList={}, msg={}", 
-                    jobDir, customerList, msg);
-        return finalList;
-    }
-
-    Path archivePath = jobDir.resolve("archive");
-
-    for (SummaryProcessedFile customer : customerList) {
-        if (customer == null) continue;
-
-        String account = customer.getAccountNumber();
-        if (account == null || account.isBlank()) {
-            logger.warn("⚠️ Skipping customer with empty account number");
-            continue;
-        }
-
-        // Archive upload
-        String archiveBlobUrl = null;
+private Map<String, Map<String, String>> parseErrorReport(KafkaMessage msg) {
+        Map<String, Map<String, String>> result = new HashMap<>();
         try {
-            if (Files.exists(archivePath)) {
-                Optional<Path> archiveFile = Files.list(archivePath)
-                        .filter(Files::isRegularFile)
-                        .filter(p -> p.getFileName().toString().contains(account))
+            String jobRootPath = mountPath+"/jobs"; //"/mnt/nfs/dev-exstream/dev-SA/jobs";
+            Path jobRoot = Paths.get(jobRootPath);
+            String jobId = msg.getJobName();
+
+            // Find all ErrorReport.csv files under this job's path
+            Path jobPath = jobRoot.resolve(jobId);
+            if (!Files.exists(jobPath)) {
+                logger.warn("❌ Job path not found: {}", jobPath);
+                return result;
+            }
+
+            logger.info("🔍 Searching ErrorReport.csv under: {}", jobPath);
+
+            try (Stream<Path> stream = Files.walk(jobPath)) {
+                Optional<Path> reportFile = stream
+                        .filter(path -> path.getFileName().toString().equalsIgnoreCase("ErrorReport.csv"))
                         .findFirst();
 
-                if (archiveFile.isPresent()) {
-                    archiveBlobUrl = blobStorageService.uploadFileByMessage(
-                            archiveFile.get().toFile(), "archive", msg);
-
-                    SummaryProcessedFile archiveEntry = new SummaryProcessedFile();
-                    BeanUtils.copyProperties(customer, archiveEntry);
-                    archiveEntry.setOutputType("ARCHIVE");
-                    archiveEntry.setBlobUrl(decodeUrl(archiveBlobUrl));
-
-                    finalList.add(archiveEntry);
-                    logger.info("📦 Uploaded archive file for account {}: {}", account, archiveBlobUrl);
+                if (reportFile.isEmpty()) {
+                    logger.warn("⚠️ ErrorReport.csv not found under job {}", jobId);
+                    return result;
                 }
-            }
-        } catch (Exception e) {
-            logger.warn("⚠️ Failed to upload archive file for account {}: {}", account, e.getMessage(), e);
-        }
 
-        // EMAIL, MOBSTAT, PRINT uploads
-        for (String folder : deliveryFolders) {
-            String outputMethod = folderToOutputMethod.get(folder);
-            Path methodPath = jobDir.resolve(folder);
-            String blobUrl = null;
+                Path reportPath = reportFile.get();
+                logger.info("✅ Found ErrorReport.csv at: {}", reportPath);
 
-            try {
-                if (Files.exists(methodPath)) {
-                    Optional<Path> match = Files.list(methodPath)
-                            .filter(Files::isRegularFile)
-                            .filter(p -> p.getFileName().toString().contains(account))
-                            .findFirst();
+                try (BufferedReader reader = Files.newBufferedReader(reportPath)) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        String[] parts = line.split("\\|");
 
-                    if (match.isPresent()) {
-                        blobUrl = blobStorageService.uploadFileByMessage(match.get().toFile(), folder, msg);
-                        logger.info("✅ Uploaded {} file for account {}: {}", outputMethod, account, blobUrl);
+                        if (parts.length >= 3) {
+                            String account = parts[0].trim();
+                            String method = (parts.length >= 4 ? parts[3] : parts[2]).trim().toUpperCase();
+                            String status = (parts.length >= 5 ? parts[4] : (parts.length >= 4 ? parts[3] : "Failed")).trim();
+
+                            if (method.isEmpty()) method = "UNKNOWN";
+                            if (status.isEmpty()) status = "Failed";
+
+                            result.computeIfAbsent(account, k -> new HashMap<>()).put(method, status);
+                        }
                     }
+                } catch (IOException e) {
+                    logger.error("❌ Error reading ErrorReport.csv: {}", e.getMessage(), e);
                 }
-            } catch (Exception e) {
-                logger.warn("⚠️ Failed to upload {} file for account {}: {}", outputMethod, account, e.getMessage(), e);
             }
-
-            SummaryProcessedFile entry = new SummaryProcessedFile();
-            BeanUtils.copyProperties(customer, entry);
-            entry.setOutputType(outputMethod);
-            entry.setBlobUrl(decodeUrl(blobUrl));
-
-            if (archiveBlobUrl != null) {
-                entry.setArchiveOutputType("ARCHIVE");
-                entry.setArchiveBlobUrl(archiveBlobUrl);
-            }
-
-            finalList.add(entry);
+        } catch (Exception ex) {
+            logger.error("❌ Failed to parse error report: {}", ex.getMessage(), ex);
         }
-    }
 
-    return finalList;
-}
+        return result;
+    }
