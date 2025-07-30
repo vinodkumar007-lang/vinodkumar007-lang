@@ -106,6 +106,6 @@
             executor.submit(() -> processAfterOT(message, otResponse));
 
         } catch (Exception ex) {
-            logger.error("❌ [batchId: unknown] Kafka processing failed", ex);
+            logger.error("❌ [batchId: {}] Kafka message processing failed. Error: {}", batchId, ex.getMessage(), ex);
         }
     }
