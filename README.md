@@ -1,7 +1,4 @@
-comment: Logging format assumes that no concurrent messages can be processed, there is no golden thread in the logs to track specific files?
-
-
-    public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
+public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
     ObjectMapper objectMapper = new ObjectMapper();
     Message message;
     try {
