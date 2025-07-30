@@ -1,88 +1,79 @@
- private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
-        try {
-            logger.info("⏳ Waiting for XML for jobId={}, id={}", otResponse.getJobId(), otResponse.getId());
-            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
-            if (xmlFile == null) throw new IllegalStateException("XML not found");
-            logger.info("✅ Found XML file: {}", xmlFile);
+private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
+    String batchId = message.getBatchId(); // golden thread
+    try {
+        logger.info("[{}] ⏳ Waiting for XML for jobId={}, id={}", batchId, otResponse.getJobId(), otResponse.getId());
+        File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
+        if (xmlFile == null) throw new IllegalStateException("XML not found");
 
-            // ✅ Parse error report (already used in buildDetailedProcessedFiles)
-            Map<String, Map<String, String>> errorMap = parseErrorReport(message);
-            logger.info("🧾 Parsed error report with {} entries", errorMap.size());
+        logger.info("[{}] ✅ Found XML file: {}", batchId, xmlFile);
 
-            // ✅ Parse STDXML and extract basic customer summaries
-            List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile, errorMap);
-            logger.info("📊 Total customerSummaries parsed: {}", customerSummaries.size());
+        Map<String, Map<String, String>> errorMap = parseErrorReport(message);
+        logger.info("[{}] 🧾 Parsed error report with {} entries", batchId, errorMap.size());
 
-            // ✅ Convert to basic SummaryProcessedFile list
-            List<SummaryProcessedFile> customerList = customerSummaries.stream()
-                    .map(cs -> {
-                        SummaryProcessedFile spf = new SummaryProcessedFile();
-                        spf.setAccountNumber(cs.getAccountNumber());
-                        spf.setCustomerId(cs.getCisNumber());
-                        return spf;
-                    })
-                    .collect(Collectors.toList());
+        List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile, errorMap);
+        logger.info("[{}] 📊 Total customerSummaries parsed: {}", batchId, customerSummaries.size());
 
-            // ✅ Locate output job directory
-            Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
+        List<SummaryProcessedFile> customerList = customerSummaries.stream()
+                .map(cs -> {
+                    SummaryProcessedFile spf = new SummaryProcessedFile();
+                    spf.setAccountNumber(cs.getAccountNumber());
+                    spf.setCustomerId(cs.getCisNumber());
+                    return spf;
+                })
+                .collect(Collectors.toList());
 
-            // ✅ Build processedFiles with output-specific blob URLs and status (SUCCESS/ERROR)
-            List<SummaryProcessedFile> processedFiles =
-                    buildDetailedProcessedFiles(jobDir, customerList, errorMap, message);
-            logger.info("📦 Processed {} customer records", processedFiles.size());
+        Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
 
-            // ✅ Upload print files and track their URLs
-            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
-            logger.info("🖨️ Uploaded {} print files", printFiles.size());
+        List<SummaryProcessedFile> processedFiles =
+                buildDetailedProcessedFiles(jobDir, customerList, errorMap, message);
+        logger.info("[{}] 📦 Processed {} customer records", batchId, processedFiles.size());
 
-            // ✅ Upload MobStat trigger file if present
-            String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
-            logger.info("Found Mobstat {} url", mobstatTriggerUrl);
-            // ✅ Extract counts from <outputList> inside STD XML
-            Map<String, Integer> summaryCounts = extractSummaryCountsFromXml(xmlFile);
-            // ✅ Create payload for summary.json
-            String allFileNames = message.getBatchFiles().stream() .map(BatchFile::getFilename) .collect(Collectors.joining(", "));
-            SummaryPayload payload = SummaryJsonWriter.buildPayload(
-                    message,
-                    processedFiles,      // ✅ Now includes blob URLs + status from buildDetailedProcessedFiles
-                    allFileNames,
-                    message.getBatchId(),
-                    String.valueOf(message.getTimestamp()),
-                    errorMap,
-                    printFiles
-            );
-            if (payload.getHeader() != null) {
-                payload.getHeader().setTimestamp(String.valueOf(message.getTimestamp()));
-            }
+        List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
+        logger.info("[{}] 🖨️ Uploaded {} print files", batchId, printFiles.size());
 
-            // ✅ Write and upload summary.json
-            String fileName = "summary_" + message.getBatchId() + ".json";
-            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
-            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, fileName);
-            payload.setSummaryFileURL(decodeUrl(summaryUrl));
-            logger.info("📁 Summary JSON uploaded to: {}", decodeUrl(summaryUrl));
+        String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
+        logger.info("[{}] 📱 Found Mobstat URL: {}", batchId, mobstatTriggerUrl);
 
-            // ✅ Final beautified payload log
-            logger.info("📄 Final Summary Payload:\n{}",
-                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
+        Map<String, Integer> summaryCounts = extractSummaryCountsFromXml(xmlFile);
 
-            // ✅ Send final response to Kafka
-            SummaryResponse response = new SummaryResponse();
-            response.setBatchID(message.getBatchId());
-            response.setFileName(payload.getFileName());
-            response.setHeader(payload.getHeader());
-            response.setMetadata(payload.getMetadata());
-            response.setPayload(payload.getPayload());
-            response.setSummaryFileURL(decodeUrl(summaryUrl));
-            response.setTimestamp(String.valueOf(message.getTimestamp()));
+        String allFileNames = message.getBatchFiles().stream()
+                .map(BatchFile::getFilename)
+                .collect(Collectors.joining(", "));
 
-            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
-                    new ApiResponse("Summary generated", "COMPLETED", response)));
+        SummaryPayload payload = SummaryJsonWriter.buildPayload(
+                message, processedFiles, allFileNames, batchId,
+                String.valueOf(message.getTimestamp()), errorMap, printFiles
+        );
 
-            logger.info("✅ Kafka output sent for batch {} with response: {}", message.getBatchId(),
-                    objectMapper.writeValueAsString(response));
-
-        } catch (Exception e) {
-            logger.error("❌ Error post-OT summary generation", e);
+        if (payload.getHeader() != null) {
+            payload.getHeader().setTimestamp(String.valueOf(message.getTimestamp()));
         }
+
+        String fileName = "summary_" + batchId + ".json";
+        String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
+        String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, fileName);
+        payload.setSummaryFileURL(decodeUrl(summaryUrl));
+        logger.info("[{}] 📁 Summary JSON uploaded to: {}", batchId, decodeUrl(summaryUrl));
+
+        logger.info("[{}] 📄 Final Summary Payload:\n{}", batchId,
+                objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
+
+        SummaryResponse response = new SummaryResponse();
+        response.setBatchID(batchId);
+        response.setFileName(payload.getFileName());
+        response.setHeader(payload.getHeader());
+        response.setMetadata(payload.getMetadata());
+        response.setPayload(payload.getPayload());
+        response.setSummaryFileURL(decodeUrl(summaryUrl));
+        response.setTimestamp(String.valueOf(message.getTimestamp()));
+
+        kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
+                new ApiResponse("Summary generated", "COMPLETED", response)));
+
+        logger.info("[{}] ✅ Kafka output sent with response: {}", batchId,
+                objectMapper.writeValueAsString(response));
+
+    } catch (Exception e) {
+        logger.error("[{}] ❌ Error post-OT summary generation: {}", batchId, e.getMessage(), e);
     }
+}
