@@ -1,23 +1,16 @@
-private String findAndUploadMobstatTriggerFile(Path jobDir, KafkaMessage message) {
-    try (Stream<Path> stream = Files.list(jobDir)) {
-        Optional<Path> trigger = stream.filter(Files::isRegularFile)
-                .filter(p -> p.getFileName().toString().toLowerCase().endsWith(".trigger"))
-                .findFirst();
-
-        if (trigger.isPresent()) {
-            Path triggerFile = trigger.get();
-            String blobUrl = blobStorageService.uploadFile(triggerFile.toFile(),
-                    message.getSourceSystem() + "/" + message.getBatchId() + "/" + triggerFile.getFileName());
-
-            logger.info("📤 Uploaded MOBSTAT trigger file: {} -> {}", triggerFile, blobUrl);
-            return decodeUrl(blobUrl);
-        } else {
-            logger.error("❌ No .trigger file found in MOBSTAT job directory: {}", jobDir);
-            throw new IllegalStateException("Trigger file not found in jobDir: " + jobDir);
-        }
-
-    } catch (IOException e) {
-        logger.error("⚠️ Failed to scan for .trigger file in jobDir: {}", jobDir, e);
-        throw new RuntimeException("Failed to scan trigger file in: " + jobDir, e);
+private List<PrintFile> uploadPrintFiles(Path jobDir, KafkaMessage msg) {
+        List<PrintFile> printFiles = new ArrayList<>();
+        Path printDir = jobDir.resolve("print");
+        if (!Files.exists(printDir)) return printFiles;
+        try (Stream<Path> stream = Files.list(printDir)) {
+            stream.filter(Files::isRegularFile).forEach(f -> {
+                try {
+                    String blob = blobStorageService.uploadFile(f.toFile(), msg.getSourceSystem() + "/print/" + f.getFileName());
+                    printFiles.add(new PrintFile(blob));
+                } catch (Exception e) {
+                    logger.warn("⚠️ Print upload failed", e);
+                }
+            });
+        } catch (IOException ignored) {}
+        return printFiles;
     }
-}
