@@ -1,35 +1,88 @@
-long dataCount = batchFiles.stream()
-        .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
-        .count();
-long refCount = batchFiles.stream()
-        .filter(f -> "REF".equalsIgnoreCase(f.getFileType()))
-        .count();
+    private static List<ProcessedFileEntry> buildProcessedFileEntries(
+            List<SummaryProcessedFile> processedFiles,
+            Map<String, Map<String, String>> errorMap, List<PrintFile> printFiles) {
 
-// 1. DATA only ✅
-if (dataCount == 1 && refCount == 0) {
-    logger.info("✅ Valid batch {} with 1 DATA file", batchId);
-}
-// 2. Multiple DATA ❌
-else if (dataCount > 1) {
-    logger.error("❌ Rejected batch {} - Multiple DATA files", batchId);
-    ack.acknowledge();
-    return;
-}
-// 3. REF only ❌
-else if (dataCount == 0 && refCount > 0) {
-    logger.error("❌ Rejected batch {} - Only REF files", batchId);
-    ack.acknowledge();
-    return;
-}
-// ✅ 4. DATA + REF — pass both to OT
-else if (dataCount == 1 && refCount > 0) {
-    logger.info("✅ Valid batch {} with DATA + REF files (both will be passed to OT)", batchId);
-    // Keep all files: no filtering
-    message.setBatchFiles(batchFiles);
-}
-// 5. Unknown or empty file types ❌
-else {
-    logger.error("❌ Rejected batch {} - Invalid or unsupported file type combination", batchId);
-    ack.acknowledge();
-    return;
-}
+        Map<String, ProcessedFileEntry> grouped = new LinkedHashMap<>();
+
+        for (SummaryProcessedFile file : processedFiles) {
+            String key = file.getCustomerId() + "-" + file.getAccountNumber();
+
+            // Group by customer-account pair
+            ProcessedFileEntry entry = grouped.computeIfAbsent(key, k -> {
+                ProcessedFileEntry newEntry = new ProcessedFileEntry();
+                newEntry.setCustomerId(file.getCustomerId());
+                newEntry.setAccountNumber(file.getAccountNumber());
+                return newEntry;
+            });
+
+            String outputType = file.getOutputType();
+            String blobUrl = file.getBlobUrl();
+            Map<String, String> errors = errorMap.getOrDefault(file.getAccountNumber(), Collections.emptyMap());
+
+            // Determine delivery status
+            String status;
+            if (isNonEmpty(blobUrl)) {
+                status = "SUCCESS";
+            } else if ("FAILED".equalsIgnoreCase(errors.getOrDefault(outputType, ""))) {
+                status = "FAILED";
+            } else {
+                status = "";  // Neutral/missing status
+            }
+
+            // Assign blob URL and status based on type
+            switch (outputType) {
+                case "EMAIL" -> {
+                    entry.setEmailBlobUrl(blobUrl);
+                    entry.setEmailStatus(status);
+                }
+                case "PRINT" -> {
+                    if (printFiles != null && !printFiles.isEmpty()) {
+                        entry.setPrintStatus("SUCCESS");
+                    } else {
+                        entry.setPrintStatus("");
+                    }
+                }
+                case "MOBSTAT" -> {
+                    entry.setMobstatBlobUrl(blobUrl);
+                    entry.setMobstatStatus(status);
+                }
+                case "ARCHIVE" -> {
+                    entry.setArchiveBlobUrl(blobUrl);
+                    entry.setArchiveStatus(status);
+                }
+            }
+        }
+
+        // Assign overall status based on channel-specific outcomes
+        for (ProcessedFileEntry entry : grouped.values()) {
+            String email = entry.getEmailStatus();
+            String print = entry.getPrintStatus();
+            String mobstat = entry.getMobstatStatus();
+            String archive = entry.getArchiveStatus();
+
+            boolean isEmailSuccess = "SUCCESS".equals(email);
+            boolean isPrintSuccess = "SUCCESS".equals(print);
+            boolean isMobstatSuccess = "SUCCESS".equals(mobstat);
+            boolean isArchiveSuccess = "SUCCESS".equals(archive);
+
+            boolean isEmailMissingOrFailed = email == null || "FAILED".equals(email) || "".equals(email);
+            boolean isPrintMissingOrFailed = print == null || "FAILED".equals(print) || "".equals(print);
+            boolean isMobstatMissingOrFailed = mobstat == null || "FAILED".equals(mobstat) || "".equals(mobstat);
+
+            if (isEmailSuccess && isArchiveSuccess) {
+                entry.setOverallStatus("SUCCESS");
+            } else if (isMobstatSuccess && isArchiveSuccess && isEmailMissingOrFailed && isPrintMissingOrFailed) {
+                entry.setOverallStatus("SUCCESS");
+            } else if (isPrintSuccess && isArchiveSuccess && isEmailMissingOrFailed && isMobstatMissingOrFailed) {
+                entry.setOverallStatus("SUCCESS");
+            } else if (isArchiveSuccess && isEmailMissingOrFailed && isMobstatMissingOrFailed && isPrintMissingOrFailed) {
+                entry.setOverallStatus("PARTIAL");
+            } else if (isArchiveSuccess) {
+                entry.setOverallStatus("PARTIAL");
+            } else {
+                entry.setOverallStatus("FAILED");
+            }
+        }
+
+        return new ArrayList<>(grouped.values());
+    }
