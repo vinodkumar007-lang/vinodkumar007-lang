@@ -1,111 +1,88 @@
- public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
+ private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
         try {
-            logger.info("📩 [batchId: unknown] Received Kafka message: {}", rawMessage);
-            KafkaMessage message = objectMapper.readValue(rawMessage, KafkaMessage.class);
-            String batchId = message.getBatchId();
+            logger.info("⏳ Waiting for XML for jobId={}, id={}", otResponse.getJobId(), otResponse.getId());
+            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
+            if (xmlFile == null) throw new IllegalStateException("XML not found");
+            logger.info("✅ Found XML file: {}", xmlFile);
 
-            List<BatchFile> batchFiles = message.getBatchFiles();
-            if (batchFiles == null || batchFiles.isEmpty()) {
-                logger.error("❌ [batchId: {}] Rejected - Empty BatchFiles", batchId);
-                ack.acknowledge();
-                return;
+            // ✅ Parse error report (already used in buildDetailedProcessedFiles)
+            Map<String, Map<String, String>> errorMap = parseErrorReport(message);
+            logger.info("🧾 Parsed error report with {} entries", errorMap.size());
+
+            // ✅ Parse STDXML and extract basic customer summaries
+            List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile, errorMap);
+            logger.info("📊 Total customerSummaries parsed: {}", customerSummaries.size());
+
+            // ✅ Convert to basic SummaryProcessedFile list
+            List<SummaryProcessedFile> customerList = customerSummaries.stream()
+                    .map(cs -> {
+                        SummaryProcessedFile spf = new SummaryProcessedFile();
+                        spf.setAccountNumber(cs.getAccountNumber());
+                        spf.setCustomerId(cs.getCisNumber());
+                        return spf;
+                    })
+                    .collect(Collectors.toList());
+
+            // ✅ Locate output job directory
+            Path jobDir = Paths.get(mountPath, "output", message.getSourceSystem(), otResponse.getJobId());
+
+            // ✅ Build processedFiles with output-specific blob URLs and status (SUCCESS/ERROR)
+            List<SummaryProcessedFile> processedFiles =
+                    buildDetailedProcessedFiles(jobDir, customerList, errorMap, message);
+            logger.info("📦 Processed {} customer records", processedFiles.size());
+
+            // ✅ Upload print files and track their URLs
+            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
+            logger.info("🖨️ Uploaded {} print files", printFiles.size());
+
+            // ✅ Upload MobStat trigger file if present
+            String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
+            logger.info("Found Mobstat {} url", mobstatTriggerUrl);
+            // ✅ Extract counts from <outputList> inside STD XML
+            Map<String, Integer> summaryCounts = extractSummaryCountsFromXml(xmlFile);
+            // ✅ Create payload for summary.json
+            String allFileNames = message.getBatchFiles().stream() .map(BatchFile::getFilename) .collect(Collectors.joining(", "));
+            SummaryPayload payload = SummaryJsonWriter.buildPayload(
+                    message,
+                    processedFiles,      // ✅ Now includes blob URLs + status from buildDetailedProcessedFiles
+                    allFileNames,
+                    message.getBatchId(),
+                    String.valueOf(message.getTimestamp()),
+                    errorMap,
+                    printFiles
+            );
+            if (payload.getHeader() != null) {
+                payload.getHeader().setTimestamp(String.valueOf(message.getTimestamp()));
             }
 
-            long dataCount = batchFiles.stream()
-                    .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
-                    .count();
-            long refCount = batchFiles.stream()
-                    .filter(f -> "REF".equalsIgnoreCase(f.getFileType()))
-                    .count();
+            // ✅ Write and upload summary.json
+            String fileName = "summary_" + message.getBatchId() + ".json";
+            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
+            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, fileName);
+            payload.setSummaryFileURL(decodeUrl(summaryUrl));
+            logger.info("📁 Summary JSON uploaded to: {}", decodeUrl(summaryUrl));
 
-            // 1. DATA only ✅
-            if (dataCount == 1 && refCount == 0) {
-                logger.info("✅ [batchId: {}] Valid with 1 DATA file", batchId);
-            }
-            // 2. Multiple DATA ❌
-            else if (dataCount > 1) {
-                logger.error("❌ [batchId: {}] Rejected - Multiple DATA files", batchId);
-                ack.acknowledge();
-                return;
-            }
-            // 3. REF only ❌
-            else if (dataCount == 0 && refCount > 0) {
-                logger.error("❌ [batchId: {}] Rejected - Only REF files", batchId);
-                ack.acknowledge();
-                return;
-            }
-            // ✅ 4. DATA + REF — pass both to OT
-            else if (dataCount == 1 && refCount > 0) {
-                logger.info("✅ [batchId: {}] Valid with DATA + REF files (both will be passed to OT)", batchId);
-                message.setBatchFiles(batchFiles);
-            }
-            // 5. Unknown or empty file types ❌
-            else {
-                logger.error("❌ [batchId: {}] Rejected - Invalid or unsupported file type combination", batchId);
-                ack.acknowledge();
-                return;
-            }
+            // ✅ Final beautified payload log
+            logger.info("📄 Final Summary Payload:\n{}",
+                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
 
-            String sanitizedBatchId = batchId.replaceAll("[^a-zA-Z0-9_-]", "_");
-            String sanitizedSourceSystem = message.getSourceSystem().replaceAll("[^a-zA-Z0-9_-]", "_");
+            // ✅ Send final response to Kafka
+            SummaryResponse response = new SummaryResponse();
+            response.setBatchID(message.getBatchId());
+            response.setFileName(payload.getFileName());
+            response.setHeader(payload.getHeader());
+            response.setMetadata(payload.getMetadata());
+            response.setPayload(payload.getPayload());
+            response.setSummaryFileURL(decodeUrl(summaryUrl));
+            response.setTimestamp(String.valueOf(message.getTimestamp()));
 
-            Path batchDir = Paths.get(mountPath, "input", sanitizedSourceSystem, sanitizedBatchId);
-            if (Files.exists(batchDir)) {
-                logger.warn("⚠️ [batchId: {}] Directory already exists at path: {}", batchId, batchDir);
-            } else {
-                Files.createDirectories(batchDir);
-                logger.info("📁 [batchId: {}] Created input directory: {}", batchId, batchDir);
-            }
+            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
+                    new ApiResponse("Summary generated", "COMPLETED", response)));
 
-            for (BatchFile file : message.getBatchFiles()) {
-                String blobUrl = file.getBlobUrl();
-                Path localPath = batchDir.resolve(file.getFilename());
-                blobStorageService.downloadFileToLocal(blobUrl, localPath);
-                file.setBlobUrl(localPath.toString());
-                logger.info("⬇️ [batchId: {}] Downloaded file: {} to {}", batchId, blobUrl, localPath);
-            }
+            logger.info("✅ Kafka output sent for batch {} with response: {}", message.getBatchId(),
+                    objectMapper.writeValueAsString(response));
 
-            String sourceSystem = message.getSourceSystem();
-
-            if ("DEBTMAN".equalsIgnoreCase(sourceSystem) && (otOrchestrationApiUrl == null || otOrchestrationApiUrl.isBlank())) {
-                logger.error("❌ [batchId: {}] otOrchestrationApiUrl is not configured for 'DEBTMAN'", batchId);
-                throw new IllegalArgumentException("otOrchestrationApiUrl is not configured");
-            }
-
-            if ("MFC".equalsIgnoreCase(sourceSystem) && (orchestrationMfcUrl == null || orchestrationMfcUrl.isBlank())) {
-                logger.error("❌ [batchId: {}] orchestrationMfcUrl is not configured for 'MFC'", batchId);
-                throw new IllegalArgumentException("orchestrationMfcUrl is not configured");
-            }
-
-            String url = switch (sourceSystem.toUpperCase()) {
-                case "DEBTMAN" -> otOrchestrationApiUrl;
-                case "MFC" -> orchestrationMfcUrl;
-                default -> {
-                    logger.error("❌ [batchId: {}] Unsupported source system '{}'", batchId, sourceSystem);
-                    throw new IllegalArgumentException("Unsupported source system: " + sourceSystem);
-                }
-            };
-
-            if (url == null || url.isBlank()) {
-                logger.error("❌ [batchId: {}] Orchestration URL not configured for source system '{}'", batchId, sourceSystem);
-                kafkaTemplate.send(kafkaOutputTopic, "{\"status\":\"FAILURE\",\"message\":\"URL not configured\"}");
-                ack.acknowledge();
-                return;
-            }
-
-            logger.info("🚀 [batchId: {}] Calling Orchestration API: {}", batchId, url);
-            OTResponse otResponse = callOrchestrationBatchApi(orchestrationAuthToken, url, message);
-            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(Map.of(
-                    "batchID", batchId,
-                    "status", "PENDING",
-                    "message", "OT Request Sent"
-            )));
-            logger.info("📤 [batchId: {}] OT request sent successfully", batchId);
-            ack.acknowledge();
-
-            executor.submit(() -> processAfterOT(message, otResponse));
-
-        } catch (Exception ex) {
-            logger.error("❌ [batchId: {}] Kafka message processing failed. Error: {}", batchId, ex.getMessage(), ex);
+        } catch (Exception e) {
+            logger.error("❌ Error post-OT summary generation", e);
         }
     }
