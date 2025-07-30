@@ -1,25 +1,37 @@
-    private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-            Path jobDir,
-            List<SummaryProcessedFile> customerList,
-            Map<String, Map<String, String>> errorMap,
-            KafkaMessage msg) throws IOException {
+private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+        Path jobDir,
+        List<SummaryProcessedFile> customerList,
+        Map<String, Map<String, String>> errorMap,
+        KafkaMessage msg) throws IOException {
 
-        List<SummaryProcessedFile> finalList = new ArrayList<>();
-        List<String> deliveryFolders = List.of("email", "mobstat", "print");
-        Map<String, String> folderToOutputMethod = Map.of(
-                "email", "EMAIL",
-                "mobstat", "MOBSTAT",
-                "print", "PRINT"
-        );
+    List<SummaryProcessedFile> finalList = new ArrayList<>();
+    List<String> deliveryFolders = List.of("email", "mobstat", "print");
+    Map<String, String> folderToOutputMethod = Map.of(
+            "email", "EMAIL",
+            "mobstat", "MOBSTAT",
+            "print", "PRINT"
+    );
 
-        Path archivePath = jobDir.resolve("archive");
+    if (jobDir == null || customerList == null || msg == null) {
+        logger.warn("⚠️ One or more input parameters are null: jobDir={}, customerList={}, msg={}", 
+                    jobDir, customerList, msg);
+        return finalList;
+    }
 
-        for (SummaryProcessedFile customer : customerList) {
-            String account = customer.getAccountNumber();
+    Path archivePath = jobDir.resolve("archive");
 
-            // Archive upload
-            String archiveBlobUrl = null;
+    for (SummaryProcessedFile customer : customerList) {
+        if (customer == null) continue;
 
+        String account = customer.getAccountNumber();
+        if (account == null || account.isBlank()) {
+            logger.warn("⚠️ Skipping customer with empty account number");
+            continue;
+        }
+
+        // Archive upload
+        String archiveBlobUrl = null;
+        try {
             if (Files.exists(archivePath)) {
                 Optional<Path> archiveFile = Files.list(archivePath)
                         .filter(Files::isRegularFile)
@@ -36,16 +48,20 @@
                     archiveEntry.setBlobUrl(decodeUrl(archiveBlobUrl));
 
                     finalList.add(archiveEntry);
+                    logger.info("📦 Uploaded archive file for account {}: {}", account, archiveBlobUrl);
                 }
             }
+        } catch (Exception e) {
+            logger.warn("⚠️ Failed to upload archive file for account {}: {}", account, e.getMessage(), e);
+        }
 
-            // EMAIL, MOBSTAT, PRINT
-            for (String folder : deliveryFolders) {
-                String outputMethod = folderToOutputMethod.get(folder);
-                Path methodPath = jobDir.resolve(folder);
+        // EMAIL, MOBSTAT, PRINT uploads
+        for (String folder : deliveryFolders) {
+            String outputMethod = folderToOutputMethod.get(folder);
+            Path methodPath = jobDir.resolve(folder);
+            String blobUrl = null;
 
-                String blobUrl = null;
-
+            try {
                 if (Files.exists(methodPath)) {
                     Optional<Path> match = Files.list(methodPath)
                             .filter(Files::isRegularFile)
@@ -54,22 +70,26 @@
 
                     if (match.isPresent()) {
                         blobUrl = blobStorageService.uploadFileByMessage(match.get().toFile(), folder, msg);
+                        logger.info("✅ Uploaded {} file for account {}: {}", outputMethod, account, blobUrl);
                     }
                 }
-
-                SummaryProcessedFile entry = new SummaryProcessedFile();
-                BeanUtils.copyProperties(customer, entry);
-                entry.setOutputType(outputMethod);
-                entry.setBlobUrl(decodeUrl(blobUrl));
-
-                if (archiveBlobUrl != null) {
-                    entry.setArchiveOutputType("ARCHIVE");
-                    entry.setArchiveBlobUrl(archiveBlobUrl);
-                }
-
-                finalList.add(entry);
+            } catch (Exception e) {
+                logger.warn("⚠️ Failed to upload {} file for account {}: {}", outputMethod, account, e.getMessage(), e);
             }
-        }
 
-        return finalList;
+            SummaryProcessedFile entry = new SummaryProcessedFile();
+            BeanUtils.copyProperties(customer, entry);
+            entry.setOutputType(outputMethod);
+            entry.setBlobUrl(decodeUrl(blobUrl));
+
+            if (archiveBlobUrl != null) {
+                entry.setArchiveOutputType("ARCHIVE");
+                entry.setArchiveBlobUrl(archiveBlobUrl);
+            }
+
+            finalList.add(entry);
+        }
     }
+
+    return finalList;
+}
