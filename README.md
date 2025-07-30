@@ -1,9 +1,12 @@
-I assume this is to ensure that the value are cached? If so, how do changes in the values get propagated to the container? Should you not use a cache to expire the values after a while?
-
-private void initSecrets() {
-        if (accountKey != null && accountName != null && containerName != null) {
-            if (lastSecretRefreshTime != null &&
-                    Instant.now().toEpochMilli() - lastSecretRefreshTime.toEpochMilli() < SECRET_CACHE_TTL_MS) {
-                return;
-            }
-        }
+/**
+ * Lazily initializes and caches secrets required for Azure Blob operations.
+ * 
+ * <p>This method ensures that secrets such as {@code accountName}, {@code accountKey}, and 
+ * {@code containerName} are fetched from Azure Key Vault only when needed.</p>
+ *
+ * <p>To avoid repeated Key Vault calls, the secrets are cached and refreshed based on a 
+ * configurable TTL (time-to-live). If the TTL has not expired since the last refresh, the 
+ * cached values are reused.</p>
+ *
+ * <p>This design balances performance with sensitivity to secret updates in Key Vault.</p>
+ */
