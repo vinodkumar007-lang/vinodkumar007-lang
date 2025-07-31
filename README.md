@@ -1,6 +1,8 @@
-you have multiple implementation of this template function, doesn't it make more sense to create a private upload method that handles the blob builder and client and you call the same function from the multiple uploads? This code is just duplicate 4 or 5 times in the class.
-
-Consider using Apache Tika (Open source) to determine the mime type from the actual content stream, it is a lot more reliable than using the path extention, use the path name as a default if tika is unable to resolve the mime type
+<dependency>
+    <groupId>org.apache.tika</groupId>
+    <artifactId>tika-core</artifactId>
+    <version>2.9.0</version>
+</dependency>
 
 package com.nedbank.kafka.filemanage.service;
 
@@ -248,9 +250,3 @@ public class BlobStorageService {
         }
     }
 }
-
-<dependency>
-    <groupId>org.apache.tika</groupId>
-    <artifactId>tika-core</artifactId>
-    <version>2.9.0</version>
-</dependency>
