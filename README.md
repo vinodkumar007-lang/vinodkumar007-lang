@@ -1,1 +1,1 @@
-keytool -list -v -keystore <path_to_keystore.jks>
+C:\Users\CC437236\jdk-17.0.12_windows-x64_bin\jdk-17.0.12\lib\security
