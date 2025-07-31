@@ -1,4 +1,1 @@
-ecm-fm-container-name
-ecm-fm-account-key
-ecm-fm-account-name
-![Uploading image.png…]()
+keytool -list -v -keystore <path_to_keystore.jks>
