@@ -1,27 +1,4 @@
-| Component             | Configuration Key / Description     | Dev Value                                                                                            | QA Value (To be Filled)          |
-| --------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------- |
-| **Kafka FileManager** | Kafka Bootstrap Servers             | dev.kafka.cluster:9093                                                                               |                                  |
-|                       | Input Topic                         | dev-input-topic                                                                                      |                                  |
-|                       | Output Topic                        | dev-output-topic                                                                                     |                                  |
-|                       | Consumer Group ID                   | dev-group                                                                                            |                                  |
-|                       | Security Protocol                   | SSL                                                                                                  | SSL                              |
-|                       | SSL Truststore Location             | /etc/certs/dev.truststore.jks                                                                        |                                  |
-|                       | SSL Truststore Password             | \*\*\*\*\*\* (in KeyVault)                                                                           | \*\*\*\*\*\* (in QA KeyVault)    |
-| **OT Service**        | OT API Endpoint                     | [https://dev-ot-api.company.com/orchestrate](https://dev-ot-api.company.com/orchestrate)             |                                  |
-|                       | OT Auth Token                       | From Dev Key Vault                                                                                   | From QA Key Vault                |
-|                       | OT URL Mapping (sourceSystem → URL) | In dev-properties or config map                                                                      | Copy with QA URLs                |
-| **Blob Storage**      | Storage Account Name                | devstorageaccount                                                                                    |                                  |
-|                       | Storage Account Key                 | Stored in KeyVault                                                                                   | Stored in QA KeyVault            |
-|                       | Container Name                      | dev-container                                                                                        |                                  |
-|                       | Base Blob URL                       | [https://devstorageaccount.blob.core.windows.net/](https://devstorageaccount.blob.core.windows.net/) |                                  |
-|                       | Archive Folder                      | archive/                                                                                             |                                  |
-|                       | Print Folder                        | print/                                                                                               |                                  |
-|                       | Email Folder                        | email/                                                                                               |                                  |
-| **Azure Key Vault**   | Key Vault Name                      | dev-keyvault                                                                                         |                                  |
-|                       | Secret: kafkaAccountKey             | kafka-dev-key                                                                                        | kafka-qa-key                     |
-|                       | Secret: blobAccountKey              | blob-dev-key                                                                                         | blob-qa-key                      |
-|                       | Secret: otAuthToken                 | ot-dev-token                                                                                         | ot-qa-token                      |
-|                       | Access Identity (MI/SP)             | Managed Identity / SP with vault access                                                              | Same as dev with QA Vault access |
-| **Common Settings**   | Mount Path (NFS)                    | /mnt/nfs/dev/jobs/                                                                                   |                                  |
-|                       | File Output Path                    | /output/dev/                                                                                         |                                  |
-|                       | Logs Path                           | /logs/dev/filemanager.log                                                                            |                                  |
+ecm-fm-container-name
+ecm-fm-account-key
+ecm-fm-account-name
+![Uploading image.png…]()
