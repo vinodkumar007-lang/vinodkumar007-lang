@@ -1,25 +1,23 @@
-private String printFileURL;
-private String printStatus; // <-- this must be present
+ private String findAndUploadMobstatTriggerFile(Path jobDir, KafkaMessage message) {
+        try (Stream<Path> stream = Files.list(jobDir)) {
+            Optional<Path> trigger = stream.filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().toLowerCase().endsWith(".trigger"))
+                    .findFirst();
 
+            if (trigger.isPresent()) {
+                Path triggerFile = trigger.get();
+                String blobUrl = blobStorageService.uploadFile(triggerFile.toFile(),
+                        message.getSourceSystem() + "/" + message.getBatchId() + "/" + triggerFile.getFileName());
 
-List<PrintFile> printFileList = new ArrayList<>();
+                logger.info("📤 Uploaded MOBSTAT trigger file: {} -> {}", triggerFile, blobUrl);
+                return decodeUrl(blobUrl);
+            } else {
+                logger.error("❌ No .trigger file found in MOBSTAT job directory: {}", jobDir);
+                throw new IllegalStateException("Trigger file not found in jobDir: " + jobDir);
+            }
 
-for (PrintFile pf : printFiles) {
-    if (pf.getPrintFileURL() != null) {
-        String decodedUrl = URLDecoder.decode(pf.getPrintFileURL(), StandardCharsets.UTF_8);
-
-        PrintFile printFile = new PrintFile();
-        printFile.setPrintFileURL(decodedUrl);
-
-        // ✅ Add corresponding status
-        if (pf.getPrintStatus() != null) {
-            printFile.setPrintStatus(pf.getPrintStatus()); // "SUCCESS", "FAILED"
-        } else {
-            printFile.setPrintStatus(""); // If status not available
+        } catch (IOException e) {
+            logger.error("⚠️ Failed to scan for .trigger file in jobDir: {}", jobDir, e);
+            throw new RuntimeException("Failed to scan trigger file in: " + jobDir, e);
         }
-
-        printFileList.add(printFile);
     }
-}
-
-payload.setPrintFiles(printFileList);
