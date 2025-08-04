@@ -20,6 +20,26 @@ XETELPKA03.africa.nedcor.net
 Port: 9093
 
 
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final BlobStorageService blobStorageService;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ExecutorService executor = Executors.newFixedThreadPool(5);
+
+    @Autowired
+    public KafkaListenerService(BlobStorageService blobStorageService, KafkaTemplate<String, String> kafkaTemplate) {
+        this.blobStorageService = blobStorageService;
+        this.kafkaTemplate = kafkaTemplate;
+    }
+    /**
+     * Kafka consumer method to handle messages from input topic.
+     * Performs validation on message structure, downloads files,
+     * and triggers orchestration API.
+     *
+     * @param rawMessage Raw Kafka message in JSON string format
+     * @param ack        Kafka acknowledgment to commit offset manually
+     */
+    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
     public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
         String batchId = "";
         try {
