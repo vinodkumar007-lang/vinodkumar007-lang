@@ -1,3 +1,6 @@
+2025-08-04 12:32:25.202+0000 [32m- INFO[0;39m --- [     pool-4-thread-6] [a682f8b989692ec8,9aaff39e5a92585d,,] c.o.e.c.c.m.DistributionProducer         : Seeing message 'A user canceled the engine run.' for canceled flow step 3fb95e56-ffad-4ffc-a0ab-938585537697
+2025-08-04 12:32:25.202+0000 [32m- INFO[0;39m --- [     pool-4-thre
+
 package com.nedbank.kafka.filemanage.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
