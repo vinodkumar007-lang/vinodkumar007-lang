@@ -13,11 +13,11 @@ private String findAndUploadMobstatTriggerFile(Path jobDir, KafkaMessage message
             return decodeUrl(blobUrl);
         } else {
             logger.warn("⚠️ No .trigger file found in MOBSTAT job directory: {}", jobDir);
-            return null; // ← changed to avoid exception and allow continuation
+            return null;
         }
 
     } catch (IOException e) {
         logger.error("⚠️ Failed to scan for .trigger file in jobDir: {}", jobDir, e);
-        throw new RuntimeException("Failed to scan trigger file in: " + jobDir, e);
+        return null; // ✅ changed to avoid stopping program
     }
 }
