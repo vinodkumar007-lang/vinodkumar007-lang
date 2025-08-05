@@ -1,3 +1,34 @@
+Please see below connection details for ETE:
+1. Kafka Connection Details:
+Topic Name: log-ecp-batch-audit
+ 
+Bootstrap Servers (ETE):
+XETELPZKA01.africa.nedcor.net
+	
+10.58.150.57
+
+
+XETELPKA02.africa.nedcor.net
+	
+10.58.150.58
+
+
+XETELPKA03.africa.nedcor.net
+	
+10.58.150.59
+ 
+Port: 9093
+
+Hi Van Vuuren, L. (Lizelle), The log-ecp-batch-audit Kafka topic you shared — could you please clarify the following:
+ 
+-> Is our application expected to only consume from this topic to track audit logs from downstream systems?
+ 
+-> Or are we also expected to publish audit events from our own processing steps (like input received, processing started, output sent) into this topic?
+ 
+-> If publishing is expected, could you kindly share the expected JSON schema or sample message format for audit messages?
+ 
+This will help us integrate it correctly in our File Manager flow.
+
 Is there a possibility of putting all of the applications constants, messages and paths into a common location so that is makes it easier to maintain at a later stage, for example things such as the input sanitization regex can be shared across multiple classes and maybe even the location of the error reports can be easier to update if needed?
 
 
