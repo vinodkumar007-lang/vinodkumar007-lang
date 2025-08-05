@@ -25,16 +25,6 @@ import java.nio.file.*;
 import java.time.Instant;
 import java.util.Arrays;
 
-/**
- * Service for interacting with Azure Blob Storage.
- * Handles uploading and downloading files and content,
- * fetching secrets from Azure Key Vault, and constructing blob paths based on KafkaMessage metadata.
- *
- * Uploads include text, binary, file path-based, and summary JSONs.
- * Downloads stream content directly to local file system to minimize memory usage.
- *
- * Dependencies: Azure Blob Storage SDK, Azure Key Vault SDK.
- */
 @Service
 public class BlobStorageService {
 
@@ -62,28 +52,15 @@ public class BlobStorageService {
     private String containerName;
 
     private Instant lastSecretRefreshTime = null;
-    private static final long SECRET_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
     public BlobStorageService(RestTemplate restTemplate) {
         this.restTemplate = restTemplate;
     }
 
-    /**
-     * Lazily initializes and caches secrets required for Azure Blob operations.
-     *
-     * <p>This method ensures that secrets such as {@code accountName}, {@code accountKey}, and
-     * {@code containerName} are fetched from Azure Key Vault only when needed.</p>
-     *
-     * <p>To avoid repeated Key Vault calls, the secrets are cached and refreshed based on a
-     * configurable TTL (time-to-live). If the TTL has not expired since the last refresh, the
-     * cached values are reused.</p>
-     *
-     * <p>This design balances performance with sensitivity to secret updates in Key Vault.</p>
-     */
     private void initSecrets() {
         if (accountKey != null && accountName != null && containerName != null) {
             if (lastSecretRefreshTime != null &&
-                    Instant.now().toEpochMilli() - lastSecretRefreshTime.toEpochMilli() < SECRET_CACHE_TTL_MS) {
+                    Instant.now().toEpochMilli() - lastSecretRefreshTime.toEpochMilli() < Constants.SECRET_CACHE_TTL_MS) {
                 return;
             }
         }
@@ -100,42 +77,32 @@ public class BlobStorageService {
             containerName = getSecret(secretClient, fmContainerName);
 
             if (accountKey == null || accountName == null || containerName == null) {
-                throw new CustomAppException("Secrets missing from Key Vault", 400, HttpStatus.BAD_REQUEST);
+                throw new CustomAppException(Constants.ERR_MISSING_SECRETS, 400, HttpStatus.BAD_REQUEST);
             }
 
             lastSecretRefreshTime = Instant.now();
             logger.info("✅ Secrets fetched successfully from Key Vault.");
         } catch (Exception e) {
             logger.error("❌ Failed to initialize secrets: {}", e.getMessage(), e);
-            throw new CustomAppException("Key Vault integration failure", 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            throw new CustomAppException(Constants.ERR_KV_FAILURE, 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
     }
 
-    @Scheduled(fixedDelay = SECRET_CACHE_TTL_MS)
+    @Scheduled(fixedDelay = Constants.SECRET_CACHE_TTL_MS)
     public void scheduledSecretRefresh() {
         logger.info("🕒 Scheduled refresh of secrets...");
         initSecrets();
     }
 
-    /**
-     * Fetches a specific secret from Azure Key Vault.
-     *
-     * @param client     The initialized SecretClient.
-     * @param secretName The name of the secret to retrieve.
-     * @return The secret value.
-     */
     private String getSecret(SecretClient client, String secretName) {
         try {
             return client.getSecret(secretName).getValue();
         } catch (Exception e) {
             logger.error("❌ Failed to fetch secret '{}': {}", secretName, e.getMessage(), e);
-            throw new CustomAppException("Failed to fetch secret: " + secretName, 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            throw new CustomAppException(Constants.ERR_FETCH_SECRET + secretName, 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
     }
 
-    /**
-     * Unified method to upload String, byte[], File, or Path to Azure Blob Storage.
-     */
     public String uploadFile(Object input, String targetPath) {
         try {
             byte[] content;
@@ -150,15 +117,16 @@ public class BlobStorageService {
             } else if (input instanceof Path path) {
                 content = Files.readAllBytes(path);
             } else {
-                throw new IllegalArgumentException("Unsupported input type for upload: " + input.getClass());
+                throw new IllegalArgumentException(Constants.ERR_UNSUPPORTED_TYPE + input.getClass());
             }
 
             return uploadToBlobStorage(content, targetPath, fileName);
         } catch (IOException e) {
             logger.error("❌ Failed to read input for upload: {}", e.getMessage(), e);
-            throw new CustomAppException("Failed to process upload input", 606, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            throw new CustomAppException(Constants.ERR_PROCESS_UPLOAD, 606, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
     }
+
     private String uploadToBlobStorage(byte[] content, String targetPath, String fileName) {
         try {
             initSecrets();
@@ -179,7 +147,7 @@ public class BlobStorageService {
             return blob.getBlobUrl();
         } catch (Exception e) {
             logger.error("❌ Upload failed: {}", e.getMessage(), e);
-            throw new CustomAppException("Upload failed", 602, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            throw new CustomAppException(Constants.ERR_UPLOAD_FAIL, 602, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
     }
 
@@ -187,21 +155,13 @@ public class BlobStorageService {
         try (InputStream is = new ByteArrayInputStream(content)) {
             Tika tika = new Tika();
             String mimeType = tika.detect(is, fileName);
-            return mimeType != null ? mimeType : "application/octet-stream";
+            return mimeType != null ? mimeType : Constants.DEFAULT_MIME;
         } catch (IOException e) {
             logger.warn("⚠️ Tika failed to detect MIME type. Defaulting. Error: {}", e.getMessage());
-            return "application/octet-stream";
+            return Constants.DEFAULT_MIME;
         }
     }
 
-    /**
-     * Uploads a file based on KafkaMessage context to a constructed blob path.
-     *
-     * @param file       The file to upload.
-     * @param folderName The target subfolder in blob.
-     * @param msg        The Kafka message for metadata.
-     * @return The uploaded blob URL.
-     */
     public String uploadFileByMessage(File file, String folderName, KafkaMessage msg) {
         try {
             byte[] content = Files.readAllBytes(file.toPath());
@@ -209,21 +169,13 @@ public class BlobStorageService {
             return uploadFile(content, targetPath);
         } catch (IOException e) {
             logger.error("❌ Error reading file for upload: {}", file.getAbsolutePath(), e);
-            throw new CustomAppException("File read failed", 603, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            throw new CustomAppException(Constants.ERR_FILE_READ, 603, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
     }
 
-    /**
-     * Constructs a blob path using file name and KafkaMessage fields.
-     *
-     * @param fileName   The name of the file.
-     * @param folderName Folder name to be included in path.
-     * @param msg        Kafka message with metadata.
-     * @return Formatted blob path.
-     */
     private String buildBlobPath(String fileName, String folderName, KafkaMessage msg) {
-        String sourceSystem = sanitize(msg.getSourceSystem(), "UNKNOWN_SOURCE");
-        String consumerRef = sanitize(msg.getUniqueConsumerRef(), "UNKNOWN_CONSUMER");
+        String sourceSystem = sanitize(msg.getSourceSystem(), Constants.FALLBACK_SOURCE);
+        String consumerRef = sanitize(msg.getUniqueConsumerRef(), Constants.FALLBACK_CONSUMER);
 
         return sourceSystem + "/" +
                 consumerRef + "/" +
@@ -233,16 +185,9 @@ public class BlobStorageService {
 
     private String sanitize(String value, String fallback) {
         if (value == null || value.trim().isEmpty()) return fallback;
-        return value.replaceAll("[^a-zA-Z0-9-_]", "_"); // allow alphanumeric, hyphen, underscore
+        return value.replaceAll(Constants.SANITIZE_REGEX, Constants.SANITIZE_REPLACEMENT);
     }
 
-    /**
-     * Downloads a file from blob storage to a local path using streaming.
-     *
-     * @param blobUrl       Blob URL of the file.
-     * @param localFilePath Local path where file will be stored.
-     * @return Path to the downloaded file.
-     */
     public Path downloadFileToLocal(String blobUrl, Path localFilePath) {
         try {
             initSecrets();
@@ -252,7 +197,8 @@ public class BlobStorageService {
             if (blobUrl.startsWith("http")) {
                 URI uri = new URI(blobUrl);
                 String[] segments = uri.getPath().split("/");
-                if (segments.length < 3) throw new CustomAppException("Invalid blob URL", 400, HttpStatus.BAD_REQUEST);
+                if (segments.length < 3)
+                    throw new CustomAppException(Constants.ERR_INVALID_URL, 400, HttpStatus.BAD_REQUEST);
                 container = segments[1];
                 blobPath = String.join("/", Arrays.copyOfRange(segments, 2, segments.length));
             }
@@ -263,7 +209,8 @@ public class BlobStorageService {
                     .buildClient();
 
             BlobClient blob = blobClient.getBlobContainerClient(container).getBlobClient(blobPath);
-            if (!blob.exists()) throw new CustomAppException("Blob not found", 404, HttpStatus.NOT_FOUND);
+            if (!blob.exists())
+                throw new CustomAppException(Constants.ERR_BLOB_NOT_FOUND, 404, HttpStatus.NOT_FOUND);
 
             try (OutputStream outputStream = new FileOutputStream(localFilePath.toFile())) {
                 blob.download(outputStream);
@@ -273,18 +220,10 @@ public class BlobStorageService {
 
         } catch (Exception e) {
             logger.error("❌ Download to local failed: {}", e.getMessage(), e);
-            throw new CustomAppException("Download failed", 603, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            throw new CustomAppException(Constants.ERR_DOWNLOAD_FAIL, 603, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
     }
 
-    /**
-     * Uploads summary.json from either a file path or URL into a target blob path.
-     *
-     * @param filePathOrUrl File path or URL of summary JSON.
-     * @param message       KafkaMessage used to construct remote blob path.
-     * @param fileName      Target file name in blob.
-     * @return Uploaded blob URL.
-     */
     public String uploadSummaryJson(String filePathOrUrl, KafkaMessage message, String fileName) {
         initSecrets();
         String remotePath = String.format("%s/%s/%s/%s",
@@ -301,7 +240,31 @@ public class BlobStorageService {
             return uploadFile(json, remotePath);
         } catch (Exception e) {
             logger.error("❌ Failed reading summary JSON: {}", e.getMessage(), e);
-            throw new CustomAppException("Failed reading summary JSON", 604, HttpStatus.INTERNAL_SERVER_ERROR, e);
+            throw new CustomAppException(Constants.ERR_SUMMARY_JSON, 604, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
+    }
+
+    // 🧱 Constants
+    private static class Constants {
+        public static final long SECRET_CACHE_TTL_MS = 30 * 60 * 1000;
+
+        public static final String DEFAULT_MIME = "application/octet-stream";
+        public static final String SANITIZE_REGEX = "[^a-zA-Z0-9-_]";
+        public static final String SANITIZE_REPLACEMENT = "_";
+
+        public static final String ERR_MISSING_SECRETS = "Secrets missing from Key Vault";
+        public static final String ERR_KV_FAILURE = "Key Vault integration failure";
+        public static final String ERR_FETCH_SECRET = "Failed to fetch secret: ";
+        public static final String ERR_PROCESS_UPLOAD = "Failed to process upload input";
+        public static final String ERR_UPLOAD_FAIL = "Upload failed";
+        public static final String ERR_FILE_READ = "File read failed";
+        public static final String ERR_INVALID_URL = "Invalid blob URL";
+        public static final String ERR_BLOB_NOT_FOUND = "Blob not found";
+        public static final String ERR_DOWNLOAD_FAIL = "Download failed";
+        public static final String ERR_SUMMARY_JSON = "Failed reading summary JSON";
+        public static final String ERR_UNSUPPORTED_TYPE = "Unsupported input type for upload: ";
+
+        public static final String FALLBACK_SOURCE = "UNKNOWN_SOURCE";
+        public static final String FALLBACK_CONSUMER = "UNKNOWN_CONSUMER";
     }
 }
