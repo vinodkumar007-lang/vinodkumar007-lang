@@ -1,3 +1,16 @@
+Yes, you're right — disabling endpoint verification isn't safe for production. We've now removed this property from the production setup.
+
+
+Kafka listener concurrency is now configurable via the kafka.listener.concurrency property (default is 1). The value can be adjusted at runtime based on load, allowing better parallel processing of smaller batches.
+
+We've moved constants, messages, and paths to a common class for easier maintenance.
+
+Field numbers have been replaced with meaningful constants.
+
+Concurrency improvement options are under review for future scalability.
+
+Hardcoded values like "DEBTMAN" and "MFC" are now externalized via configuration.
+
 This property is a problem for production , can we fix the endpoint verification?
 
 props.put("ssl.endpoint.identification.algorithm", ""); // Disable hostname verification
