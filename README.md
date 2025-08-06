@@ -9,7 +9,7 @@ Field numbers have been replaced with meaningful constants.
 
 Concurrency improvement options are under review for future scalability.
 
-Hardcoded values like "DEBTMAN" and "MFC" are now externalized via configuration.
+Currently, we've moved the hardcoded values to a common constants class to avoid repetition and make future maintenance easier.
 
 This property is a problem for production , can we fix the endpoint verification?
 
