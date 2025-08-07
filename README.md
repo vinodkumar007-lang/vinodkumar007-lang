@@ -8,15 +8,13 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Optional;
 
+@Getter
+@Setter
 @Component
 @ConfigurationProperties(prefix = "source")
 public class SourceSystemProperties {
 
-    private final List<SystemConfig> systems;
-
-    public SourceSystemProperties(List<SystemConfig> systems) {
-        this.systems = systems;
-    }
+    private List<SystemConfig> systems;
 
     public Optional<SystemConfig> getConfigForSourceSystem(String name) {
         return systems.stream()
