@@ -1,9 +1,31 @@
-ETE:
-https://nsnetextr01.blob.core.windows.net/nsneteextrm
+Thanks for sharing the details.
 
-DEV:
+We are currently facing issues while attempting to download the input file from storage during our testing in the ETV environment. Here's a summary of the issue:
+
+The input file is currently available in the DEV storage container:
+
+bash
+Copy
+Edit
 https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001
+However, the application in the ETV environment is configured to use secrets and storage access keys from the ETE environment, specifically:
 
+bash
+Copy
+Edit
+https://nsnetextr01.blob.core.windows.net/nsneteextrm
+Because of this mismatch, the ETV environment is unable to access the input file from the DEV storage. As a result, we are unable to proceed with testing.
+
+Note:
+In the DEV environment, our file manager is configured to use the container nsnakscontregecm001, and we have verified that upload/download access is working there. However, we are unable to access other containers in DEV due to permission limitations, which we had encountered previously as well.
+We are not sure if the same container (nsnakscontregecm001) or a similar setup is required in the ETE environment for the file manager to function correctly.
+
+Request:
+Could you please help us by uploading the required input file to the ETE storage container (nsneteextrm) and share the updated blob URL? This will allow us to continue testing in the ETV environment without further interruption.
+
+Please let us know once the file is uploaded or if any additional information is required from our side.
+
+Thank you for your support.
 
 2025-08-07T13:08:56.931+02:00  INFO 1 --- [       Thread-2] c.azure.identity.DefaultAzureCredential  : Azure Identity => Attempted credential EnvironmentCredential returns a token
 2025-08-07T13:08:57.333+02:00  INFO 1 --- [t.azure.net/...] c.a.s.k.secrets.SecretAsyncClient        : Retrieved secret - ete-ecm-fm-account-key
