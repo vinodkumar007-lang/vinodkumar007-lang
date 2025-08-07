@@ -1,3 +1,10 @@
+ETE:
+https://nsnetextr01.blob.core.windows.net/nsneteextrm
+
+DEV:
+https://nsndvextr01.blob.core.windows.net/nsnakscontregecm001
+
+
 2025-08-07T13:08:56.931+02:00  INFO 1 --- [       Thread-2] c.azure.identity.DefaultAzureCredential  : Azure Identity => Attempted credential EnvironmentCredential returns a token
 2025-08-07T13:08:57.333+02:00  INFO 1 --- [t.azure.net/...] c.a.s.k.secrets.SecretAsyncClient        : Retrieved secret - ete-ecm-fm-account-key
 2025-08-07T13:08:57.421+02:00  INFO 1 --- [ntainer#0-0-C-1] c.a.s.k.secrets.SecretAsyncClient        : Retrieving secret - ete-ecm-fm-account-name
