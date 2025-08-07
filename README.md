@@ -1,5 +1,4 @@
-public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
-        String batchId = "";
+    String batchId = "";
         try {
             logger.info("📩 [batchId: unknown] Received Kafka message: {}", rawMessage);
             KafkaMessage message = objectMapper.readValue(rawMessage, KafkaMessage.class);
