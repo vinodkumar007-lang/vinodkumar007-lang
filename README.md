@@ -1,3 +1,6 @@
+Updated the code to use the source system from the Kafka message, match it with the properties config before calling the orchestration API, and support dynamic addition of new source systems through configuration. Please review and help us approve the PR if all looks good. Let us know if you find any issues.
+@Autowired
+private SourceSystemConfig sourceSystemConfig;
 String batchId = "";
 try {
     logger.info("📩 [batchId: unknown] Received Kafka message: {}", rawMessage);
