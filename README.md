@@ -1,8 +1,44 @@
+package com.nedbank.kafka.filemanage.service;
+
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.Optional;
+
+@Component
+@ConfigurationProperties(prefix = "source")
+public class SourceSystemProperties {
+
+    private final List<SystemConfig> systems;
+
+    public SourceSystemProperties(List<SystemConfig> systems) {
+        this.systems = systems;
+    }
+
+    public Optional<SystemConfig> getConfigForSourceSystem(String name) {
+        return systems.stream()
+                .filter(s -> s.getName().equalsIgnoreCase(name))
+                .findFirst();
+    }
+
+    @Getter
+    @Setter
+    public static class SystemConfig {
+        private String name;
+        private String url;
+        private String token;
+    }
+}
+
 2025-08-07T08:34:36.524+02:00  WARN 1 --- [           main] ConfigServletWebServerApplicationContext : Exception encountered during context initialization - cancelling refresh attempt: org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'sourceSystemProperties' defined in URL [jar:file:/deployments/file-manager-1.0-SNAPSHOT.jar!/BOOT-INF/classes!/com/nedbank/kafka/filemanage/service/SourceSystemProperties.class]: Cannot bind @ConfigurationProperties for bean 'sourceSystemProperties'. Ensure that @ConstructorBinding has not been applied to regular bean
 2025-08-07T08:34:36.623+02:00  INFO 1 --- [           main] o.apache.catalina.core.StandardService   : Stopping service [Tomcat]
 2025-08-07T08:34:36.924+02:00  INFO 1 --- [           main] .s.b.a.l.ConditionEvaluationReportLogger : 
 Error starting ApplicationContext. To display the condition evaluation report re-run your application with 'debug' enabled.
-2025-08-07T08:34:37.422+02:00 ERROR 1 --- [           main] o.s.boot.SpringApplication               : Application run failed
+2025-08-07T08:34:37.422+02:00 ERROR 1 --- [           main] o.s.boot.SpringApplication               : Application run
+failed
 org.springframework.beans.factory.BeanCreationException: Error creating bean with name 'sourceSystemProperties' defined in URL [jar:file:/deployments/file-manager-1.0-SNAPSHOT.jar!/BOOT-INF/classes!/com/nedbank/kafka/filemanage/service/SourceSystemProperties.class]: Cannot bind @ConfigurationProperties for bean 'sourceSystemProperties'. Ensure that @ConstructorBinding has not been applied to regular bean
  at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.doCreateBean(AbstractAutowireCapableBeanFactory.java:606) ~[spring-beans-6.0.2.jar!/:6.0.2]
  at org.springframework.beans.factory.support.AbstractAutowireCapableBeanFactory.createBean(AbstractAutowireCapableBeanFactory.java:521) ~[spring-beans-6.0.2.jar!/:6.0.2]
