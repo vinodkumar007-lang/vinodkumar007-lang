@@ -1,3 +1,5 @@
+Request for Kafka Access to Topic and Consumer Group
+
 I am currently setting up a Kafka consumer to read from the topic log-ecp-batch-audit on the ETE environment. However, I’m getting an authorization error:
 
 pgsql
