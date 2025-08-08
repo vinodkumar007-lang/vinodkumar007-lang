@@ -1,30 +1,7 @@
-try {
-    logger.info("🔐 Fetching secrets from Azure Key Vault...");
-    logger.info("📌 Key Vault URL          : {}", keyVaultUrl);
-    logger.info("📌 Secret Names Requested : {}, {}, {}",
-            fmAccountKey, fmAccountName, fmContainerName);
+/nsnetextr01/nsnakscontregecm001/DEBTMAN_20250513_113043.TXT'.</AuthenticationErrorDetail></Error>"
+ 
+RequestId:e15c1e6d-c01e-005e-5165-083a6d000000
 
-    SecretClient secretClient = new SecretClientBuilder()
-            .vaultUrl(keyVaultUrl)
-            .credential(new DefaultAzureCredentialBuilder().build())
-            .buildClient();
+Time:2025-08-08T13:11:16.6539649Z</Message><AuthenticationErrorDetail>The MAC signature found in the HTTP request 'Zs15zp1sbRoV+Xfo3kvQKdwlQFfITk0SIigLaDTBA8Q=' is not the same as any computed signature. Server used following string to sign: 'DELETE
 
-    accountKey = getSecret(secretClient, fmAccountKey);
-    accountName = getSecret(secretClient, fmAccountName);
-    containerName = getSecret(secretClient, fmContainerName);
-
-    logger.info("📦 Azure Storage Secrets fetched:");
-    logger.info("   • Account Key    : {}", accountKey);
-    logger.info("   • Account Name   : {}", accountName);
-    logger.info("   • Container Name : {}", containerName);
-
-    if (accountKey == null || accountName == null || containerName == null) {
-        throw new CustomAppException(BlobStorageConstants.ERR_MISSING_SECRETS, 400, HttpStatus.BAD_REQUEST);
-    }
-
-    lastSecretRefreshTime = Instant.now();
-    logger.info("✅ Secrets fetched successfully from Key Vault.");
-} catch (Exception e) {
-    logger.error("❌ Failed to initialize secrets: {}", e.getMessage(), e);
-    throw new CustomAppException(BlobStorageConstants.ERR_KV_FAILURE, 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
-}
+ 
