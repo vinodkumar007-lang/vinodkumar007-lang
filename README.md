@@ -147,28 +147,33 @@ Port: 9093
 
 package com.nedbank.kafka.filemanage.test;
 
-import org.apache.kafka.clients.consumer.ConsumerRecords;
-import org.apache.kafka.clients.consumer.KafkaConsumer;
-import org.apache.kafka.clients.consumer.ConsumerRecord;
-import org.apache.kafka.common.serialization.StringDeserializer;
+import org.apache.kafka.clients.producer.KafkaProducer;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.clients.producer.ProducerRecord;
+import org.apache.kafka.clients.producer.RecordMetadata;
+import org.apache.kafka.common.serialization.StringSerializer;
 
-import java.time.Duration;
-import java.util.Arrays;
 import java.util.Properties;
+import java.util.concurrent.Future;
 
-public class KafkaConsumerMain {
+public class AuditEventPublisher {
 
-    public static void main(String[] args) {
+    private final KafkaProducer<String, String> producer;
+    private final String topicName;
 
+    public AuditEventPublisher(String topicName) {
+        this.topicName = topicName;
+        this.producer = new KafkaProducer<>(createProducerProperties());
+    }
+
+    private Properties createProducerProperties() {
         Properties props = new Properties();
-        props.put("bootstrap.servers", "nbpigelpdev02.africa.nedcor.net:9093,nbpproelpdev01.africa.nedcor.net:9093,nbpinelpdev01.africa.nedcor.net:9093");
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG,
+                "nbpigelpdev02.africa.nedcor.net:9093,nbpproelpdev01.africa.nedcor.net:9093,nbpinelpdev01.africa.nedcor.net:9093");
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
 
-        props.put("group.id", "ecp-batch-audit-consumer");
-        props.put("key.deserializer", StringDeserializer.class.getName());
-        props.put("value.deserializer", StringDeserializer.class.getName());
-        props.put("auto.offset.reset", "earliest");
-
-        // SSL config - hardcoded
+        // SSL configuration
         props.put("security.protocol", "SSL");
         props.put("ssl.truststore.location", "C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\truststore.jks");
         props.put("ssl.truststore.password", "nedbank1");
@@ -176,29 +181,36 @@ public class KafkaConsumerMain {
         props.put("ssl.keystore.password", "3dX7y3Yz9Jv6L4F");
         props.put("ssl.key.password", "3dX7y3Yz9Jv6L4F");
 
-        KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props);
-        consumer.subscribe(Arrays.asList("log-ecp-batch-audit"));
+        // Optional: better reliability
+        props.put(ProducerConfig.ACKS_CONFIG, "all");
+        props.put(ProducerConfig.RETRIES_CONFIG, 3);
+        props.put(ProducerConfig.LINGER_MS_CONFIG, 1);
 
-        System.out.println("🟢 Kafka Consumer started. Listening to topic: log-ecp-batch-audit...");
+        return props;
+    }
 
+    public void publishEvent(String key, String message) {
         try {
-            while (true) {
-                ConsumerRecords<String, String> records = consumer.poll(Duration.ofSeconds(2));
-
-                for (ConsumerRecord<String, String> record : records) {
-                    System.out.println("📩 New Message Received:");
-                    System.out.println("🔑 Key: " + record.key());
-                    System.out.println("📝 Value: " + record.value());
-                    System.out.println("📦 Partition: " + record.partition());
-                    System.out.println("🧾 Offset: " + record.offset());
-                    System.out.println("──────────────────────────────");
-                }
-            }
+            ProducerRecord<String, String> record = new ProducerRecord<>(topicName, key, message);
+            Future<RecordMetadata> future = producer.send(record);
+            RecordMetadata metadata = future.get(); // blocking send
+            System.out.printf("✅ Sent message to %s | partition=%d | offset=%d%n",
+                    metadata.topic(), metadata.partition(), metadata.offset());
         } catch (Exception e) {
-            System.err.println("❌ Error while consuming: " + e.getMessage());
-        } finally {
-            consumer.close();
+            System.err.println("❌ Failed to publish message: " + e.getMessage());
         }
     }
+
+    public void close() {
+        producer.close();
+    }
+
+    // Example usage
+    public static void main(String[] args) {
+        AuditEventPublisher publisher = new AuditEventPublisher("log-ecp-batch-audit");
+        publisher.publishEvent("testKey", "{\"event\":\"FileProcessed\",\"status\":\"SUCCESS\"}");
+        publisher.close();
+    }
 }
+
 
