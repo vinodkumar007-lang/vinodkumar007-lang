@@ -1,1 +1,1 @@
-I have shared the updated key with Akash from the logs. Once he uploads it and shares the Kafka message for ETE, we will start our process by downloading that file from ETE.
+Thanks, Wayne, for updating the accountKey. Could you please update the container to b instead of a, as we verified from Blob Storage that b is available in the ETE environment?
