@@ -1,1 +1,1 @@
-in key vault-> ete-ecm-fm-container-name= nsneteextrm
+Thank you for updating the accountKey. We noticed that the container is currently set to nsnakscontregecm001. Could you please update it to ete-ecm-fm-container-name (key) = nsneteextrm (value), as we have confirmed from Blob Storage that nsneteextrm is available in the ETE environment?
