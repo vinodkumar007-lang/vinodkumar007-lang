@@ -1,1 +1,1 @@
-Thanks, Wayne, for updating the accountKey. Could you please update the container to b instead of a, as we verified from Blob Storage that b is available in the ETE environment?
+Hi Turner, W. (Wayne),Thanks for updating the accountKey. Could you please update the container to nsneteextrm instead of nsnakscontregecm001, as we verified from Blob Storage that nsneteextrm is available in the ETE environment.
