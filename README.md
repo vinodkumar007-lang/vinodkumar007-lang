@@ -1,35 +1,32 @@
-public String getOtdsToken() {
-    try {
-        logger.info("🔐 Fetching OTDS token name from config...");
+package com.nedbank.kafka.filemanage.service;
 
-        // Get the first system's token name from config
-        String secretName = sourceSystemsConfig.getSystems().stream()
-                .findFirst()
-                .map(SourceSystemsConfig.SystemConfig::getToken)
-                .orElseThrow(() -> new CustomAppException(
-                        "❌ No OTDS token configured in source.systems",
-                        400, HttpStatus.BAD_REQUEST));
+import lombok.Getter;
+import lombok.Setter;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.stereotype.Component;
 
-        logger.info("🔑 OTDS token secret name from config: {}", secretName);
+import java.util.List;
+import java.util.Optional;
 
-        // Fetch the actual token value from Key Vault
-        SecretClient secretClient = new SecretClientBuilder()
-                .vaultUrl(keyVaultUrl)
-                .credential(new DefaultAzureCredentialBuilder().build())
-                .buildClient();
+@Getter
+@Setter
+@Component
+@ConfigurationProperties(prefix = "source")
+public class SourceSystemProperties {
 
-        String tokenValue = getSecret(secretClient, secretName);
+    private List<SystemConfig> systems;
 
-        if (tokenValue == null || tokenValue.isBlank()) {
-            throw new CustomAppException("❌ OTDS token value is empty or missing in Key Vault",
-                    400, HttpStatus.BAD_REQUEST);
-        }
+    public Optional<SystemConfig> getConfigForSourceSystem(String name) {
+        return systems.stream()
+                .filter(s -> s.getName().equalsIgnoreCase(name))
+                .findFirst();
+    }
 
-        logger.info("✅ OTDS token fetched successfully from Key Vault.");
-        return tokenValue;
-
-    } catch (Exception e) {
-        logger.error("❌ Failed to fetch OTDS token: {}", e.getMessage(), e);
-        throw new CustomAppException("ERR_FETCH_OTDS_TOKEN", 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
+    @Getter
+    @Setter
+    public static class SystemConfig {
+        private String name;
+        private String url;
+        private String token;
     }
 }
