@@ -1,3 +1,30 @@
+private String findAndUploadMobstatTriggerFile(Path jobDir, KafkaMessage message) {
+        try (Stream<Path> stream = Files.list(jobDir)) {
+            Optional<Path> trigger = stream.filter(Files::isRegularFile)
+                    .filter(p -> p.getFileName().toString().toLowerCase().endsWith(TRIGGER_FILE_EXTENSION))
+                    .findFirst();
+
+            if (trigger.isPresent()) {
+                Path triggerFile = trigger.get();
+                String blobUrl = blobStorageService.uploadFile(
+                        triggerFile.toFile(),
+                        String.format(MOBSTAT_TRIGGER_UPLOAD_PATH_FORMAT,
+                                message.getSourceSystem(), message.getBatchId(), message.getUniqueConsumerRef(), triggerFile.getFileName())
+                );
+
+                logger.info("📤 Uploaded MOBSTAT trigger file: {} -> {}", triggerFile, blobUrl);
+                return decodeUrl(blobUrl);
+            } else {
+                logger.warn("⚠️ No .trigger file found in MOBSTAT job directory: {}", jobDir);
+                return null;
+            }
+
+        } catch (IOException e) {
+            logger.error("⚠️ Failed to scan for .trigger file in jobDir: {}", jobDir, e);
+            return null;
+        }
+    }
+
 2025-08-14T16:18:54.629+02:00 DEBUG 1 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
 2025-08-14T16:18:58.529+02:00  INFO 1 --- [pool-1-thread-3] c.n.k.f.service.KafkaListenerService     : [81d7dfb9-cb41-4a47-8438-8e686b0aec52] 📦 Processed 85797 customer records
 2025-08-14T16:18:58.529+02:00  INFO 1 --- [pool-1-thread-3] c.n.k.f.service.KafkaListenerService     : ℹ️ No 'print' directory found in jobDir: /mnt/nfs/ete-exstream/ete-SA/output/MFC/010dd1e9-4c43-4fc1-aeaa-d344b6fb8bfe
