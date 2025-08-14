@@ -1,62 +1,72 @@
-Print Files Array (printFiles[]) — Updated Structure & Behavior
-Purpose
-The printFiles[] section in summary.json captures details of PRINT delivery channel output files generated during Kafka message processing.
-This enables tracking of file name, storage location, and generation/upload status for each print job.
+private List<CustomerSummary> parseSTDXml(File xmlFile, Map<String, Map<String, String>> errorMap) {
+        List<CustomerSummary> customerSummaries = new ArrayList<>();
 
-Structure
-Each object in the printFiles[] array contains:
+        try {
+            DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
+            Document document = builder.parse(xmlFile);
+            document.getDocumentElement().normalize();
 
-Field Name	Type	Description	Example Value
-printFileName	String	Name of the generated print file (usually customer-specific).	"Customer123.pdf"
-printFileURL	String	Azure Blob Storage URL where the print file is stored (new destination URL after upload).	"https://<storage-account>.blob.core.windows.net/print/Customer123.pdf"
-printStatus	String	Status of the print file creation & upload process. Values: "SUCCESS", "FAILED", "PARTIAL".	"SUCCESS"
+            NodeList customerNodes = document.getElementsByTagName("customer");
 
-Example
-json
-Copy
-Edit
-"printFiles": [
-  {
-    "printFileName": "Customer123.pdf",
-    "printFileURL": "https://blob.company.com/container/print/Customer123.pdf",
-    "printStatus": "SUCCESS"
-  },
-  {
-    "printFileName": "Customer456.pdf",
-    "printFileURL": "https://blob.company.com/container/print/Customer456.pdf",
-    "printStatus": "FAILED"
-  }
-]
-Behavior
-Population Rules
-Generated only for records in the input file where the delivery channel (field[4] in the 05 record) is "PRINT".
+            for (int i = 0; i < customerNodes.getLength(); i++) {
+                Element customerElement = (Element) customerNodes.item(i);
 
-Populated during the Kafka message processing step in KafkaListenerService.
+                String accountNumber = null;
+                String cisNumber = null;
+                List<String> deliveryMethods = new ArrayList<>();
 
-printStatus is determined after:
+                NodeList keyNodes = customerElement.getElementsByTagName("key");
+                for (int j = 0; j < keyNodes.getLength(); j++) {
+                    Element keyElement = (Element) keyNodes.item(j);
+                    String keyName = keyElement.getAttribute("name");
 
-Generating the print file (PDF / HTML / TXT as required).
+                    if ("AccountNumber".equalsIgnoreCase(keyName)) {
+                        accountNumber = keyElement.getTextContent();
+                    } else if ("CISNumber".equalsIgnoreCase(keyName)) {
+                        cisNumber = keyElement.getTextContent();
+                    }
+                }
 
-Uploading the file to Azure Blob Storage in the /print/ folder.
+                NodeList queueNodes = customerElement.getElementsByTagName("queueName");
+                for (int q = 0; q < queueNodes.getLength(); q++) {
+                    String method = queueNodes.item(q).getTextContent().trim().toUpperCase();
+                    if (!method.isEmpty()) {
+                        deliveryMethods.add(method);
+                    }
+                }
 
-Status Values
-Status	Meaning
-SUCCESS	File generated and uploaded without errors.
-FAILED	File generation or upload failed (error logged).
-PARTIAL	File processed partially (e.g., generated but upload failed midway).
+                if (accountNumber != null && cisNumber != null) {
+                    CustomerSummary summary = new CustomerSummary();
+                    summary.setAccountNumber(accountNumber);
+                    summary.setCisNumber(cisNumber);
+                    summary.setCustomerId(accountNumber);
 
-Blob Storage Path
-Print files are stored under the /print/ subfolder of the configured container.
+                    Map<String, String> deliveryStatusMap = errorMap.getOrDefault(accountNumber, new HashMap<>());
+                    summary.setDeliveryStatus(deliveryStatusMap);
 
-Example:
+                    long failedCount = deliveryMethods.stream()
+                            .filter(method -> "FAILED".equalsIgnoreCase(deliveryStatusMap.getOrDefault(method, "")))
+                            .count();
 
-php-template
-Copy
-Edit
-https://<storage-account>.blob.core.windows.net/<container-name>/print/<filename>
-Duplicate Prevention
-Logic ensures no duplicate entries are written for the same:
+                    if (failedCount == deliveryMethods.size()) {
+                        summary.setStatus("FAILED");
+                    } else if (failedCount > 0) {
+                        summary.setStatus("PARTIAL");
+                    } else {
+                        summary.setStatus("SUCCESS");
+                    }
 
-printFileName
+                    customerSummaries.add(summary);
 
-printFileURL
+                    logger.debug("📋 Customer: {}, CIS: {}, Methods: {}, Failed: {}, FinalStatus: {}",
+                            accountNumber, cisNumber, deliveryMethods, failedCount, summary.getStatus());
+                }
+            }
+
+        } catch (Exception e) {
+            logger.error("❌ Failed parsing STD XML file: {}", xmlFile.getAbsolutePath(), e);
+            throw new RuntimeException("Failed to parse XML file: " + xmlFile.getName(), e);
+        }
+
+        return customerSummaries;
+    }
