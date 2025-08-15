@@ -1,40 +1,100 @@
-private String findAndUploadMobstatTriggerFile(Path jobDir, KafkaMessage message) {
-    // ✅ First check if the directory exists and is actually a folder
-    if (jobDir == null || !Files.exists(jobDir) || !Files.isDirectory(jobDir)) {
-        logger.warn("⚠️ MOBSTAT job directory does not exist or is not a directory: {}", jobDir);
-        return null; // Skip gracefully
-    }
+ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+            Path jobDir,
+            List<SummaryProcessedFile> customerList,
+            Map<String, Map<String, String>> errorMap,
+            KafkaMessage msg) throws IOException {
 
-    try (Stream<Path> stream = Files.list(jobDir)) {
-        Optional<Path> trigger = stream
-                .filter(Files::isRegularFile)
-                .filter(p -> p.getFileName().toString().toLowerCase().endsWith(TRIGGER_FILE_EXTENSION))
-                .findFirst();
+        List<SummaryProcessedFile> finalList = new ArrayList<>();
+        List<String> deliveryFolders = List.of(
+                AppConstants.FOLDER_EMAIL,
+                AppConstants.FOLDER_MOBSTAT,
+                AppConstants.FOLDER_PRINT
+        );
 
-        if (trigger.isPresent()) {
-            Path triggerFile = trigger.get();
-            try {
-                String blobUrl = blobStorageService.uploadFile(
-                        triggerFile.toFile(),
-                        String.format(MOBSTAT_TRIGGER_UPLOAD_PATH_FORMAT,
-                                message.getSourceSystem(), message.getBatchId(),
-                                message.getUniqueConsumerRef(), triggerFile.getFileName())
-                );
+        Map<String, String> folderToOutputMethod = Map.of(
+                AppConstants.FOLDER_EMAIL, AppConstants.OUTPUT_EMAIL,
+                AppConstants.FOLDER_MOBSTAT, AppConstants.OUTPUT_MOBSTAT,
+                AppConstants.FOLDER_PRINT, AppConstants.OUTPUT_PRINT
+        );
 
-                logger.info("📤 Uploaded MOBSTAT trigger file: {} -> {}", triggerFile, blobUrl);
-                return decodeUrl(blobUrl);
-            } catch (Exception uploadEx) {
-                logger.error("⚠️ Failed to upload MOBSTAT trigger file: {}", triggerFile, uploadEx);
-                // Continue anyway
-                return null;
-            }
-        } else {
-            logger.warn("⚠️ No .trigger file found in MOBSTAT job directory: {}", jobDir);
-            return null;
+        if (jobDir == null || customerList == null || msg == null) {
+            logger.warn("⚠️ One or more input parameters are null: jobDir={}, customerList={}, msg={}",
+                    jobDir, customerList, msg);
+            return finalList;
         }
 
-    } catch (IOException e) {
-        logger.error("⚠️ Error scanning for .trigger file in jobDir: {}", jobDir, e);
-        return null; // Continue gracefully
+        Path archivePath = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
+
+        for (SummaryProcessedFile customer : customerList) {
+            if (customer == null) continue;
+
+            String account = customer.getAccountNumber();
+            if (account == null || account.isBlank()) {
+                logger.warn("⚠️ Skipping customer with empty account number");
+                continue;
+            }
+
+            // Archive upload
+            String archiveBlobUrl = null;
+            try {
+                if (Files.exists(archivePath)) {
+                    Optional<Path> archiveFile = Files.list(archivePath)
+                            .filter(Files::isRegularFile)
+                            .filter(p -> p.getFileName().toString().contains(account))
+                            .findFirst();
+
+                    if (archiveFile.isPresent()) {
+                        archiveBlobUrl = blobStorageService.uploadFileByMessage(
+                                archiveFile.get().toFile(), AppConstants.FOLDER_ARCHIVE, msg);
+
+                        SummaryProcessedFile archiveEntry = new SummaryProcessedFile();
+                        BeanUtils.copyProperties(customer, archiveEntry);
+                        archiveEntry.setOutputType(AppConstants.OUTPUT_ARCHIVE);
+                        archiveEntry.setBlobUrl(decodeUrl(archiveBlobUrl));
+
+                        finalList.add(archiveEntry);
+                        logger.info("📦 Uploaded archive file for account {}: {}", account, archiveBlobUrl);
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("⚠️ Failed to upload archive file for account {}: {}", account, e.getMessage(), e);
+            }
+
+            // EMAIL, MOBSTAT, PRINT uploads
+            for (String folder : deliveryFolders) {
+                String outputMethod = folderToOutputMethod.get(folder);
+                Path methodPath = jobDir.resolve(folder);
+                String blobUrl = null;
+
+                try {
+                    if (Files.exists(methodPath)) {
+                        Optional<Path> match = Files.list(methodPath)
+                                .filter(Files::isRegularFile)
+                                .filter(p -> p.getFileName().toString().contains(account))
+                                .findFirst();
+
+                        if (match.isPresent()) {
+                            blobUrl = blobStorageService.uploadFileByMessage(match.get().toFile(), folder, msg);
+                            logger.info("✅ Uploaded {} file for account {}: {}", outputMethod, account, blobUrl);
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.warn("⚠️ Failed to upload {} file for account {}: {}", outputMethod, account, e.getMessage(), e);
+                }
+
+                SummaryProcessedFile entry = new SummaryProcessedFile();
+                BeanUtils.copyProperties(customer, entry);
+                entry.setOutputType(outputMethod);
+                entry.setBlobUrl(decodeUrl(blobUrl));
+
+                if (archiveBlobUrl != null) {
+                    entry.setArchiveOutputType(AppConstants.OUTPUT_ARCHIVE);
+                    entry.setArchiveBlobUrl(archiveBlobUrl);
+                }
+
+                finalList.add(entry);
+            }
+        }
+
+        return finalList;
     }
-}
