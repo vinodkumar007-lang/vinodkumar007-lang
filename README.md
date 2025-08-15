@@ -53,9 +53,9 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                 Optional<Path> archiveFile = Files.list(archivePath)
                         .filter(Files::isRegularFile)
                         .filter(p -> {
-                            boolean match = p.getFileName().toString().contains(account);
-                            if (match) logger.debug("✅ Matched archive file for account {}: {}", account, p.getFileName());
-                            return match;
+                            boolean fileNameMatch = p.getFileName().toString().contains(account);
+                            if (fileNameMatch) logger.debug("✅ Matched archive file for account {}: {}", account, p.getFileName());
+                            return fileNameMatch;
                         })
                         .findFirst();
 
@@ -92,17 +92,17 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                 if (Files.exists(methodPath)) {
                     Files.list(methodPath).forEach(f -> logger.debug("   Found file in {}: {}", folder, f.getFileName()));
 
-                    Optional<Path> match = Files.list(methodPath)
+                    Optional<Path> matchedFile = Files.list(methodPath)
                             .filter(Files::isRegularFile)
                             .filter(p -> {
-                                boolean match = p.getFileName().toString().contains(account);
-                                if (match) logger.debug("✅ Matched {} file for account {}: {}", folder, account, p.getFileName());
-                                return match;
+                                boolean fileNameMatch = p.getFileName().toString().contains(account);
+                                if (fileNameMatch) logger.debug("✅ Matched {} file for account {}: {}", folder, account, p.getFileName());
+                                return fileNameMatch;
                             })
                             .findFirst();
 
-                    if (match.isPresent()) {
-                        blobUrl = blobStorageService.uploadFileByMessage(match.get().toFile(), folder, msg);
+                    if (matchedFile.isPresent()) {
+                        blobUrl = blobStorageService.uploadFileByMessage(matchedFile.get().toFile(), folder, msg);
                         logger.info("✅ Uploaded {} file for account {}: {}", outputMethod, account, blobUrl);
                     } else {
                         logger.debug("❌ No matching file found in {} for account {}", folder, account);
@@ -131,78 +131,3 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
     logger.debug("✅ buildDetailedProcessedFiles completed. Final processed list size={}", finalList.size());
     return finalList;
 }
-
-private List<CustomerSummary> parseSTDXml(File xmlFile, Map<String, Map<String, String>> errorMap) {
-    List<CustomerSummary> customerSummaries = new ArrayList<>();
-
-    try {
-        DocumentBuilder builder = DocumentBuilderFactory.newInstance().newDocumentBuilder();
-        Document document = builder.parse(xmlFile);
-        document.getDocumentElement().normalize();
-
-        NodeList customerNodes = document.getElementsByTagName("customer");
-
-        for (int i = 0; i < customerNodes.getLength(); i++) {
-            Element customerElement = (Element) customerNodes.item(i);
-
-            String accountNumber = null;
-            String cisNumber = null;
-            List<String> deliveryMethods = new ArrayList<>();
-
-            NodeList keyNodes = customerElement.getElementsByTagName("key");
-            for (int j = 0; j < keyNodes.getLength(); j++) {
-                Element keyElement = (Element) keyNodes.item(j);
-                String keyName = keyElement.getAttribute("name");
-
-                // ✅ Match even if keyName has suffix (_MFC, _DEBITMAN, etc.)
-                if (keyName != null && keyName.toLowerCase().startsWith("accountnumber")) {
-                    accountNumber = keyElement.getTextContent();
-                } else if (keyName != null && keyName.toLowerCase().startsWith("cisnumber")) {
-                    cisNumber = keyElement.getTextContent();
-                }
-            }
-
-            NodeList queueNodes = customerElement.getElementsByTagName("queueName");
-            for (int q = 0; q < queueNodes.getLength(); q++) {
-                String method = queueNodes.item(q).getTextContent().trim().toUpperCase();
-                if (!method.isEmpty()) {
-                    deliveryMethods.add(method);
-                }
-            }
-
-            if (accountNumber != null && cisNumber != null) {
-                CustomerSummary summary = new CustomerSummary();
-                summary.setAccountNumber(accountNumber);
-                summary.setCisNumber(cisNumber);
-                summary.setCustomerId(accountNumber);
-
-                Map<String, String> deliveryStatusMap = errorMap.getOrDefault(accountNumber, new HashMap<>());
-                summary.setDeliveryStatus(deliveryStatusMap);
-
-                long failedCount = deliveryMethods.stream()
-                        .filter(method -> "FAILED".equalsIgnoreCase(deliveryStatusMap.getOrDefault(method, "")))
-                        .count();
-
-                if (failedCount == deliveryMethods.size()) {
-                    summary.setStatus("FAILED");
-                } else if (failedCount > 0) {
-                    summary.setStatus("PARTIAL");
-                } else {
-                    summary.setStatus("SUCCESS");
-                }
-
-                customerSummaries.add(summary);
-
-                logger.debug("📋 Customer: {}, CIS: {}, Methods: {}, Failed: {}, FinalStatus: {}",
-                        accountNumber, cisNumber, deliveryMethods, failedCount, summary.getStatus());
-            }
-        }
-
-    } catch (Exception e) {
-        logger.error("❌ Failed parsing STD XML file: {}", xmlFile.getAbsolutePath(), e);
-        throw new RuntimeException("Failed to parse XML file: " + xmlFile.getName(), e);
-    }
-
-    return customerSummaries;
-}
-
