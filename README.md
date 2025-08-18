@@ -1,18 +1,3 @@
-
-2025-08-18T06:54:00.344+02:00  WARN 1 --- [pool-1-thread-2] c.n.k.f.service.KafkaListenerService     : [81d7dfb9-cb41-4a47-8438-8e686b0aec52] ❌ Folder 'print' does not exist at path /mnt/nfs/ete-exstream/ete-SA/output/MFC/debbd290-4ac5-4282-9868-606ffa4caab9/print
-2025-08-18T06:54:00.424+02:00  INFO 1 --- [pool-1-thread-2] c.n.k.f.service.KafkaListenerService     : [81d7dfb9-cb41-4a47-8438-8e686b0aec52] ➡️ Processing customer with accountNumber=27713040001
-2025-08-18T06:54:00.424+02:00  WARN 1 --- [pool-1-thread-2] c.n.k.f.service.KafkaListenerService     : [81d7dfb9-cb41-4a47-8438-8e686b0aec52] ❌ Archive folder does not exist: /mnt/nfs/ete-exstream/ete-SA/output/MFC/debbd290-4ac5-4282-9868-606ffa4caab9/archive
-2025-08-18T06:54:00.424+02:00  INFO 1 --- [pool-1-thread-2] c.n.k.f.service.KafkaListenerService     : [81d7dfb9-cb41-4a47-8438-8e686b0aec52] 📂 Checking folder='email' for account 27713040001 at path /mnt/nfs/ete-exstream/ete-SA/output/MFC/debbd290-4ac5-4282-9868-606ffa4caab9/email
-2025-08-18T06:54:00.424+02:00  WARN 1 --- [pool-1-thread-2] c.n.k.f.service.KafkaListenerService     : [81d7dfb9-cb41-4a47-8438-8e686b0aec52] ❌ Folder 'email' does not exist at path /mnt/nfs/ete-exstream/ete-SA/output/MFC/debbd290-4ac5-4282-9868-606ffa4caab9/email
-2025-08-18T06:54:00.424+02:00  INFO 1 --- [pool-1-thread-2] c.n.k.f.service.KafkaListenerService     : [81d7dfb9-cb41-4a47-8438-8e686b0aec52] 📂 Checking folder='mobstat' for account 27713040001 at path /mnt/nfs/ete-exstream/ete-SA/output/MFC/debbd290-4ac5-4282-9868-606ffa4caab9/mobstat
-2025-08-18T06:54:00.424+02:00  WARN 1 --- [pool-1-thread-2] c.n.k.f.service.KafkaListenerService     : [81d7dfb9-cb41-4a47-8438-8e686b0aec52] ❌ Folder 'mobstat' does not exist at path /mnt/nfs/ete-exstream/ete-SA/output/MFC/debbd290-4ac5-4282-9868-606ffa4caab9/mobstat
-2025-08-18T06:54:00.424+02:00  INFO 1 --- [pool-1-thread-2] c.n.k.f.service.KafkaListenerService     : [81d7dfb9-cb41-4a47-8438-8e686b0aec52] 📂 Checking folder='print' for account 27713040001 at path /mnt/nfs/ete-exstream/ete-SA/output/MFC/debbd290-4ac5-4282-9868-606ffa4caab9/print
-2025-08-18T06:54:00.424+02:00  WARN 1 --- [pool-1-thread-2] c.n.k.f.service.KafkaListenerService     : [81d7dfb9-cb41-4a47-8438-8e686b0aec52] ❌ Folder 'print' does not exist at path /mnt/nfs/ete-exstream/ete-SA/output/MFC/debbd290-4ac5-4282-9868-606ffa4caab9/print
-2025-08-18T06:54:00.424+02:00  INFO 1 --- [pool-1-thread-2] c.n.k.f.service.KafkaListenerService     : [81d7dfb9-cb41-4a47-8438-8e686b0aec52] ➡️ Processing customer with accountNumber=27715540001
-2025-08-18T06:5
-
-
-=================
 private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         Path jobDir,
         List<SummaryProcessedFile> customerList,
