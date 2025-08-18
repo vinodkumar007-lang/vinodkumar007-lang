@@ -2,6 +2,9 @@ MFC---Statement-2025-07-23_29104120001.pdf
  
 Debtman--1102504092_LTRCR004.pdf
 
+
+
+
  private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             Path jobDir,
             List<SummaryProcessedFile> customerList,
@@ -138,3 +141,7 @@ Debtman--1102504092_LTRCR004.pdf
         logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
         return finalList;
     }
+
+
+Checking folder='mobstat' for account 29099420001 at path /mnt/nfs/ete-exstream/ete-SA/output/MFC/6524f221-b128-4039-8cac-821f3f803abb/mobstat
+2025-08-18T11:31:03.829+02:00  WARN 1 --- [pool-1-thread-2] c.n.k.f.service.KafkaListenerService     : [81d7dfb9-cb41-4a47-8438-8e686b0aec52] ❌ Folder 'mobstat' does not exist at path /mnt/nfs/ete-exstream/ete-SA/output/MFC/6524f221-b128-4039-8cac-821f3f803abb/mobstat
