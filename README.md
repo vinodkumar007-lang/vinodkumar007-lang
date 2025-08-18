@@ -1,2 +1,2 @@
-Path jobDir = Paths.get(mountPath, AppConstants.OUTPUT_FOLDER, message.getSourceSystem(), otResponse.getJobId());
-            logger.info("[{}] 🔄 Invoking buildDetailedProcessedFiles...", batchId);
+logger.info("[{}] 📂 Resolved jobDir path = {}", batchId, jobDir.toAbsolutePath());
+logger.info("[{}] 🔄 Invoking buildDetailedProcessedFiles...", batchId);
