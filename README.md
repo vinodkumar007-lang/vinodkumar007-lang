@@ -1,101 +1,138 @@
-2025-08-25T19:59:19.563+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_LTRCR007.pdf'
-2025-08-25T19:59:19.563+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_LTRCR007.pdf
-2025-08-25T19:59:19.607+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_LTRCR010.pdf'
-2025-08-25T19:59:19.607+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_LTRCR010.pdf
-2025-08-25T19:59:19.663+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR001.pdf'
-2025-08-25T19:59:19.664+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR001.pdf
-2025-08-25T19:59:19.740+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR002.pdf'
-2025-08-25T19:59:19.740+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR002.pdf
-2025-08-25T19:59:19.769+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR003.pdf'
-2025-08-25T19:59:19.769+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR003.pdf
-2025-08-25T19:59:19.854+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR004.pdf'
-2025-08-25T19:59:19.854+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR004.pdf
-2025-08-25T19:59:19.891+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR005.pdf'
-2025-08-25T19:59:19.891+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR005.pdf
-2025-08-25T19:59:19.960+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR006.pdf'
-2025-08-25T19:59:19.960+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR006.pdf
-2025-08-25T19:59:20.040+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR008.pdf'
-2025-08-25T19:59:20.040+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR008.pdf
-2025-08-25T19:59:20.078+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR009.pdf'
-2025-08-25T19:59:20.078+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR009.pdf
-2025-08-25T19:59:20.245+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR012.pdf'
-2025-08-25T19:59:20.245+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR012.pdf
-2025-08-25T19:59:20.460+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR013.pdf'
-2025-08-25T19:59:20.460+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR013.pdf
-2025-08-25T19:59:20.597+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR014.pdf'
-2025-08-25T19:59:20.597+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR014.pdf
-2025-08-25T19:59:20.664+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR015.pdf'
-2025-08-25T19:59:20.664+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR015.pdf
-2025-08-25T19:59:20.740+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR016.pdf'
-2025-08-25T19:59:20.740+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR016.pdf
-2025-08-25T19:59:20.778+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR017.pdf'
-2025-08-25T19:59:20.778+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR017.pdf
-2025-08-25T19:59:23.851+02:00 DEBUG 1 --- [ntainer#0-1-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
-2025-08-25T19:59:23.851+02:00 DEBUG 1 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
-2025-08-25T19:59:23.851+02:00 DEBUG 1 --- [ntainer#0-2-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
-2025-08-25T19:59:23.966+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR018.pdf'
-2025-08-25T19:59:23.966+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR018.pdf
-2025-08-25T19:59:24.075+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR019.pdf'
-2025-08-25T19:59:24.076+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR019.pdf
-2025-08-25T19:59:24.084+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ➡️ Processing customer with accountNumber=1120695589
-2025-08-25T19:59:24.190+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR001.pdf'
-2025-08-25T19:59:24.190+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR001.pdf
-2025-08-25T19:59:24.234+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR002.pdf'
-2025-08-25T19:59:24.234+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR002.pdf
-2025-08-25T19:59:24.284+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR003.pdf'
-2025-08-25T19:59:24.284+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR003.pdf
-2025-08-25T19:59:24.351+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR004.pdf'
-2025-08-25T19:59:24.351+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR004.pdf
-2025-08-25T19:59:24.396+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR005.pdf'
-2025-08-25T19:59:24.396+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR005.pdf
-2025-08-25T19:59:24.464+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR006.pdf'
-2025-08-25T19:59:24.464+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR006.pdf
-2025-08-25T19:59:24.534+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR008.pdf'
-2025-08-25T19:59:24.534+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR008.pdf
-2025-08-25T19:59:24.575+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR009.pdf'
-2025-08-25T19:59:24.575+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR009.pdf
-2025-08-25T19:59:24.640+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR012.pdf'
-2025-08-25T19:59:24.640+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR012.pdf
-2025-08-25T19:59:24.679+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR013.pdf'
-2025-08-25T19:59:24.679+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR013.pdf
-2025-08-25T19:59:24.768+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR014.pdf'
-2025-08-25T19:59:24.768+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR014.pdf
-2025-08-25T19:59:24.821+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR015.pdf'
-2025-08-25T19:59:24.821+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR015.pdf
-2025-08-25T19:59:24.862+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR016.pdf'
-2025-08-25T19:59:24.863+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR016.pdf
-2025-08-25T19:59:24.968+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR017.pdf'
-2025-08-25T19:59:24.968+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR017.pdf
-2025-08-25T19:59:25.062+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR018.pdf'
-2025-08-25T19:59:25.062+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR018.pdf
-2025-08-25T19:59:25.140+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR019.pdf'
-2025-08-25T19:59:25.141+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_EMLCR019.pdf
-2025-08-25T19:59:25.178+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_LTRCR007.pdf'
-2025-08-25T19:59:25.178+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_LTRCR007.pdf
-2025-08-25T19:59:25.243+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_LTRCR010.pdf'
-2025-08-25T19:59:25.243+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] 📦 Uploaded archive file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1120695589_LTRCR010.pdf
-2025-08-25T19:59:25.293+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR001.pdf'
-2025-08-25T19:59:25.293+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR001.pdf
-2025-08-25T19:59:25.361+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR002.pdf'
-2025-08-25T19:59:25.362+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR002.pdf
-2025-08-25T19:59:25.447+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR003.pdf'
-2025-08-25T19:59:25.447+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR003.pdf
-2025-08-25T19:59:25.483+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR004.pdf'
-2025-08-25T19:59:25.483+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR004.pdf
-2025-08-25T19:59:25.570+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR005.pdf'
-2025-08-25T19:59:25.570+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR005.pdf
-2025-08-25T19:59:25.641+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR006.pdf'
-2025-08-25T19:59:25.641+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR006.pdf
-2025-08-25T19:59:25.677+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR008.pdf'
-2025-08-25T19:59:25.677+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR008.pdf
-2025-08-25T19:59:25.757+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR009.pdf'
-2025-08-25T19:59:25.757+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR009.pdf
-2025-08-25T19:59:25.789+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR012.pdf'
-2025-08-25T19:59:25.789+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR012.pdf
-2025-08-25T19:59:25.877+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR013.pdf'
-2025-08-25T19:59:25.877+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR013.pdf
-2025-08-25T19:59:25.960+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR014.pdf'
-2025-08-25T19:59:25.960+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR014.pdf
-2025-08-25T19:59:25.990+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR015.pdf'
-2025-08-25T19:59:25.990+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [76868555-98c9-4298-8e40-879d85b1ba8a] ✅ Uploaded EMAIL file for account 1120695589: https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN%2F76868555-98c9-4298-8e40-879d85b1ba8a%2F19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Femail%2F1120695589_EMLCR015.pdf
-Logs from Aug 25, 2025 to Aug 25, 2025 UTC
+private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+            Path jobDir,
+            List<SummaryProcessedFile> customerList,
+            Map<String, Map<String, String>> errorMap,
+            KafkaMessage msg) throws IOException {
+
+        List<SummaryProcessedFile> finalList = new ArrayList<>();
+        List<String> deliveryFolders = List.of(
+                AppConstants.FOLDER_EMAIL,
+                AppConstants.FOLDER_MOBSTAT,
+                AppConstants.FOLDER_PRINT
+        );
+
+        Map<String, String> folderToOutputMethod = Map.of(
+                AppConstants.FOLDER_EMAIL, AppConstants.OUTPUT_EMAIL,
+                AppConstants.FOLDER_MOBSTAT, AppConstants.OUTPUT_MOBSTAT,
+                AppConstants.FOLDER_PRINT, AppConstants.OUTPUT_PRINT
+        );
+
+        logger.info("[{}] 🔍 Entered buildDetailedProcessedFiles with jobDir={}, customerList size={}",
+                msg.getBatchId(), jobDir, (customerList != null ? customerList.size() : null));
+
+        if (jobDir == null || customerList == null || msg == null) {
+            logger.warn("[{}] ⚠️ One or more input parameters are null: jobDir={}, customerList={}, msg={}",
+                    (msg != null ? msg.getBatchId() : "N/A"), jobDir, customerList, msg);
+            return finalList;
+        }
+
+        Path archivePath = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
+        logger.debug("[{}] 📂 Archive folder path resolved to: {}", msg.getBatchId(), archivePath);
+
+        for (SummaryProcessedFile customer : customerList) {
+            if (customer == null) {
+                logger.debug("[{}] ⚠️ Skipping null customer entry", msg.getBatchId());
+                continue;
+            }
+
+            String account = customer.getAccountNumber();
+            logger.info("[{}] ➡️ Processing customer with accountNumber={}", msg.getBatchId(), account);
+
+            if (account == null || account.isBlank()) {
+                logger.warn("[{}] ⚠️ Skipping customer with empty account number", msg.getBatchId());
+                continue;
+            }
+
+            // -------- ARCHIVE upload (store all archive files for this account) --------
+            List<String> archiveBlobUrls = new ArrayList<>();
+            if (Files.exists(archivePath)) {
+                try (Stream<Path> stream = Files.walk(archivePath)) {
+                    List<Path> archiveFiles = stream
+                            .filter(Files::isRegularFile)
+                            .filter(p -> p.getFileName().toString().contains(account))
+                            .toList();
+
+                    for (Path archiveFile : archiveFiles) {
+                        try {
+                            String archiveBlobUrl = blobStorageService.uploadFileByMessage(
+                                    archiveFile.toFile(), AppConstants.FOLDER_ARCHIVE, msg);
+
+                            archiveBlobUrls.add(decodeUrl(archiveBlobUrl));
+
+                            // also add a pure archive entry
+                            SummaryProcessedFile archiveEntry = new SummaryProcessedFile();
+                            BeanUtils.copyProperties(customer, archiveEntry);
+                            archiveEntry.setOutputType(AppConstants.OUTPUT_ARCHIVE);
+                            archiveEntry.setFileName(archiveFile.getFileName().toString());
+                            archiveEntry.setBlobUrl(decodeUrl(archiveBlobUrl));
+                            finalList.add(archiveEntry);
+
+                            logger.info("[{}] 📦 Uploaded archive file for account {}: {}",
+                                    msg.getBatchId(), account, archiveBlobUrl);
+                        } catch (Exception e) {
+                            logger.error("[{}] ⚠️ Failed to upload archive file for account {}: {}",
+                                    msg.getBatchId(), account, e.getMessage(), e);
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.error("[{}] ⚠️ Failed scanning ARCHIVE folder for account {}: {}",
+                            msg.getBatchId(), account, e.getMessage(), e);
+                }
+            }
+
+            // -------- EMAIL, MOBSTAT, PRINT uploads --------
+            for (String folder : deliveryFolders) {
+                Path methodPath = jobDir.resolve(folder);
+
+                if (!Files.exists(methodPath)) {
+                    logger.debug("[{}] Folder '{}' does not exist at path {}. Skipping.", msg.getBatchId(), folder, methodPath);
+                    continue;
+                }
+
+                String outputMethod = folderToOutputMethod.get(folder);
+
+                try (Stream<Path> stream = Files.walk(methodPath)) {
+                    stream.filter(Files::isRegularFile)
+                            .filter(p -> p.getFileName().toString().contains(account))
+                            .forEach(p -> {
+                                try {
+                                    String blobUrl = blobStorageService.uploadFileByMessage(p.toFile(), folder, msg);
+                                    logger.info("[{}] ✅ Uploaded {} file for account {}: {}",
+                                            msg.getBatchId(), outputMethod, account, blobUrl);
+
+                                    // now pair this file with ALL archive files
+                                    if (!archiveBlobUrls.isEmpty()) {
+                                        for (String archiveBlobUrl : archiveBlobUrls) {
+                                            SummaryProcessedFile entry = new SummaryProcessedFile();
+                                            BeanUtils.copyProperties(customer, entry);
+                                            entry.setOutputType(outputMethod);
+                                            entry.setFileName(p.getFileName().toString());
+                                            entry.setBlobUrl(decodeUrl(blobUrl));
+                                            entry.setArchiveOutputType(AppConstants.OUTPUT_ARCHIVE);
+                                            entry.setArchiveBlobUrl(archiveBlobUrl);
+
+                                            finalList.add(entry);
+                                        }
+                                    } else {
+                                        // fallback: no archive, just add delivery file
+                                        SummaryProcessedFile entry = new SummaryProcessedFile();
+                                        BeanUtils.copyProperties(customer, entry);
+                                        entry.setOutputType(outputMethod);
+                                        entry.setFileName(p.getFileName().toString());
+                                        entry.setBlobUrl(decodeUrl(blobUrl));
+                                        finalList.add(entry);
+                                    }
+                                } catch (Exception e) {
+                                    logger.error("[{}] ⚠️ Failed to upload {} file for account {}: {}",
+                                            msg.getBatchId(), outputMethod, account, e.getMessage(), e);
+                                }
+                            });
+                } catch (Exception e) {
+                    logger.error("[{}] ⚠️ Failed to scan folder {} for account {}: {}", msg.getBatchId(), folder, account, e.getMessage(), e);
+                }
+            }
+        }
+
+        logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
+        return finalList;
+    }
