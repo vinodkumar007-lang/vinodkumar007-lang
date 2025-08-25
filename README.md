@@ -26,7 +26,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         return finalList;
     }
 
-    // -------- 1️⃣ Upload all archive files once and map by account --------
+    // 1️⃣ Upload all archive files once and map by account
     Path archivePath = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
     Map<String, String> accountToArchiveUrl = new HashMap<>();
     if (Files.exists(archivePath)) {
@@ -34,8 +34,9 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             List<Path> archiveFiles = stream.filter(Files::isRegularFile).toList();
             for (Path archiveFile : archiveFiles) {
                 String fileName = archiveFile.getFileName().toString();
-                String account = extractAccountFromFileName(fileName); 
+                String account = extractAccountFromFileName(fileName);
                 if (account == null) continue;
+
                 try {
                     String archiveBlobUrl = blobStorageService.uploadFileByMessage(
                             archiveFile.toFile(), AppConstants.FOLDER_ARCHIVE, msg);
@@ -51,20 +52,21 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         }
     }
 
-    // -------- 2️⃣ Process each customer and merge delivery types --------
+    // 2️⃣ Process each customer and merge delivery files
     for (SummaryProcessedFile customer : customerList) {
         if (customer == null) continue;
         String account = customer.getAccountNumber();
         if (account == null || account.isBlank()) continue;
 
-        // Start a single merged entry per customer/account
         SummaryProcessedFile mergedEntry = new SummaryProcessedFile();
         BeanUtils.copyProperties(customer, mergedEntry);
-        mergedEntry.setOutputType("MERGED");
-        mergedEntry.setArchiveBlobUrl(accountToArchiveUrl.get(account));
-        mergedEntry.setOverallStatus("SUCCESS"); // will adjust later based on actual delivery uploads
 
-        // -------- 3️⃣ Upload delivery files --------
+        // Attach archive URL if exists
+        if (accountToArchiveUrl.containsKey(account)) {
+            mergedEntry.setArchiveBlobUrl(accountToArchiveUrl.get(account));
+        }
+
+        // Upload delivery files
         for (String folder : deliveryFolders) {
             Path methodPath = jobDir.resolve(folder);
             if (!Files.exists(methodPath)) continue;
@@ -88,7 +90,6 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                         }
 
                         logger.info("[{}] ✅ Uploaded {} file for account {}: {}", msg.getBatchId(), outputMethod, account, deliveryBlobUrl);
-
                     } catch (Exception e) {
                         logger.error("[{}] ⚠️ Failed to upload {} file for account {}: {}", msg.getBatchId(), outputMethod, account, e.getMessage(), e);
                     }
@@ -98,13 +99,14 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             }
         }
 
+        // Add merged entry
         finalList.add(mergedEntry);
     }
 
     logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
     return finalList;
 }
-====
+
 
 private static List<ProcessedFileEntry> buildProcessedFileEntries(
         List<SummaryProcessedFile> processedFiles,
@@ -118,36 +120,45 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         entry.setCustomerId(file.getCustomerId());
         entry.setAccountNumber(file.getAccountNumber());
 
-        // Assign delivery URLs from merged file
+        // Map URLs and statuses
         entry.setEmailBlobUrl(file.getPdfEmailFileUrl());
         entry.setMobstatBlobUrl(file.getPdfMobstatFileUrl());
         entry.setPrintBlobUrl(file.getPrintFileUrl());
         entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
 
+        // Determine delivery status using blob URLs and error map
         Map<String, String> errors = errorMap.getOrDefault(file.getAccountNumber(), Collections.emptyMap());
 
-        // Determine status for each delivery type
-        entry.setEmailStatus(isNonEmpty(file.getPdfEmailFileUrl()) ? "SUCCESS"
-                : errors.getOrDefault(AppConstants.OUTPUT_EMAIL, "").equalsIgnoreCase("FAILED") ? "FAILED" : "");
-        entry.setMobstatStatus(isNonEmpty(file.getPdfMobstatFileUrl()) ? "SUCCESS"
-                : errors.getOrDefault(AppConstants.OUTPUT_MOBSTAT, "").equalsIgnoreCase("FAILED") ? "FAILED" : "");
-        entry.setPrintStatus(isNonEmpty(file.getPrintFileUrl()) ? "SUCCESS"
-                : errors.getOrDefault(AppConstants.OUTPUT_PRINT, "").equalsIgnoreCase("FAILED") ? "FAILED" : "");
-        entry.setArchiveStatus(isNonEmpty(file.getArchiveBlobUrl()) ? "SUCCESS" : "FAILED");
+        entry.setEmailStatus(isNonEmpty(file.getPdfEmailFileUrl()) ? "SUCCESS" :
+                "FAILED".equalsIgnoreCase(errors.getOrDefault("EMAIL", "")) ? "FAILED" : "");
+        entry.setMobstatStatus(isNonEmpty(file.getPdfMobstatFileUrl()) ? "SUCCESS" :
+                "FAILED".equalsIgnoreCase(errors.getOrDefault("MOBSTAT", "")) ? "FAILED" : "");
+        entry.setPrintStatus(isNonEmpty(file.getPrintFileUrl()) ? "SUCCESS" :
+                "FAILED".equalsIgnoreCase(errors.getOrDefault("PRINT", "")) ? "FAILED" : "");
+        entry.setArchiveStatus(isNonEmpty(file.getArchiveBlobUrl()) ? "SUCCESS" :
+                "FAILED".equalsIgnoreCase(errors.getOrDefault("ARCHIVE", "")) ? "FAILED" : "");
 
-        // Calculate overallStatus
-        boolean anySuccess = "SUCCESS".equals(entry.getEmailStatus()) || "SUCCESS".equals(entry.getMobstatStatus())
-                || "SUCCESS".equals(entry.getPrintStatus()) || "SUCCESS".equals(entry.getArchiveStatus());
+        // Overall status logic
+        boolean emailSuccess = "SUCCESS".equals(entry.getEmailStatus());
+        boolean mobstatSuccess = "SUCCESS".equals(entry.getMobstatStatus());
+        boolean printSuccess = "SUCCESS".equals(entry.getPrintStatus());
+        boolean archiveSuccess = "SUCCESS".equals(entry.getArchiveStatus());
 
-        if (anySuccess) {
+        boolean emailFailed = !emailSuccess;
+        boolean mobstatFailed = !mobstatSuccess;
+        boolean printFailed = !printSuccess;
+
+        if ((emailSuccess && archiveSuccess) ||
+            (mobstatSuccess && archiveSuccess && emailFailed && printFailed) ||
+            (printSuccess && archiveSuccess && emailFailed && mobstatFailed)) {
             entry.setOverallStatus("SUCCESS");
-        } else if (!anySuccess && (entry.getArchiveStatus() != null && entry.getArchiveStatus().equals("SUCCESS"))) {
+        } else if (archiveSuccess) {
             entry.setOverallStatus("PARTIAL");
         } else {
             entry.setOverallStatus("FAILED");
         }
 
-        // Adjust based on errorMap
+        // If error map exists, mark PARTIAL if not already FAILED
         if (errorMap.containsKey(entry.getAccountNumber()) && !"FAILED".equals(entry.getOverallStatus())) {
             entry.setOverallStatus("PARTIAL");
         }
