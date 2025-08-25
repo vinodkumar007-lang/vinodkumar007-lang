@@ -1,93 +1,138 @@
-// ✅ Count archive combinations (not just distinct customers)
-long totalArchiveCombos = processedFileEntries.stream()
-        .filter(pf -> isNonEmpty(pf.getArchiveBlobUrl()))
-        .count();
-metadata.setTotalCustomersProcessed((int) totalArchiveCombos);
+private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+            Path jobDir,
+            List<SummaryProcessedFile> customerList,
+            Map<String, Map<String, String>> errorMap,
+            KafkaMessage msg) throws IOException {
 
-private static List<ProcessedFileEntry> buildProcessedFileEntries(
-        List<SummaryProcessedFile> processedFiles,
-        Map<String, Map<String, String>> errorMap,
-        List<PrintFile> printFiles) {
+        List<SummaryProcessedFile> finalList = new ArrayList<>();
+        List<String> deliveryFolders = List.of(
+                AppConstants.FOLDER_EMAIL,
+                AppConstants.FOLDER_MOBSTAT,
+                AppConstants.FOLDER_PRINT
+        );
 
-    List<ProcessedFileEntry> allEntries = new ArrayList<>();
+        Map<String, String> folderToOutputMethod = Map.of(
+                AppConstants.FOLDER_EMAIL, AppConstants.OUTPUT_EMAIL,
+                AppConstants.FOLDER_MOBSTAT, AppConstants.OUTPUT_MOBSTAT,
+                AppConstants.FOLDER_PRINT, AppConstants.OUTPUT_PRINT
+        );
 
-    for (SummaryProcessedFile file : processedFiles) {
-        ProcessedFileEntry entry = new ProcessedFileEntry();
-        entry.setCustomerId(file.getCustomerId());
-        entry.setAccountNumber(file.getAccountNumber());
+        logger.info("[{}] 🔍 Entered buildDetailedProcessedFiles with jobDir={}, customerList size={}",
+                msg.getBatchId(), jobDir, (customerList != null ? customerList.size() : null));
 
-        String outputType = file.getOutputType();
-        String blobUrl = file.getBlobUrl();
-        Map<String, String> errors = errorMap.getOrDefault(file.getAccountNumber(), Collections.emptyMap());
-
-        // Determine delivery status
-        String status;
-        if (isNonEmpty(blobUrl)) {
-            status = "SUCCESS";
-        } else if ("FAILED".equalsIgnoreCase(errors.getOrDefault(outputType, ""))) {
-            status = "FAILED";
-        } else {
-            status = "";
+        if (jobDir == null || customerList == null || msg == null) {
+            logger.warn("[{}] ⚠️ One or more input parameters are null: jobDir={}, customerList={}, msg={}",
+                    (msg != null ? msg.getBatchId() : "N/A"), jobDir, customerList, msg);
+            return finalList;
         }
 
-        switch (outputType) {
-            case "EMAIL" -> {
-                entry.setEmailBlobUrl(blobUrl);
-                entry.setEmailStatus(status);
+        Path archivePath = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
+        logger.debug("[{}] 📂 Archive folder path resolved to: {}", msg.getBatchId(), archivePath);
+
+        for (SummaryProcessedFile customer : customerList) {
+            if (customer == null) {
+                logger.debug("[{}] ⚠️ Skipping null customer entry", msg.getBatchId());
+                continue;
             }
-            case "PRINT" -> {
-                if (printFiles != null && !printFiles.isEmpty()) {
-                    entry.setPrintStatus("SUCCESS");
-                } else {
-                    entry.setPrintStatus("");
+
+            String account = customer.getAccountNumber();
+            logger.info("[{}] ➡️ Processing customer with accountNumber={}", msg.getBatchId(), account);
+
+            if (account == null || account.isBlank()) {
+                logger.warn("[{}] ⚠️ Skipping customer with empty account number", msg.getBatchId());
+                continue;
+            }
+
+            // -------- ARCHIVE upload (store all archive files for this account) --------
+            List<String> archiveBlobUrls = new ArrayList<>();
+            if (Files.exists(archivePath)) {
+                try (Stream<Path> stream = Files.walk(archivePath)) {
+                    List<Path> archiveFiles = stream
+                            .filter(Files::isRegularFile)
+                            .filter(p -> p.getFileName().toString().contains(account))
+                            .toList();
+
+                    for (Path archiveFile : archiveFiles) {
+                        try {
+                            String archiveBlobUrl = blobStorageService.uploadFileByMessage(
+                                    archiveFile.toFile(), AppConstants.FOLDER_ARCHIVE, msg);
+
+                            archiveBlobUrls.add(decodeUrl(archiveBlobUrl));
+
+                            // also add a pure archive entry
+                            SummaryProcessedFile archiveEntry = new SummaryProcessedFile();
+                            BeanUtils.copyProperties(customer, archiveEntry);
+                            archiveEntry.setOutputType(AppConstants.OUTPUT_ARCHIVE);
+                            archiveEntry.setFileName(archiveFile.getFileName().toString());
+                            archiveEntry.setBlobUrl(decodeUrl(archiveBlobUrl));
+                            finalList.add(archiveEntry);
+
+                            logger.info("[{}] 📦 Uploaded archive file for account {}: {}",
+                                    msg.getBatchId(), account, archiveBlobUrl);
+                        } catch (Exception e) {
+                            logger.error("[{}] ⚠️ Failed to upload archive file for account {}: {}",
+                                    msg.getBatchId(), account, e.getMessage(), e);
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.error("[{}] ⚠️ Failed scanning ARCHIVE folder for account {}: {}",
+                            msg.getBatchId(), account, e.getMessage(), e);
                 }
             }
-            case "MOBSTAT" -> {
-                entry.setMobstatBlobUrl(blobUrl);
-                entry.setMobstatStatus(status);
+
+            // -------- EMAIL, MOBSTAT, PRINT uploads --------
+            for (String folder : deliveryFolders) {
+                Path methodPath = jobDir.resolve(folder);
+
+                if (!Files.exists(methodPath)) {
+                    logger.debug("[{}] Folder '{}' does not exist at path {}. Skipping.", msg.getBatchId(), folder, methodPath);
+                    continue;
+                }
+
+                String outputMethod = folderToOutputMethod.get(folder);
+
+                try (Stream<Path> stream = Files.walk(methodPath)) {
+                    stream.filter(Files::isRegularFile)
+                            .filter(p -> p.getFileName().toString().contains(account))
+                            .forEach(p -> {
+                                try {
+                                    String blobUrl = blobStorageService.uploadFileByMessage(p.toFile(), folder, msg);
+                                    logger.info("[{}] ✅ Uploaded {} file for account {}: {}",
+                                            msg.getBatchId(), outputMethod, account, blobUrl);
+
+                                    // now pair this file with ALL archive files
+                                    if (!archiveBlobUrls.isEmpty()) {
+                                        for (String archiveBlobUrl : archiveBlobUrls) {
+                                            SummaryProcessedFile entry = new SummaryProcessedFile();
+                                            BeanUtils.copyProperties(customer, entry);
+                                            entry.setOutputType(outputMethod);
+                                            entry.setFileName(p.getFileName().toString());
+                                            entry.setBlobUrl(decodeUrl(blobUrl));
+                                            entry.setArchiveOutputType(AppConstants.OUTPUT_ARCHIVE);
+                                            entry.setArchiveBlobUrl(archiveBlobUrl);
+
+                                            finalList.add(entry);
+                                        }
+                                    } else {
+                                        // fallback: no archive, just add delivery file
+                                        SummaryProcessedFile entry = new SummaryProcessedFile();
+                                        BeanUtils.copyProperties(customer, entry);
+                                        entry.setOutputType(outputMethod);
+                                        entry.setFileName(p.getFileName().toString());
+                                        entry.setBlobUrl(decodeUrl(blobUrl));
+                                        finalList.add(entry);
+                                    }
+                                } catch (Exception e) {
+                                    logger.error("[{}] ⚠️ Failed to upload {} file for account {}: {}",
+                                            msg.getBatchId(), outputMethod, account, e.getMessage(), e);
+                                }
+                            });
+                } catch (Exception e) {
+                    logger.error("[{}] ⚠️ Failed to scan folder {} for account {}: {}", msg.getBatchId(), folder, account, e.getMessage(), e);
+                }
             }
-            case "ARCHIVE" -> {
-                entry.setArchiveBlobUrl(blobUrl);
-                entry.setArchiveStatus(status);
-            }
         }
 
-        // ---- overallStatus per entry (each archive combination gets its own record) ----
-        String email = entry.getEmailStatus();
-        String print = entry.getPrintStatus();
-        String mobstat = entry.getMobstatStatus();
-        String archive = entry.getArchiveStatus();
-
-        boolean isEmailSuccess = "SUCCESS".equals(email);
-        boolean isPrintSuccess = "SUCCESS".equals(print);
-        boolean isMobstatSuccess = "SUCCESS".equals(mobstat);
-        boolean isArchiveSuccess = "SUCCESS".equals(archive);
-
-        boolean isEmailMissingOrFailed = email == null || "FAILED".equals(email) || "".equals(email);
-        boolean isPrintMissingOrFailed = print == null || "FAILED".equals(print) || "".equals(print);
-        boolean isMobstatMissingOrFailed = mobstat == null || "FAILED".equals(mobstat) || "".equals(mobstat);
-
-        if (isEmailSuccess && isArchiveSuccess) {
-            entry.setOverallStatus("SUCCESS");
-        } else if (isMobstatSuccess && isArchiveSuccess && isEmailMissingOrFailed && isPrintMissingOrFailed) {
-            entry.setOverallStatus("SUCCESS");
-        } else if (isPrintSuccess && isArchiveSuccess && isEmailMissingOrFailed && isMobstatMissingOrFailed) {
-            entry.setOverallStatus("SUCCESS");
-        } else if (isArchiveSuccess && isEmailMissingOrFailed && isMobstatMissingOrFailed && isPrintMissingOrFailed) {
-            entry.setOverallStatus("PARTIAL");
-        } else if (isArchiveSuccess) {
-            entry.setOverallStatus("PARTIAL");
-        } else {
-            entry.setOverallStatus("FAILED");
-        }
-
-        if (errorMap.containsKey(entry.getAccountNumber())
-                && !"FAILED".equals(entry.getOverallStatus())) {
-            entry.setOverallStatus("PARTIAL");
-        }
-
-        allEntries.add(entry);
+        logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
+        return finalList;
     }
-
-    return allEntries;
-}
