@@ -1,3 +1,11 @@
+// Helper: implement proper logic to extract account from file name
+    private String extractAccountFromFileName(String fileName) {
+        // Example: 1002444400101_LHDLR02E.pdf => account = 1002444400101
+        if (fileName == null || !fileName.contains("_")) return null;
+        return fileName.split("_")[0];
+    }
+
+
 // ===============================
 // 1️⃣ Build detailed processed files per customer
 // ===============================
@@ -176,3 +184,4 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
 
     return allEntries;
 }
+
