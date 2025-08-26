@@ -21,12 +21,12 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 
     // -------- Upload all archive files and map by account + filename --------
     Path archivePath = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
-    Map<String, Map<String, String>> accountToArchiveMap = new HashMap<>(); // account -> (filename -> URL)
+    Map<String, Map<String, String>> accountToArchiveMap = new HashMap<>();
     if (Files.exists(archivePath)) {
         try (Stream<Path> stream = Files.walk(archivePath)) {
             stream.filter(Files::isRegularFile).forEach(file -> {
                 String fileName = file.getFileName().toString();
-                boolean isMfcFile = fileName.startsWith("MFC"); // detect MFC files
+                boolean isMfcFile = fileName.startsWith("MFC");
                 String account = extractAccountFromFileName(fileName, isMfcFile);
                 if (account == null) return;
 
@@ -43,10 +43,10 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         }
     }
 
-    // -------- Upload delivery files and map by filename --------
-    Map<String, String> emailFileMap = new HashMap<>();
-    Map<String, String> mobstatFileMap = new HashMap<>();
-    Map<String, String> printFileMap = new HashMap<>();
+    // -------- Upload delivery files and map by account/filename --------
+    Map<String, List<FileUrlPair>> emailFileMap = new HashMap<>();
+    Map<String, List<FileUrlPair>> mobstatFileMap = new HashMap<>();
+    Map<String, List<FileUrlPair>> printFileMap = new HashMap<>();
 
     for (String folder : deliveryFolders) {
         Path folderPath = jobDir.resolve(folder);
@@ -55,16 +55,21 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         try (Stream<Path> stream = Files.walk(folderPath)) {
             stream.filter(Files::isRegularFile).forEach(file -> {
                 String fileName = file.getFileName().toString();
-                boolean isMfcFile = fileName.startsWith("MFC"); // detect MFC files
+                boolean isMfcFile = fileName.startsWith("MFC");
+                String account = isMfcFile ? extractAccountFromFileName(fileName, true) : null;
+
                 try {
-                    String url = decodeUrl(
-                            blobStorageService.uploadFileByMessage(file.toFile(), folder, msg)
-                    );
+                    String url = decodeUrl(blobStorageService.uploadFileByMessage(file.toFile(), folder, msg));
+
                     switch (folder) {
-                        case AppConstants.FOLDER_EMAIL -> emailFileMap.put(fileName, url);
-                        case AppConstants.FOLDER_MOBSTAT -> mobstatFileMap.put(fileName, url);
-                        case AppConstants.FOLDER_PRINT -> printFileMap.put(fileName, url);
+                        case AppConstants.FOLDER_EMAIL -> emailFileMap.computeIfAbsent(account != null ? account : fileName, k -> new ArrayList<>())
+                                .add(new FileUrlPair(fileName, url));
+                        case AppConstants.FOLDER_MOBSTAT -> mobstatFileMap.computeIfAbsent(account != null ? account : fileName, k -> new ArrayList<>())
+                                .add(new FileUrlPair(fileName, url));
+                        case AppConstants.FOLDER_PRINT -> printFileMap.computeIfAbsent(account != null ? account : fileName, k -> new ArrayList<>())
+                                .add(new FileUrlPair(fileName, url));
                     }
+
                     logger.info("[{}] ✅ Uploaded {} file: {}", msg.getBatchId(), folderToOutputMethod.get(folder), url);
                 } catch (Exception e) {
                     logger.error("[{}] ⚠️ Failed to upload {} file {}: {}", msg.getBatchId(), folderToOutputMethod.get(folder), fileName, e.getMessage(), e);
@@ -73,8 +78,8 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         }
     }
 
-    // -------- Build final list: only matching customer + account --------
-    Set<String> uniqueKeys = new HashSet<>(); // customerId + accountNumber + archiveFilename
+    // -------- Build final list: handle DEBTMAN and MFC --------
+    Set<String> uniqueKeys = new HashSet<>();
 
     for (SummaryProcessedFile customer : customerList) {
         if (customer == null || customer.getAccountNumber() == null) continue;
@@ -86,7 +91,6 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             String archiveFileName = archiveEntry.getKey();
             String archiveUrl = archiveEntry.getValue();
 
-            // ✅ Prevent duplicates
             String key = customer.getCustomerId() + "|" + account + "|" + archiveFileName;
             if (uniqueKeys.contains(key)) continue;
             uniqueKeys.add(key);
@@ -95,10 +99,27 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             BeanUtils.copyProperties(customer, entry);
             entry.setArchiveBlobUrl(archiveUrl);
 
-            // Match delivery files only if filename matches
-            entry.setPdfEmailFileUrl(emailFileMap.get(archiveFileName));
-            entry.setPdfMobstatFileUrl(mobstatFileMap.get(archiveFileName));
-            entry.setPrintFileUrl(printFileMap.get(archiveFileName));
+            // --- DEBTMAN: match by filename ---
+            entry.setPdfEmailFileUrl(emailFileMap.getOrDefault(archiveFileName, List.of())
+                    .stream().map(FileUrlPair::getUrl).findFirst().orElse(null));
+            entry.setPdfMobstatFileUrl(mobstatFileMap.getOrDefault(archiveFileName, List.of())
+                    .stream().map(FileUrlPair::getUrl).findFirst().orElse(null));
+            entry.setPrintFileUrl(printFileMap.getOrDefault(archiveFileName, List.of())
+                    .stream().map(FileUrlPair::getUrl).findFirst().orElse(null));
+
+            // --- MFC: attach ALL delivery files for this account ---
+            if (archiveFileName.startsWith("MFC")) {
+                List<String> allEmailUrls = emailFileMap.getOrDefault(account, List.of())
+                        .stream().map(FileUrlPair::getUrl).toList();
+                List<String> allMobstatUrls = mobstatFileMap.getOrDefault(account, List.of())
+                        .stream().map(FileUrlPair::getUrl).toList();
+                List<String> allPrintUrls = printFileMap.getOrDefault(account, List.of())
+                        .stream().map(FileUrlPair::getUrl).toList();
+
+                entry.setAllEmailUrls(allEmailUrls);
+                entry.setAllMobstatUrls(allMobstatUrls);
+                entry.setAllPrintUrls(allPrintUrls);
+            }
 
             finalList.add(entry);
         }
@@ -108,11 +129,18 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
     return finalList;
 }
 
-// --- Updated helper for MFC ---
-public static String extractAccountFromFileName(String fileName, boolean isMfcFile) {
-    if (fileName == null || !fileName.contains("_")) return null;
-    String[] parts = fileName.split("_");
-    return isMfcFile ? parts[1] : parts[0]; // second part for MFC, first for normal
+// --- Helper class ---
+private static class FileUrlPair {
+    private final String fileName;
+    private final String url;
+
+    public FileUrlPair(String fileName, String url) {
+        this.fileName = fileName;
+        this.url = url;
+    }
+
+    public String getFileName() { return fileName; }
+    public String getUrl() { return url; }
 }
 
 private static List<ProcessedFileEntry> buildProcessedFileEntries(
@@ -144,24 +172,43 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         ProcessedFileEntry entry = new ProcessedFileEntry();
         entry.setCustomerId(file.getCustomerId());
         entry.setAccountNumber(account);
-        entry.setEmailBlobUrl(file.getPdfEmailFileUrl());
-        entry.setMobstatBlobUrl(file.getPdfMobstatFileUrl());
-        entry.setPrintBlobUrl(file.getPrintFileUrl());
         entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
 
-        Map<String, String> errors = errorMap.getOrDefault(account, Collections.emptyMap());
+        // --- Handle MFC: collect all delivery URLs for this archive file ---
+        if (isMfcFile) {
+            List<String> emailUrls = file.getAllEmailFileUrls();   // new method / list in SummaryProcessedFile
+            List<String> mobstatUrls = file.getAllMobstatFileUrls();
+            List<String> printUrls = file.getAllPrintFileUrls();
 
-        // --- Set individual statuses ---
-        entry.setEmailStatus(isNonEmpty(file.getPdfEmailFileUrl()) ? "SUCCESS" :
-                "FAILED".equalsIgnoreCase(errors.getOrDefault("EMAIL", "")) ? "FAILED" : "");
-        entry.setMobstatStatus(isNonEmpty(file.getPdfMobstatFileUrl()) ? "SUCCESS" :
-                "FAILED".equalsIgnoreCase(errors.getOrDefault("MOBSTAT", "")) ? "FAILED" : "");
-        entry.setPrintStatus(isNonEmpty(file.getPrintFileUrl()) ? "SUCCESS" :
-                "FAILED".equalsIgnoreCase(errors.getOrDefault("PRINT", "")) ? "FAILED" : "");
+            entry.setEmailBlobUrls(emailUrls);
+            entry.setMobstatBlobUrls(mobstatUrls);
+            entry.setPrintBlobUrls(printUrls);
+
+            entry.setEmailStatus(emailUrls != null && !emailUrls.isEmpty() ? "SUCCESS" :
+                    "FAILED".equalsIgnoreCase(errorMap.getOrDefault(account, Collections.emptyMap()).getOrDefault("EMAIL", "")) ? "FAILED" : "");
+            entry.setMobstatStatus(mobstatUrls != null && !mobstatUrls.isEmpty() ? "SUCCESS" :
+                    "FAILED".equalsIgnoreCase(errorMap.getOrDefault(account, Collections.emptyMap()).getOrDefault("MOBSTAT", "")) ? "FAILED" : "");
+            entry.setPrintStatus(printUrls != null && !printUrls.isEmpty() ? "SUCCESS" :
+                    "FAILED".equalsIgnoreCase(errorMap.getOrDefault(account, Collections.emptyMap()).getOrDefault("PRINT", "")) ? "FAILED" : "");
+
+        } else {
+            // DEBTMAN: keep existing single URL logic
+            entry.setEmailBlobUrl(file.getPdfEmailFileUrl());
+            entry.setMobstatBlobUrl(file.getPdfMobstatFileUrl());
+            entry.setPrintBlobUrl(file.getPrintFileUrl());
+
+            entry.setEmailStatus(isNonEmpty(file.getPdfEmailFileUrl()) ? "SUCCESS" :
+                    "FAILED".equalsIgnoreCase(errorMap.getOrDefault(account, Collections.emptyMap()).getOrDefault("EMAIL", "")) ? "FAILED" : "");
+            entry.setMobstatStatus(isNonEmpty(file.getPdfMobstatFileUrl()) ? "SUCCESS" :
+                    "FAILED".equalsIgnoreCase(errorMap.getOrDefault(account, Collections.emptyMap()).getOrDefault("MOBSTAT", "")) ? "FAILED" : "");
+            entry.setPrintStatus(isNonEmpty(file.getPrintFileUrl()) ? "SUCCESS" :
+                    "FAILED".equalsIgnoreCase(errorMap.getOrDefault(account, Collections.emptyMap()).getOrDefault("PRINT", "")) ? "FAILED" : "");
+        }
+
         entry.setArchiveStatus(isNonEmpty(file.getArchiveBlobUrl()) ? "SUCCESS" :
-                "FAILED".equalsIgnoreCase(errors.getOrDefault("ARCHIVE", "")) ? "FAILED" : "");
+                "FAILED".equalsIgnoreCase(errorMap.getOrDefault(account, Collections.emptyMap()).getOrDefault("ARCHIVE", "")) ? "FAILED" : "");
 
-        // --- Determine overall status for MFC / DEBTMAN ---
+        // --- Determine overall status ---
         boolean emailSuccess = "SUCCESS".equals(entry.getEmailStatus());
         boolean mobstatSuccess = "SUCCESS".equals(entry.getMobstatStatus());
         boolean printSuccess = "SUCCESS".equals(entry.getPrintStatus());
@@ -186,11 +233,4 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
     }
 
     return allEntries;
-}
-
-// --- Updated helper for MFC ---
-public static String extractAccountFromFileName(String fileName, boolean isMfcFile) {
-    if (fileName == null || !fileName.contains("_")) return null;
-    String[] parts = fileName.split("_");
-    return isMfcFile ? parts[1] : parts[0]; // second part for MFC, first for normal
 }
