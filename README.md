@@ -1,6 +1,62 @@
-// ===============================
-// 1️⃣ Build detailed processed files per customer (all archive files included)
-// ===============================
+private static List<ProcessedFileEntry> buildProcessedFileEntries(
+        List<SummaryProcessedFile> processedFiles,
+        Map<String, Map<String, String>> errorMap,
+        List<PrintFile> printFiles) {
+
+    List<ProcessedFileEntry> allEntries = new ArrayList<>();
+
+    for (SummaryProcessedFile file : processedFiles) {
+        if (file == null) continue;
+
+        ProcessedFileEntry entry = new ProcessedFileEntry();
+        entry.setCustomerId(file.getCustomerId());
+        entry.setAccountNumber(file.getAccountNumber());
+        entry.setEmailBlobUrl(file.getPdfEmailFileUrl());
+        entry.setMobstatBlobUrl(file.getPdfMobstatFileUrl());
+        entry.setPrintBlobUrl(file.getPrintFileUrl());
+        entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
+
+        // Check for errors for this account
+        Map<String, String> errors = errorMap.getOrDefault(file.getAccountNumber(), Collections.emptyMap());
+
+        // Set status per type
+        entry.setEmailStatus(isNonEmpty(file.getPdfEmailFileUrl()) ? "SUCCESS" :
+                "FAILED".equalsIgnoreCase(errors.getOrDefault("EMAIL", "")) ? "FAILED" : "");
+        entry.setMobstatStatus(isNonEmpty(file.getPdfMobstatFileUrl()) ? "SUCCESS" :
+                "FAILED".equalsIgnoreCase(errors.getOrDefault("MOBSTAT", "")) ? "FAILED" : "");
+        entry.setPrintStatus(isNonEmpty(file.getPrintFileUrl()) ? "SUCCESS" :
+                "FAILED".equalsIgnoreCase(errors.getOrDefault("PRINT", "")) ? "FAILED" : "");
+        entry.setArchiveStatus(isNonEmpty(file.getArchiveBlobUrl()) ? "SUCCESS" :
+                "FAILED".equalsIgnoreCase(errors.getOrDefault("ARCHIVE", "")) ? "FAILED" : "");
+
+        // Determine overall status
+        boolean emailSuccess = "SUCCESS".equals(entry.getEmailStatus());
+        boolean mobstatSuccess = "SUCCESS".equals(entry.getMobstatStatus());
+        boolean printSuccess = "SUCCESS".equals(entry.getPrintStatus());
+        boolean archiveSuccess = "SUCCESS".equals(entry.getArchiveStatus());
+
+        if ((emailSuccess && archiveSuccess) ||
+            (mobstatSuccess && archiveSuccess && !emailSuccess && !printSuccess) ||
+            (printSuccess && archiveSuccess && !emailSuccess && !mobstatSuccess)) {
+            entry.setOverallStatus("SUCCESS");
+        } else if (archiveSuccess) {
+            entry.setOverallStatus("PARTIAL");
+        } else {
+            entry.setOverallStatus("FAILED");
+        }
+
+        // If any errors exist but overall is not FAILED, mark as PARTIAL
+        if (errorMap.containsKey(file.getAccountNumber()) && !"FAILED".equals(entry.getOverallStatus())) {
+            entry.setOverallStatus("PARTIAL");
+        }
+
+        // Add entry to final list for summary.json
+        allEntries.add(entry);
+    }
+
+    return allEntries;
+}
+
 private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         Path jobDir,
         List<SummaryProcessedFile> customerList,
@@ -84,15 +140,16 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         }
     }
 
-    // -------- Build final list per archive file --------
+    // -------- Build final list: ONE entry per archive file per customer --------
     for (SummaryProcessedFile customer : customerList) {
         if (customer == null) continue;
         String account = customer.getAccountNumber();
         if (account == null || account.isBlank()) continue;
 
         List<String> archives = accountToArchiveUrls.getOrDefault(account, Collections.emptyList());
+
+        // If no archive, create one entry
         if (archives.isEmpty()) {
-            // If no archive, still create one entry
             SummaryProcessedFile entry = new SummaryProcessedFile();
             BeanUtils.copyProperties(customer, entry);
             entry.setPdfEmailFileUrl(emailUrls.get(account));
@@ -100,7 +157,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             entry.setPrintFileUrl(printUrls.get(account));
             finalList.add(entry);
         } else {
-            // Create one entry per archive file
+            // Create one entry PER archive file
             for (String archiveUrl : archives) {
                 SummaryProcessedFile entry = new SummaryProcessedFile();
                 BeanUtils.copyProperties(customer, entry);
@@ -108,68 +165,11 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                 entry.setPdfEmailFileUrl(emailUrls.get(account));
                 entry.setPdfMobstatFileUrl(mobstatUrls.get(account));
                 entry.setPrintFileUrl(printUrls.get(account));
-                finalList.add(entry);
+                finalList.add(entry); // ✅ ensures all archive combinations are counted
             }
         }
     }
 
     logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
     return finalList;
-}
-
-// ===============================
-// 2️⃣ Build processed file entries for summary.json (duplicates removed)
-// ===============================
-private static List<ProcessedFileEntry> buildProcessedFileEntries(
-        List<SummaryProcessedFile> processedFiles,
-        Map<String, Map<String, String>> errorMap,
-        List<PrintFile> printFiles) {
-
-    List<ProcessedFileEntry> allEntries = new ArrayList<>();
-
-    for (SummaryProcessedFile file : processedFiles) {
-        ProcessedFileEntry entry = new ProcessedFileEntry();
-        entry.setCustomerId(file.getCustomerId());
-        entry.setAccountNumber(file.getAccountNumber());
-        entry.setEmailBlobUrl(file.getPdfEmailFileUrl());
-        entry.setMobstatBlobUrl(file.getPdfMobstatFileUrl());
-        entry.setPrintBlobUrl(file.getPrintFileUrl());
-        entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
-
-        Map<String, String> errors = errorMap.getOrDefault(file.getAccountNumber(), Collections.emptyMap());
-
-        entry.setEmailStatus(isNonEmpty(file.getPdfEmailFileUrl()) ? "SUCCESS" :
-                "FAILED".equalsIgnoreCase(errors.getOrDefault("EMAIL", "")) ? "FAILED" : "");
-        entry.setMobstatStatus(isNonEmpty(file.getPdfMobstatFileUrl()) ? "SUCCESS" :
-                "FAILED".equalsIgnoreCase(errors.getOrDefault("MOBSTAT", "")) ? "FAILED" : "");
-        entry.setPrintStatus(isNonEmpty(file.getPrintFileUrl()) ? "SUCCESS" :
-                "FAILED".equalsIgnoreCase(errors.getOrDefault("PRINT", "")) ? "FAILED" : "");
-        entry.setArchiveStatus(isNonEmpty(file.getArchiveBlobUrl()) ? "SUCCESS" :
-                "FAILED".equalsIgnoreCase(errors.getOrDefault("ARCHIVE", "")) ? "FAILED" : "");
-
-        // Overall status
-        boolean emailSuccess = "SUCCESS".equals(entry.getEmailStatus());
-        boolean mobstatSuccess = "SUCCESS".equals(entry.getMobstatStatus());
-        boolean printSuccess = "SUCCESS".equals(entry.getPrintStatus());
-        boolean archiveSuccess = "SUCCESS".equals(entry.getArchiveStatus());
-
-        if ((emailSuccess && archiveSuccess) ||
-            (mobstatSuccess && archiveSuccess && !emailSuccess && !printSuccess) ||
-            (printSuccess && archiveSuccess && !emailSuccess && !mobstatSuccess)) {
-            entry.setOverallStatus("SUCCESS");
-        } else if (archiveSuccess) {
-            entry.setOverallStatus("PARTIAL");
-        } else {
-            entry.setOverallStatus("FAILED");
-        }
-
-        // Mark PARTIAL if errors exist
-        if (errorMap.containsKey(file.getAccountNumber()) && !"FAILED".equals(entry.getOverallStatus())) {
-            entry.setOverallStatus("PARTIAL");
-        }
-
-        allEntries.add(entry);
-    }
-
-    return allEntries;
 }
