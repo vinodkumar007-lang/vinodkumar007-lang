@@ -1,9 +1,14 @@
-09b-95a6c5fa4644/email/Staat-2025-08-02_32428460001.pdf
-2025-08-26T16:36:46.342+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/MFC%2F8d3525bf-5bee-4134-a7f9-ecff5a9aa69c%2F19ef9d68-b114-4803-b09b-95a6c5fa4644%2Femail%2FStatement-2025-08-02_06881690976.pdf'
-2025-08-26T16:36:46.343+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [8d3525bf-5bee-4134-a7f9-ecff5a9aa69c] ✅ Uploaded EMAIL file: https://nsnetextr01.blob.core.windows.net/nsneteextrm/MFC/8d3525bf-5bee-4134-a7f9-ecff5a9aa69c/19ef9d68-b114-4803-b09b-95a6c5fa4644/email/Statement-2025-08-02_06881690976.pdf
-2025-08-26T16:36:46.643+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/MFC%2F8d3525bf-5bee-4134-a7f9-ecff5a9aa69c%2F19ef9d68-b114-4803-b09b-95a6c5fa4644%2Femail%2FStatement-2025-08-02_12295830117.pdf'
-2025-08-26T16:36:46.643+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [8d3525bf-5bee-4134-a7f9-ecff5a9aa69c] ✅ Uploaded EMAIL file: https://nsnetextr01.blob.core.windows.net/nsneteextrm/MFC/8d3525bf-5bee-4134-a7f9-ecff5a9aa69c/19ef9d68-b114-4803-b09b-95a6c5fa4644/email/Statement-2025-08-02_12295830117.pdf
-2025-08-26T16:36:46.854+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/MFC%2F8d3525bf-5bee-4134-a7f9-ecff5a9aa69c%2F19ef9d68-b114-4803-b09b-95a6c5fa4644%2Femail%2FStatement-2025-08-02_17778840001.pdf'
-2025-08-26T16:36:46.854+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [8d3525bf-5bee-4134-a7f9-ecff5a9aa69c] ✅ Uploaded EMAIL file: https://nsnetextr01.blob.core.windows.net/nsneteextrm/MFC/8d3525bf-5bee-4134-a7f9-ecff5a9aa69c/19ef9d68-b114-4803-b09b-95a6c5fa4644/email/Statement-2025-08-02_17778840001.pdf
-2025-08-26T16:36:46.971+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsnetextr01.blob.core.windows.net/nsneteextrm/MFC%2F8d3525bf-5bee-4134-a7f9-ecff5a9aa69c%2F19ef9d68-b114-4803-b09b-95a6c5fa4644%2Femail%2FStatement-2025-08-02_18353080002.pdf'
-2025-08-26T16:36:46.971+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [8d3525bf-5bee-4134-a7f9-ecff5a9aa69c] ✅ Uploaded EMAIL file: https://nsnetextr01.blob.core.windows.net/nsneteextrm/MFC/8d3525bf-5bee-4134-a7f9-ecff5a9aa69c/19ef9d68-b114-4803-b09b-95a6c5fa4644/email/Statement-2025-08-02_18353080002.pdf
+// --- Helper for MFC to match by account ---
+private String findFileByAccount(Map<String, String> fileMap, String account) {
+    if (account == null) return null;
+    return fileMap.entrySet().stream()
+            .filter(e -> {
+                String fileName = e.getKey();
+                return fileName.startsWith(account + "_")               // case: 12345_statement.pdf
+                        || fileName.contains("_" + account + "_")      // case: statement_12345_extra.pdf
+                        || fileName.endsWith("_" + account + ".pdf");  // case: Statement-2025-08-02_12345.pdf (MFC)
+            })
+            .map(Map.Entry::getValue)
+            .findFirst()
+            .orElse(null);
+}
