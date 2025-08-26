@@ -1,3 +1,6 @@
+private static boolean isNonEmpty(String value) {
+    return value != null && !value.isBlank();
+}
 private static List<ProcessedFileEntry> buildProcessedFileEntries(
         List<SummaryProcessedFile> processedFiles,
         Map<String, Map<String, String>> errorMap,
@@ -143,3 +146,4 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 
     return allEntries;
 }
+
