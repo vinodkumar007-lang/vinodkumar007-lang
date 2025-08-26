@@ -1,5 +1,5 @@
 // ===============================
-// 1️⃣ Build detailed processed files per customer (merged, no duplicates)
+// 1️⃣ Build detailed processed files per customer (all archive files included)
 // ===============================
 private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         Path jobDir,
@@ -22,9 +22,9 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             AppConstants.FOLDER_PRINT, AppConstants.OUTPUT_PRINT
     );
 
-    // -------- Upload all archive files once and map by account --------
+    // -------- Upload all archive files and map by account -> List of URLs --------
     Path archivePath = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
-    Map<String, String> accountToArchiveUrl = new HashMap<>();
+    Map<String, List<String>> accountToArchiveUrls = new HashMap<>();
     if (Files.exists(archivePath)) {
         try (Stream<Path> stream = Files.walk(archivePath)) {
             stream.filter(Files::isRegularFile).forEach(archiveFile -> {
@@ -36,7 +36,9 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                     String archiveBlobUrl = decodeUrl(
                             blobStorageService.uploadFileByMessage(archiveFile.toFile(), AppConstants.FOLDER_ARCHIVE, msg)
                     );
-                    accountToArchiveUrl.put(account, archiveBlobUrl);
+                    accountToArchiveUrls.computeIfAbsent(account, k -> new ArrayList<>())
+                                        .add(archiveBlobUrl);
+
                     logger.info("[{}] 📦 Uploaded archive file for account {}: {}", msg.getBatchId(), account, archiveBlobUrl);
                 } catch (Exception e) {
                     logger.error("[{}] ⚠️ Failed to upload archive file {}: {}", msg.getBatchId(), fileName, e.getMessage(), e);
@@ -47,49 +49,68 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         }
     }
 
-    // -------- Process each customer and merge delivery files --------
+    // -------- Upload delivery files per account (email/mobstat/print) --------
+    Map<String, String> emailUrls = new HashMap<>();
+    Map<String, String> mobstatUrls = new HashMap<>();
+    Map<String, String> printUrls = new HashMap<>();
+
+    for (String folder : deliveryFolders) {
+        Path methodPath = jobDir.resolve(folder);
+        if (!Files.exists(methodPath)) continue;
+
+        try (Stream<Path> stream = Files.walk(methodPath)) {
+            stream.filter(Files::isRegularFile).forEach(file -> {
+                String fileName = file.getFileName().toString();
+                String account = extractAccountFromFileName(fileName);
+                if (account == null) return;
+
+                try {
+                    String deliveryBlobUrl = decodeUrl(
+                            blobStorageService.uploadFileByMessage(file.toFile(), folder, msg)
+                    );
+                    switch (folder) {
+                        case AppConstants.FOLDER_EMAIL -> emailUrls.put(account, deliveryBlobUrl);
+                        case AppConstants.FOLDER_MOBSTAT -> mobstatUrls.put(account, deliveryBlobUrl);
+                        case AppConstants.FOLDER_PRINT -> printUrls.put(account, deliveryBlobUrl);
+                    }
+
+                    logger.info("[{}] ✅ Uploaded {} file for account {}: {}", msg.getBatchId(), folderToOutputMethod.get(folder), account, deliveryBlobUrl);
+                } catch (Exception e) {
+                    logger.error("[{}] ⚠️ Failed to upload {} file for account {}: {}", msg.getBatchId(), folderToOutputMethod.get(folder), account, e.getMessage(), e);
+                }
+            });
+        } catch (Exception e) {
+            logger.error("[{}] ⚠️ Failed to scan folder {}: {}", msg.getBatchId(), folder, e.getMessage(), e);
+        }
+    }
+
+    // -------- Build final list per archive file --------
     for (SummaryProcessedFile customer : customerList) {
         if (customer == null) continue;
         String account = customer.getAccountNumber();
         if (account == null || account.isBlank()) continue;
 
-        SummaryProcessedFile mergedEntry = new SummaryProcessedFile();
-        BeanUtils.copyProperties(customer, mergedEntry);
-
-        // Attach archive URL
-        if (accountToArchiveUrl.containsKey(account)) {
-            mergedEntry.setArchiveBlobUrl(accountToArchiveUrl.get(account));
-        }
-
-        // Upload delivery files and merge
-        for (String folder : deliveryFolders) {
-            Path methodPath = jobDir.resolve(folder);
-            if (!Files.exists(methodPath)) continue;
-
-            try (Stream<Path> stream = Files.walk(methodPath)) {
-                stream.filter(Files::isRegularFile)
-                        .filter(p -> p.getFileName().toString().contains(account))
-                        .forEach(deliveryFile -> {
-                            try {
-                                String deliveryBlobUrl = decodeUrl(
-                                        blobStorageService.uploadFileByMessage(deliveryFile.toFile(), folder, msg)
-                                );
-                                switch (folder) {
-                                    case AppConstants.FOLDER_EMAIL -> mergedEntry.setPdfEmailFileUrl(deliveryBlobUrl);
-                                    case AppConstants.FOLDER_MOBSTAT -> mergedEntry.setPdfMobstatFileUrl(deliveryBlobUrl);
-                                    case AppConstants.FOLDER_PRINT -> mergedEntry.setPrintFileUrl(deliveryBlobUrl);
-                                }
-                                logger.info("[{}] ✅ Uploaded {} file for account {}: {}", msg.getBatchId(), folderToOutputMethod.get(folder), account, deliveryBlobUrl);
-                            } catch (Exception e) {
-                                logger.error("[{}] ⚠️ Failed to upload {} file for account {}: {}", msg.getBatchId(), folderToOutputMethod.get(folder), account, e.getMessage(), e);
-                            }
-                        });
-            } catch (Exception e) {
-                logger.error("[{}] ⚠️ Failed to scan folder {} for account {}: {}", msg.getBatchId(), folder, account, e.getMessage(), e);
+        List<String> archives = accountToArchiveUrls.getOrDefault(account, Collections.emptyList());
+        if (archives.isEmpty()) {
+            // If no archive, still create one entry
+            SummaryProcessedFile entry = new SummaryProcessedFile();
+            BeanUtils.copyProperties(customer, entry);
+            entry.setPdfEmailFileUrl(emailUrls.get(account));
+            entry.setPdfMobstatFileUrl(mobstatUrls.get(account));
+            entry.setPrintFileUrl(printUrls.get(account));
+            finalList.add(entry);
+        } else {
+            // Create one entry per archive file
+            for (String archiveUrl : archives) {
+                SummaryProcessedFile entry = new SummaryProcessedFile();
+                BeanUtils.copyProperties(customer, entry);
+                entry.setArchiveBlobUrl(archiveUrl);
+                entry.setPdfEmailFileUrl(emailUrls.get(account));
+                entry.setPdfMobstatFileUrl(mobstatUrls.get(account));
+                entry.setPrintFileUrl(printUrls.get(account));
+                finalList.add(entry);
             }
         }
-
-        finalList.add(mergedEntry);
     }
 
     logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
@@ -104,29 +125,26 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         Map<String, Map<String, String>> errorMap,
         List<PrintFile> printFiles) {
 
-    Map<String, ProcessedFileEntry> uniqueEntries = new LinkedHashMap<>();
+    List<ProcessedFileEntry> allEntries = new ArrayList<>();
 
     for (SummaryProcessedFile file : processedFiles) {
-        String key = file.getCustomerId() + "_" + file.getAccountNumber();
-        ProcessedFileEntry entry = uniqueEntries.getOrDefault(key, new ProcessedFileEntry());
+        ProcessedFileEntry entry = new ProcessedFileEntry();
         entry.setCustomerId(file.getCustomerId());
         entry.setAccountNumber(file.getAccountNumber());
+        entry.setEmailBlobUrl(file.getPdfEmailFileUrl());
+        entry.setMobstatBlobUrl(file.getPdfMobstatFileUrl());
+        entry.setPrintBlobUrl(file.getPrintFileUrl());
+        entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
 
-        // Map all URLs (overwrite if multiple files merged)
-        if (isNonEmpty(file.getPdfEmailFileUrl())) entry.setEmailBlobUrl(file.getPdfEmailFileUrl());
-        if (isNonEmpty(file.getPdfMobstatFileUrl())) entry.setMobstatBlobUrl(file.getPdfMobstatFileUrl());
-        if (isNonEmpty(file.getPrintFileUrl())) entry.setPrintBlobUrl(file.getPrintFileUrl());
-        if (isNonEmpty(file.getArchiveBlobUrl())) entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
-
-        // Determine delivery status
         Map<String, String> errors = errorMap.getOrDefault(file.getAccountNumber(), Collections.emptyMap());
-        entry.setEmailStatus(isNonEmpty(entry.getEmailBlobUrl()) ? "SUCCESS" :
+
+        entry.setEmailStatus(isNonEmpty(file.getPdfEmailFileUrl()) ? "SUCCESS" :
                 "FAILED".equalsIgnoreCase(errors.getOrDefault("EMAIL", "")) ? "FAILED" : "");
-        entry.setMobstatStatus(isNonEmpty(entry.getMobstatBlobUrl()) ? "SUCCESS" :
+        entry.setMobstatStatus(isNonEmpty(file.getPdfMobstatFileUrl()) ? "SUCCESS" :
                 "FAILED".equalsIgnoreCase(errors.getOrDefault("MOBSTAT", "")) ? "FAILED" : "");
-        entry.setPrintStatus(isNonEmpty(entry.getPrintBlobUrl()) ? "SUCCESS" :
+        entry.setPrintStatus(isNonEmpty(file.getPrintFileUrl()) ? "SUCCESS" :
                 "FAILED".equalsIgnoreCase(errors.getOrDefault("PRINT", "")) ? "FAILED" : "");
-        entry.setArchiveStatus(isNonEmpty(entry.getArchiveBlobUrl()) ? "SUCCESS" :
+        entry.setArchiveStatus(isNonEmpty(file.getArchiveBlobUrl()) ? "SUCCESS" :
                 "FAILED".equalsIgnoreCase(errors.getOrDefault("ARCHIVE", "")) ? "FAILED" : "");
 
         // Overall status
@@ -135,13 +153,9 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         boolean printSuccess = "SUCCESS".equals(entry.getPrintStatus());
         boolean archiveSuccess = "SUCCESS".equals(entry.getArchiveStatus());
 
-        boolean emailFailed = !emailSuccess;
-        boolean mobstatFailed = !mobstatSuccess;
-        boolean printFailed = !printSuccess;
-
         if ((emailSuccess && archiveSuccess) ||
-                (mobstatSuccess && archiveSuccess && emailFailed && printFailed) ||
-                (printSuccess && archiveSuccess && emailFailed && mobstatFailed)) {
+            (mobstatSuccess && archiveSuccess && !emailSuccess && !printSuccess) ||
+            (printSuccess && archiveSuccess && !emailSuccess && !mobstatSuccess)) {
             entry.setOverallStatus("SUCCESS");
         } else if (archiveSuccess) {
             entry.setOverallStatus("PARTIAL");
@@ -149,13 +163,13 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
             entry.setOverallStatus("FAILED");
         }
 
-        // Mark PARTIAL if errorMap exists
-        if (errorMap.containsKey(entry.getAccountNumber()) && !"FAILED".equals(entry.getOverallStatus())) {
+        // Mark PARTIAL if errors exist
+        if (errorMap.containsKey(file.getAccountNumber()) && !"FAILED".equals(entry.getOverallStatus())) {
             entry.setOverallStatus("PARTIAL");
         }
 
-        uniqueEntries.put(key, entry);
+        allEntries.add(entry);
     }
 
-    return new ArrayList<>(uniqueEntries.values());
+    return allEntries;
 }
