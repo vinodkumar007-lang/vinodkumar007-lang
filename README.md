@@ -1,175 +1,141 @@
-private static List<ProcessedFileEntry> buildProcessedFileEntries(
-        List<SummaryProcessedFile> processedFiles,
-        Map<String, Map<String, String>> errorMap,
-        List<PrintFile> printFiles) {
-
-    List<ProcessedFileEntry> allEntries = new ArrayList<>();
-
-    for (SummaryProcessedFile file : processedFiles) {
-        if (file == null) continue;
-
-        ProcessedFileEntry entry = new ProcessedFileEntry();
-        entry.setCustomerId(file.getCustomerId());
-        entry.setAccountNumber(file.getAccountNumber());
-        entry.setEmailBlobUrl(file.getPdfEmailFileUrl());
-        entry.setMobstatBlobUrl(file.getPdfMobstatFileUrl());
-        entry.setPrintBlobUrl(file.getPrintFileUrl());
-        entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
-
-        // Check for errors for this account
-        Map<String, String> errors = errorMap.getOrDefault(file.getAccountNumber(), Collections.emptyMap());
-
-        // Set status per type
-        entry.setEmailStatus(isNonEmpty(file.getPdfEmailFileUrl()) ? "SUCCESS" :
-                "FAILED".equalsIgnoreCase(errors.getOrDefault("EMAIL", "")) ? "FAILED" : "");
-        entry.setMobstatStatus(isNonEmpty(file.getPdfMobstatFileUrl()) ? "SUCCESS" :
-                "FAILED".equalsIgnoreCase(errors.getOrDefault("MOBSTAT", "")) ? "FAILED" : "");
-        entry.setPrintStatus(isNonEmpty(file.getPrintFileUrl()) ? "SUCCESS" :
-                "FAILED".equalsIgnoreCase(errors.getOrDefault("PRINT", "")) ? "FAILED" : "");
-        entry.setArchiveStatus(isNonEmpty(file.getArchiveBlobUrl()) ? "SUCCESS" :
-                "FAILED".equalsIgnoreCase(errors.getOrDefault("ARCHIVE", "")) ? "FAILED" : "");
-
-        // Determine overall status
-        boolean emailSuccess = "SUCCESS".equals(entry.getEmailStatus());
-        boolean mobstatSuccess = "SUCCESS".equals(entry.getMobstatStatus());
-        boolean printSuccess = "SUCCESS".equals(entry.getPrintStatus());
-        boolean archiveSuccess = "SUCCESS".equals(entry.getArchiveStatus());
-
-        if ((emailSuccess && archiveSuccess) ||
-            (mobstatSuccess && archiveSuccess && !emailSuccess && !printSuccess) ||
-            (printSuccess && archiveSuccess && !emailSuccess && !mobstatSuccess)) {
-            entry.setOverallStatus("SUCCESS");
-        } else if (archiveSuccess) {
-            entry.setOverallStatus("PARTIAL");
-        } else {
-            entry.setOverallStatus("FAILED");
-        }
-
-        // If any errors exist but overall is not FAILED, mark as PARTIAL
-        if (errorMap.containsKey(file.getAccountNumber()) && !"FAILED".equals(entry.getOverallStatus())) {
-            entry.setOverallStatus("PARTIAL");
-        }
-
-        // Add entry to final list for summary.json
-        allEntries.add(entry);
-    }
-
-    return allEntries;
-}
-
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        Path jobDir,
-        List<SummaryProcessedFile> customerList,
-        Map<String, Map<String, String>> errorMap,
-        KafkaMessage msg) throws IOException {
-
-    List<SummaryProcessedFile> finalList = new ArrayList<>();
-    if (jobDir == null || customerList == null || msg == null) return finalList;
-
-    List<String> deliveryFolders = List.of(
-            AppConstants.FOLDER_EMAIL,
-            AppConstants.FOLDER_MOBSTAT,
-            AppConstants.FOLDER_PRINT
-    );
-
-    Map<String, String> folderToOutputMethod = Map.of(
-            AppConstants.FOLDER_EMAIL, AppConstants.OUTPUT_EMAIL,
-            AppConstants.FOLDER_MOBSTAT, AppConstants.OUTPUT_MOBSTAT,
-            AppConstants.FOLDER_PRINT, AppConstants.OUTPUT_PRINT
-    );
-
-    // -------- Upload all archive files and map by account -> List of URLs --------
-    Path archivePath = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
-    Map<String, List<String>> accountToArchiveUrls = new HashMap<>();
-    if (Files.exists(archivePath)) {
-        try (Stream<Path> stream = Files.walk(archivePath)) {
-            stream.filter(Files::isRegularFile).forEach(archiveFile -> {
-                String fileName = archiveFile.getFileName().toString();
-                String account = extractAccountFromFileName(fileName);
-                if (account == null) return;
-
-                try {
-                    String archiveBlobUrl = decodeUrl(
-                            blobStorageService.uploadFileByMessage(archiveFile.toFile(), AppConstants.FOLDER_ARCHIVE, msg)
-                    );
-                    accountToArchiveUrls.computeIfAbsent(account, k -> new ArrayList<>())
-                                        .add(archiveBlobUrl);
-
-                    logger.info("[{}] 📦 Uploaded archive file for account {}: {}", msg.getBatchId(), account, archiveBlobUrl);
-                } catch (Exception e) {
-                    logger.error("[{}] ⚠️ Failed to upload archive file {}: {}", msg.getBatchId(), fileName, e.getMessage(), e);
-                }
-            });
-        } catch (Exception e) {
-            logger.error("[{}] ⚠️ Failed scanning ARCHIVE folder: {}", msg.getBatchId(), e.getMessage(), e);
-        }
-    }
-
-    // -------- Upload delivery files per account (email/mobstat/print) --------
-    Map<String, String> emailUrls = new HashMap<>();
-    Map<String, String> mobstatUrls = new HashMap<>();
-    Map<String, String> printUrls = new HashMap<>();
-
-    for (String folder : deliveryFolders) {
-        Path methodPath = jobDir.resolve(folder);
-        if (!Files.exists(methodPath)) continue;
-
-        try (Stream<Path> stream = Files.walk(methodPath)) {
-            stream.filter(Files::isRegularFile).forEach(file -> {
-                String fileName = file.getFileName().toString();
-                String account = extractAccountFromFileName(fileName);
-                if (account == null) return;
-
-                try {
-                    String deliveryBlobUrl = decodeUrl(
-                            blobStorageService.uploadFileByMessage(file.toFile(), folder, msg)
-                    );
-                    switch (folder) {
-                        case AppConstants.FOLDER_EMAIL -> emailUrls.put(account, deliveryBlobUrl);
-                        case AppConstants.FOLDER_MOBSTAT -> mobstatUrls.put(account, deliveryBlobUrl);
-                        case AppConstants.FOLDER_PRINT -> printUrls.put(account, deliveryBlobUrl);
-                    }
-
-                    logger.info("[{}] ✅ Uploaded {} file for account {}: {}", msg.getBatchId(), folderToOutputMethod.get(folder), account, deliveryBlobUrl);
-                } catch (Exception e) {
-                    logger.error("[{}] ⚠️ Failed to upload {} file for account {}: {}", msg.getBatchId(), folderToOutputMethod.get(folder), account, e.getMessage(), e);
-                }
-            });
-        } catch (Exception e) {
-            logger.error("[{}] ⚠️ Failed to scan folder {}: {}", msg.getBatchId(), folder, e.getMessage(), e);
-        }
-    }
-
-    // -------- Build final list: ONE entry per archive file per customer --------
-    for (SummaryProcessedFile customer : customerList) {
-        if (customer == null) continue;
-        String account = customer.getAccountNumber();
-        if (account == null || account.isBlank()) continue;
-
-        List<String> archives = accountToArchiveUrls.getOrDefault(account, Collections.emptyList());
-
-        // If no archive, create one entry
-        if (archives.isEmpty()) {
-            SummaryProcessedFile entry = new SummaryProcessedFile();
-            BeanUtils.copyProperties(customer, entry);
-            entry.setPdfEmailFileUrl(emailUrls.get(account));
-            entry.setPdfMobstatFileUrl(mobstatUrls.get(account));
-            entry.setPrintFileUrl(printUrls.get(account));
-            finalList.add(entry);
-        } else {
-            // Create one entry PER archive file
-            for (String archiveUrl : archives) {
-                SummaryProcessedFile entry = new SummaryProcessedFile();
-                BeanUtils.copyProperties(customer, entry);
-                entry.setArchiveBlobUrl(archiveUrl);
-                entry.setPdfEmailFileUrl(emailUrls.get(account));
-                entry.setPdfMobstatFileUrl(mobstatUrls.get(account));
-                entry.setPrintFileUrl(printUrls.get(account));
-                finalList.add(entry); // ✅ ensures all archive combinations are counted
-            }
-        }
-    }
-
-    logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
-    return finalList;
-}
+{
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_LRSIE.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }, {
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_ECH006.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }, {
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_ECH007.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }, {
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_ECH008.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }, {
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_EHEH01.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }, {
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_EHGH3B.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }, {
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_EHGH3C.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }, {
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_EHGH4B.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }, {
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_EHGH4C.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }, {
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_EHGH5B.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }, {
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_EHGH5C.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }, {
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_EHGHCB.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }, {
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_EHGHCC.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }, {
+    "customerId" : "146310004995",
+    "accountNumber" : "1000499500101",
+    "archiveBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1000499500101_EHNBCB.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailBlobUrl" : "https://nsnetextr01.blob.core.windows.net/nsneteextrm/DEBTMAN/76868555-98c9-4298-8e40-879d85b1ba8a/19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/email/1000499500101_LRSIE.pdf",
+    "emailStatus" : "SUCCESS",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "SUCCESS"
+  }
