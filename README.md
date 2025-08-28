@@ -1,145 +1,30 @@
-// Add at top of class:
-private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(YourClass.class);
-
-public static SummaryPayload buildPayload(
-        KafkaMessage kafkaMessage,
-        List<SummaryProcessedFile> processedList,
-        String fileName,
-        String batchId,
-        String timestamp,
-        Map<String, Map<String, String>> errorMap,
-        List<PrintFile> printFiles
-) {
-    if (kafkaMessage == null) {
-        log.error("[buildPayload] kafkaMessage is null. Returning empty payload. batchId={}, fileName={}", batchId, fileName);
-        return new SummaryPayload();
-    }
-    if (processedList == null) {
-        log.warn("[buildPayload] processedList is null. Using empty list. batchId={}, fileName={}", batchId, fileName);
-        processedList = Collections.emptyList();
-    }
-    if (errorMap == null) {
-        log.warn("[buildPayload] errorMap is null. Defaulting to empty map. batchId={}, fileName={}", batchId, fileName);
-        errorMap = Collections.emptyMap();
-    }
-    if (printFiles == null) {
-        log.warn("[buildPayload] printFiles is null. Using empty list. batchId={}, fileName={}", batchId, fileName);
-        printFiles = Collections.emptyList();
-    }
-
-    log.info("[GT] Start building payload. batchId={}, fileName={}, processedListSize={}, printFilesSize={}",
-            batchId, fileName, processedList.size(), printFiles.size());
-
-    SummaryPayload payload = new SummaryPayload();
-    payload.setBatchID(batchId);
-    payload.setFileName(fileName);
-    payload.setTimestamp(timestamp);
-
-    // --- Header ---
-    Header header = new Header();
-    header.setTenantCode(kafkaMessage.getTenantCode());
-    header.setChannelID(kafkaMessage.getChannelID());
-    header.setAudienceID(kafkaMessage.getAudienceID());
-    header.setTimestamp(timestamp);
-    header.setSourceSystem(kafkaMessage.getSourceSystem());
-    header.setProduct(kafkaMessage.getSourceSystem());
-    header.setJobName(kafkaMessage.getSourceSystem());
-    payload.setHeader(header);
-
-    // --- Processed files ---
-    List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList, errorMap, printFiles);
-    payload.setProcessedFileList(processedFileEntries);
-
-    int totalUniqueFiles = (int) processedFileEntries.stream()
-            .flatMap(entry -> Stream.of(
-                    entry.getEmailBlobUrl(),
-                    entry.getPrintBlobUrl(),
-                    entry.getMobstatBlobUrl(),
-                    entry.getArchiveBlobUrl()
-            ))
-            .filter(Objects::nonNull)
-            .distinct()
-            .count();
-
-    // --- Payload Info ---
-    Payload payloadInfo = new Payload();
-    payloadInfo.setUniqueECPBatchRef(kafkaMessage.getUniqueECPBatchRef());
-    payloadInfo.setRunPriority(kafkaMessage.getRunPriority());
-    payloadInfo.setEventID(kafkaMessage.getEventID());
-    payloadInfo.setEventType(kafkaMessage.getEventType());
-    payloadInfo.setRestartKey(kafkaMessage.getRestartKey());
-    payloadInfo.setFileCount(totalUniqueFiles);
-    payload.setPayload(payloadInfo);
-
-    // --- Metadata ---
-    Metadata metadata = new Metadata();
-
-    long totalArchiveEntries = processedFileEntries.stream()
-            .filter(pf -> isNonEmpty(pf.getArchiveBlobUrl())).distinct()
-            .count();
-    metadata.setTotalCustomersProcessed((int) totalArchiveEntries);
-
-    Set<String> statuses = processedFileEntries.stream()
-            .map(ProcessedFileEntry::getOverallStatus)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet());
-
-    String overallStatus;
-    if (statuses.size() == 1) {
-        overallStatus = statuses.iterator().next();
-    } else if (statuses.contains("SUCCESS") && statuses.contains("FAILED")) {
-        overallStatus = "PARTIAL";
-    } else if (statuses.contains("PARTIAL") || statuses.size() > 1) {
-        overallStatus = "PARTIAL";
-    } else {
-        overallStatus = "FAILED";
-    }
-
-    metadata.setProcessingStatus(overallStatus);
-    metadata.setEventOutcomeCode("0");
-    metadata.setEventOutcomeDescription(overallStatus.toLowerCase());
-    payload.setMetadata(metadata);
-
-    log.info("[GT] Metadata built. batchId={}, fileName={}, totalCustomers={}, overallStatus={}",
-            batchId, fileName, metadata.getTotalCustomersProcessed(), overallStatus);
-
-    // --- Print Files (Step 1: Assign status) ---
-    for (PrintFile pf : printFiles) {
-        if (pf == null) {
-            log.debug("[buildPayload] Skipping null PrintFile. batchId={}, fileName={}", batchId, fileName);
-            continue;
-        }
-        String psUrl = pf.getPrintFileURL();
-
-        if (psUrl != null && psUrl.endsWith(".ps")) {
-            pf.setPrintStatus("SUCCESS");
-        } else if (psUrl != null && errorMap.containsKey(psUrl)) {
-            pf.setPrintStatus("FAILED");
-        } else {
-            pf.setPrintStatus("");
+public static String writeSummaryJsonToFile(SummaryPayload payload) {
+        if (payload == null) {
+            logger.error("SummaryPayload is null. Cannot write summary.json.");
+            throw new IllegalArgumentException("SummaryPayload cannot be null");
         }
 
-        log.debug("[GT] PrintFile processed. batchId={}, fileName={}, psUrl={}, status={}",
-                batchId, fileName, psUrl, pf.getPrintStatus());
-    }
+        try {
+            String batchId = Optional.ofNullable(payload.getBatchID()).orElse("unknown");
+            String fileName = "summary_" + batchId + ".json";
 
-    // --- Print Files (Step 2: Decode + collect) ---
-    List<PrintFile> printFileList = new ArrayList<>();
-    for (PrintFile pf : printFiles) {
-        if (pf != null && pf.getPrintFileURL() != null) {
-            String decodedUrl = URLDecoder.decode(pf.getPrintFileURL(), StandardCharsets.UTF_8);
+            // Create temp dir and resolve full path
+            Path tempDir = Files.createTempDirectory("summaryFiles");
+            Path summaryFilePath = tempDir.resolve(fileName);
 
-            PrintFile printFile = new PrintFile();
-            printFile.setPrintFileURL(decodedUrl);
-            printFile.setPrintStatus(pf.getPrintStatus() != null ? pf.getPrintStatus() : "");
+            File summaryFile = summaryFilePath.toFile();
+            if (summaryFile.exists()) {
+                Files.delete(summaryFilePath);
+                logger.warn("Existing summary file deleted: {}", summaryFilePath);
+            }
 
-            printFileList.add(printFile);
+            objectMapper.writeValue(summaryFile, payload);
+            logger.info("✅ Summary JSON written at: {}", summaryFilePath);
+
+            return summaryFilePath.toAbsolutePath().toString();
+
+        } catch (Exception e) {
+            logger.error("❌ Failed to write summary.json", e);
+            throw new RuntimeException("Failed to write summary JSON", e);
         }
     }
-    payload.setPrintFiles(printFileList);
-
-    log.info("[GT] Completed building payload. batchId={}, fileName={}, processedEntries={}, printFiles={}",
-            batchId, fileName, processedFileEntries.size(), printFileList.size());
-
-    return payload;
-}
