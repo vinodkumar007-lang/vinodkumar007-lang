@@ -1,82 +1,61 @@
-has message.getSourceSystem() been sanitised?
+the format expects 3 parameters not 4
 
-private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
-        String batchId = message.getBatchId(); // golden thread
+try {
+                    String blobUrl = blobStorageService.uploadFile(
+                            triggerFile.toFile(),
+                            String.format(MOBSTAT_TRIGGER_UPLOAD_PATH_FORMAT,
+                                    message.getSourceSystem(), message.getBatchId(),
+                                    message.getUniqueConsumerRef(), triggerFile.getFileName())
+                    );
+
+                    logger.info("📤 Uploaded MOBSTAT trigger file: {} -> {}", triggerFile, blobUrl);
+                    return decodeUrl(blobUrl);
+                }
+
+public String uploadFile(Object input, String targetPath) {
         try {
-            logger.info("[{}] ⏳ Waiting for XML for jobId={}, id={}", batchId, otResponse.getJobId(), otResponse.getId());
-            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
-            if (xmlFile == null) throw new IllegalStateException("XML not found");
+            byte[] content;
+            String fileName = Paths.get(targetPath).getFileName().toString();
 
-            logger.info("[{}] ✅ Found XML file: {}", batchId, xmlFile);
-
-            Map<String, Map<String, String>> errorMap = parseErrorReport(message);
-            logger.info("[{}] 🧾 Parsed error report with {} entries", batchId, errorMap.size());
-
-            List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile, errorMap);
-            logger.info("[{}] 📊 Total customerSummaries parsed: {}", batchId, customerSummaries.size());
-
-            List<SummaryProcessedFile> customerList = customerSummaries.stream()
-                    .map(cs -> {
-                        SummaryProcessedFile spf = new SummaryProcessedFile();
-                        spf.setAccountNumber(cs.getAccountNumber());
-                        spf.setCustomerId(cs.getCisNumber());
-                        return spf;
-                    })
-                    .collect(Collectors.toList());
-
-            Path jobDir = Paths.get(mountPath, AppConstants.OUTPUT_FOLDER, message.getSourceSystem(), otResponse.getJobId());
-            logger.info("[{}] 📂 Resolved jobDir path = {}", batchId, jobDir.toAbsolutePath());
-            logger.info("[{}] 🔄 Invoking buildDetailedProcessedFiles...", batchId);
-            List<SummaryProcessedFile> processedFiles =
-                    buildDetailedProcessedFiles(jobDir, customerList, errorMap, message);
-            logger.info("[{}] 📦 Processed {} customer records", batchId, processedFiles.size());
-
-            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
-            logger.info("[{}] 🖨️ Uploaded {} print files", batchId, printFiles.size());
-
-            String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
-            logger.info("[{}] 📱 Found Mobstat URL: {}", batchId, mobstatTriggerUrl);
-
-            Map<String, Integer> summaryCounts = extractSummaryCountsFromXml(xmlFile);
-
-            String allFileNames = message.getBatchFiles().stream()
-                    .map(BatchFile::getFilename)
-                    .collect(Collectors.joining(", "));
-
-            SummaryPayload payload = SummaryJsonWriter.buildPayload(
-                    message, processedFiles, allFileNames, batchId,
-                    String.valueOf(message.getTimestamp()), errorMap, printFiles
-            );
-
-            if (payload.getHeader() != null) {
-                payload.getHeader().setTimestamp(String.valueOf(message.getTimestamp()));
+            if (input instanceof String str) {
+                content = str.getBytes(StandardCharsets.UTF_8);
+            } else if (input instanceof byte[] bytes) {
+                content = bytes;
+            } else if (input instanceof File file) {
+                content = Files.readAllBytes(file.toPath());
+            } else if (input instanceof Path path) {
+                content = Files.readAllBytes(path);
+            } else {
+                throw new IllegalArgumentException(BlobStorageConstants.ERR_UNSUPPORTED_TYPE + input.getClass());
             }
 
-            String fileName = AppConstants.SUMMARY_FILENAME_PREFIX + batchId + AppConstants.JSON_EXTENSION;
-            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
-            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, fileName);
-            payload.setSummaryFileURL(decodeUrl(summaryUrl));
-            logger.info("[{}] 📁 Summary JSON uploaded to: {}", batchId, decodeUrl(summaryUrl));
+            return uploadToBlobStorage(content, targetPath, fileName);
+        } catch (IOException e) {
+            logger.error("❌ Failed to read input for upload: {}", e.getMessage(), e);
+            throw new CustomAppException(BlobStorageConstants.ERR_PROCESS_UPLOAD, 606, HttpStatus.INTERNAL_SERVER_ERROR, e);
+        }
+    }
 
-            logger.info("[{}] 📄 Final Summary Payload:\n{}", batchId,
-                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
+    private String uploadToBlobStorage(byte[] content, String targetPath, String fileName) {
+        try {
+            initSecrets();
+            BlobServiceClient blobClient = new BlobServiceClientBuilder()
+                    .endpoint(String.format(azureStorageFormat, accountName))
+                    .credential(new StorageSharedKeyCredential(accountName, accountKey))
+                    .buildClient();
 
-            SummaryResponse response = new SummaryResponse();
-            response.setBatchID(batchId);
-            response.setFileName(payload.getFileName());
-            response.setHeader(payload.getHeader());
-            response.setMetadata(payload.getMetadata());
-            response.setPayload(payload.getPayload());
-            response.setSummaryFileURL(decodeUrl(summaryUrl));
-            response.setTimestamp(String.valueOf(message.getTimestamp()));
+            BlobClient blob = blobClient.getBlobContainerClient(containerName).getBlobClient(targetPath);
 
-            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
-                    new ApiResponse("Summary generated", "COMPLETED", response)));
+            BlobHttpHeaders headers = new BlobHttpHeaders()
+                    .setContentType(resolveMimeType(fileName, content));
 
-            logger.info("[{}] ✅ Kafka output sent with response: {}", batchId,
-                    objectMapper.writeValueAsString(response));
+            blob.upload(new ByteArrayInputStream(content), content.length, true);
+            blob.setHttpHeaders(headers);
 
+            logger.info("📤 Uploaded file to '{}'", blob.getBlobUrl());
+            return blob.getBlobUrl();
         } catch (Exception e) {
-            logger.error("[{}] ❌ Error post-OT summary generation: {}", batchId, e.getMessage(), e);
+            logger.error("❌ Upload failed: {}", e.getMessage(), e);
+            throw new CustomAppException(BlobStorageConstants.ERR_UPLOAD_FAIL, 602, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
     }
