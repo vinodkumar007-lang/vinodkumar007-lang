@@ -1,168 +1,115 @@
-Comment 1: "Can this function be split into manageable chunks?"
+Function is difficult to follow
 
-✅ Done. I refactored buildPayload into smaller helper methods: buildHeader, buildPayloadInfo, buildMetadata, and processPrintFiles. Each helper handles a specific part of the payload, improving readability and maintainability without changing existing logic.
+private static List<ProcessedFileEntry> buildProcessedFileEntries(
+            List<SummaryProcessedFile> processedFiles,
+            Map<String, Map<String, String>> errorMap,
+            List<PrintFile> ignoredPrintFiles) {
 
-Comment 2: "Is this not duplication for the above for loop, can they be merged?"
+        List<ProcessedFileEntry> allEntries = new ArrayList<>();
+        Set<String> uniqueKeys = new HashSet<>(); // customerId + accountNumber + archiveFilename
 
-✅ Addressed. The two for loops over printFiles were merged into a single loop that both assigns the status and decodes the URL. This preserves the original behavior while removing duplication.
-
-public static SummaryPayload buildPayload(
-        KafkaMessage kafkaMessage,
-        List<SummaryProcessedFile> processedList,
-        String fileName,
-        String batchId,
-        String timestamp,
-        Map<String, Map<String, String>> errorMap,
-        List<PrintFile> printFiles
-) {
-    // --- Validation ---
-    if (kafkaMessage == null) {
-        logger.error("[buildPayload] kafkaMessage is null. Returning empty payload. batchId={}, fileName={}", batchId, fileName);
-        return new SummaryPayload();
-    }
-    if (processedList == null) {
-        logger.warn("[buildPayload] processedList is null. Using empty list. batchId={}, fileName={}", batchId, fileName);
-        processedList = Collections.emptyList();
-    }
-    if (errorMap == null) {
-        logger.warn("[buildPayload] errorMap is null. Defaulting to empty map. batchId={}, fileName={}", batchId, fileName);
-        errorMap = Collections.emptyMap();
-    }
-    if (printFiles == null) {
-        logger.warn("[buildPayload] printFiles is null. Using empty list. batchId={}, fileName={}", batchId, fileName);
-        printFiles = Collections.emptyList();
-    }
-
-    logger.info("[GT] Start building payload. batchId={}, fileName={}, processedListSize={}, printFilesSize={}",
-            batchId, fileName, processedList.size(), printFiles.size());
-
-    SummaryPayload payload = new SummaryPayload();
-    payload.setBatchID(batchId);
-    payload.setFileName(fileName);
-    payload.setTimestamp(timestamp);
-
-    // --- Header ---
-    payload.setHeader(buildHeader(kafkaMessage, timestamp));
-
-    // --- Processed files ---
-    List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList, errorMap, printFiles);
-    payload.setProcessedFileList(processedFileEntries);
-
-    // --- Payload Info ---
-    payload.setPayload(buildPayloadInfo(kafkaMessage, processedFileEntries));
-
-    // --- Metadata ---
-    Metadata metadata = buildMetadata(processedFileEntries, batchId, fileName);
-    payload.setMetadata(metadata);
-
-    // --- Print Files ---
-    List<PrintFile> printFileList = processPrintFiles(printFiles, errorMap, batchId, fileName);
-    payload.setPrintFiles(printFileList);
-
-    logger.info("[GT] Completed building payload. batchId={}, fileName={}, processedEntries={}, printFiles={}",
-            batchId, fileName, processedFileEntries.size(), printFileList.size());
-
-    return payload;
-}
-
-// ---------- Helper Methods ------------
-
-private static Header buildHeader(KafkaMessage kafkaMessage, String timestamp) {
-    Header header = new Header();
-    header.setTenantCode(kafkaMessage.getTenantCode());
-    header.setChannelID(kafkaMessage.getChannelID());
-    header.setAudienceID(kafkaMessage.getAudienceID());
-    header.setTimestamp(timestamp);
-    header.setSourceSystem(kafkaMessage.getSourceSystem());
-    header.setProduct(kafkaMessage.getSourceSystem());
-    header.setJobName(kafkaMessage.getSourceSystem());
-    return header;
-}
-
-private static Payload buildPayloadInfo(KafkaMessage kafkaMessage, List<ProcessedFileEntry> processedFileEntries) {
-    int totalUniqueFiles = (int) processedFileEntries.stream()
-            .flatMap(entry -> Stream.of(
-                    entry.getEmailBlobUrl(),
-                    entry.getPrintBlobUrl(),
-                    entry.getMobstatBlobUrl(),
-                    entry.getArchiveBlobUrl()
-            ))
-            .filter(Objects::nonNull)
-            .distinct()
-            .count();
-
-    Payload payloadInfo = new Payload();
-    payloadInfo.setUniqueECPBatchRef(kafkaMessage.getUniqueECPBatchRef());
-    payloadInfo.setRunPriority(kafkaMessage.getRunPriority());
-    payloadInfo.setEventID(kafkaMessage.getEventID());
-    payloadInfo.setEventType(kafkaMessage.getEventType());
-    payloadInfo.setRestartKey(kafkaMessage.getRestartKey());
-    payloadInfo.setFileCount(totalUniqueFiles);
-    return payloadInfo;
-}
-
-private static Metadata buildMetadata(List<ProcessedFileEntry> processedFileEntries, String batchId, String fileName) {
-    Metadata metadata = new Metadata();
-
-    long totalArchiveEntries = processedFileEntries.stream()
-            .filter(pf -> isNonEmpty(pf.getArchiveBlobUrl())).distinct()
-            .count();
-    metadata.setTotalCustomersProcessed((int) totalArchiveEntries);
-
-    Set<String> statuses = processedFileEntries.stream()
-            .map(ProcessedFileEntry::getOverallStatus)
-            .filter(Objects::nonNull)
-            .collect(Collectors.toSet());
-
-    String overallStatus;
-    if (statuses.size() == 1) {
-        overallStatus = statuses.iterator().next();
-    } else if (statuses.contains("SUCCESS") && statuses.contains("FAILED")) {
-        overallStatus = "PARTIAL";
-    } else if (statuses.contains("PARTIAL") || statuses.size() > 1) {
-        overallStatus = "PARTIAL";
-    } else {
-        overallStatus = "FAILED";
-    }
-
-    metadata.setProcessingStatus(overallStatus);
-    metadata.setEventOutcomeCode("0");
-    metadata.setEventOutcomeDescription(overallStatus.toLowerCase());
-
-    logger.info("[GT] Metadata built. batchId={}, fileName={}, totalCustomers={}, overallStatus={}",
-            batchId, fileName, metadata.getTotalCustomersProcessed(), overallStatus);
-
-    return metadata;
-}
-
-private static List<PrintFile> processPrintFiles(List<PrintFile> printFiles, Map<String, Map<String, String>> errorMap, String batchId, String fileName) {
-    List<PrintFile> result = new ArrayList<>();
-
-    for (PrintFile pf : printFiles) {
-        if (pf == null) {
-            logger.debug("[buildPayload] Skipping null PrintFile. batchId={}, fileName={}", batchId, fileName);
-            continue;
+        // --- Input checks ---
+        if (processedFiles == null || processedFiles.isEmpty()) {
+            logger.warn("[buildProcessedFileEntries] processedFiles is null/empty. Returning empty list.");
+            if (ignoredPrintFiles != null && !ignoredPrintFiles.isEmpty()) {
+                logger.debug("[buildProcessedFileEntries] ignoredPrintFiles present but will not be used. count={}", ignoredPrintFiles.size());
+            }
+            return allEntries;
+        }
+        if (errorMap == null) {
+            logger.warn("[buildProcessedFileEntries] errorMap is null. Using empty map to avoid NPEs.");
+            errorMap = java.util.Collections.emptyMap();
+        }
+        if (ignoredPrintFiles == null) {
+            logger.debug("[buildProcessedFileEntries] ignoredPrintFiles is null.");
+        } else if (!ignoredPrintFiles.isEmpty()) {
+            logger.debug("[buildProcessedFileEntries] ignoredPrintFiles provided (not used in this method). count={}", ignoredPrintFiles.size());
         }
 
-        String psUrl = pf.getPrintFileURL();
-        String status = "";
-        if (psUrl != null && psUrl.endsWith(".ps")) {
-            status = "SUCCESS";
-        } else if (psUrl != null && errorMap.containsKey(psUrl)) {
-            status = "FAILED";
+        logger.info("[buildProcessedFileEntries] Start building entries. processedFilesCount={}", processedFiles.size());
+
+        for (SummaryProcessedFile file : processedFiles) {
+            if (file == null) {
+                logger.debug("[buildProcessedFileEntries] Skipping null SummaryProcessedFile.");
+                continue;
+            }
+
+            String archiveFileName = (file.getArchiveBlobUrl() != null)
+                    ? new java.io.File(file.getArchiveBlobUrl()).getName()
+                    : "";
+
+            // Keep key construction semantics exactly as before (including possible "null" strings)
+            String key = file.getCustomerId() + "|" + file.getAccountNumber() + "|" + archiveFileName;
+
+            if (uniqueKeys.contains(key)) {
+                logger.debug("[GT] Duplicate skipped. customerId={}, account={}, archiveFile={}",
+                        file.getCustomerId(), file.getAccountNumber(), archiveFileName);
+                continue;
+            }
+            uniqueKeys.add(key);
+
+            ProcessedFileEntry entry = new ProcessedFileEntry();
+            entry.setCustomerId(file.getCustomerId());
+            entry.setAccountNumber(file.getAccountNumber());
+            entry.setEmailBlobUrl(file.getPdfEmailFileUrl());
+            entry.setMobstatBlobUrl(file.getPdfMobstatFileUrl());
+            entry.setPrintBlobUrl(file.getPrintFileUrl());
+            entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
+
+            // --- Ensure we get the correct account number from filename if needed (same logic) ---
+            String account = file.getAccountNumber();
+            if ((account == null || account.isBlank()) && isNonEmpty(file.getArchiveBlobUrl())) {
+                account = extractAccountFromFileName(archiveFileName);
+                logger.debug("[GT] Account missing. Extracted from archive file. customerId={}, extractedAccount={}, archiveFile={}",
+                        file.getCustomerId(), account, archiveFileName);
+            }
+
+            Map<String, String> errors = errorMap.getOrDefault(account, java.util.Collections.emptyMap());
+
+            // --- Set individual statuses (same conditions as original) ---
+            entry.setEmailStatus(isNonEmpty(file.getPdfEmailFileUrl()) ? "SUCCESS" :
+                    "FAILED".equalsIgnoreCase(errors.getOrDefault("EMAIL", "")) ? "FAILED" : "");
+            entry.setMobstatStatus(isNonEmpty(file.getPdfMobstatFileUrl()) ? "SUCCESS" :
+                    "FAILED".equalsIgnoreCase(errors.getOrDefault("MOBSTAT", "")) ? "FAILED" : "");
+            entry.setPrintStatus(isNonEmpty(file.getPrintFileUrl()) ? "SUCCESS" :
+                    "FAILED".equalsIgnoreCase(errors.getOrDefault("PRINT", "")) ? "FAILED" : "");
+            entry.setArchiveStatus(isNonEmpty(file.getArchiveBlobUrl()) ? "SUCCESS" :
+                    "FAILED".equalsIgnoreCase(errors.getOrDefault("ARCHIVE", "")) ? "FAILED" : "");
+
+            // --- Determine overall status (unchanged logic) ---
+            boolean emailSuccess = "SUCCESS".equals(entry.getEmailStatus());
+            boolean mobstatSuccess = "SUCCESS".equals(entry.getMobstatStatus());
+            boolean printSuccess  = "SUCCESS".equals(entry.getPrintStatus());
+            boolean archiveSuccess= "SUCCESS".equals(entry.getArchiveStatus());
+
+            if ((emailSuccess && archiveSuccess) ||
+                    (mobstatSuccess && archiveSuccess && !emailSuccess && !printSuccess) ||
+                    (printSuccess && archiveSuccess && !emailSuccess && !mobstatSuccess)) {
+                entry.setOverallStatus("SUCCESS");
+            } else if (archiveSuccess) {
+                entry.setOverallStatus("PARTIAL");
+            } else {
+                entry.setOverallStatus("FAILED");
+            }
+
+            // --- If any errors exist for this account, mark as PARTIAL if not FAILED (same logic) ---
+            if (errorMap.containsKey(account) && !"FAILED".equals(entry.getOverallStatus())) {
+                entry.setOverallStatus("PARTIAL");
+            }
+
+            logger.info("[GT] customerId={}, account={}, archiveFile={} | email={}, mobstat={}, print={}, archive={}, overall={}",
+                    entry.getCustomerId(), account, archiveFileName,
+                    entry.getEmailStatus(), entry.getMobstatStatus(), entry.getPrintStatus(),
+                    entry.getArchiveStatus(), entry.getOverallStatus());
+
+            allEntries.add(entry);
         }
 
-        String decodedUrl = psUrl != null ? URLDecoder.decode(psUrl, StandardCharsets.UTF_8) : null;
-
-        PrintFile printFile = new PrintFile();
-        printFile.setPrintFileURL(decodedUrl);
-        printFile.setPrintStatus(status);
-
-        result.add(printFile);
-
-        logger.debug("[GT] PrintFile processed. batchId={}, fileName={}, psUrl={}, status={}",
-                batchId, fileName, decodedUrl, status);
+        logger.info("[buildProcessedFileEntries] Completed. totalEntries={}", allEntries.size());
+        return allEntries;
     }
 
-    return result;
-}
+    public static String extractAccountFromFileName(String fileName) {
+        if (fileName == null || !fileName.contains("_")) return null;
+        return fileName.split("_")[0];
+    }
