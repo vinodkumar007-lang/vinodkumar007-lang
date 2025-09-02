@@ -1,137 +1,102 @@
-private static List<ProcessedFileEntry> buildProcessedFileEntries(
-        List<SummaryProcessedFile> processedFiles,
-        Map<String, Map<String, String>> errorMap,
-        List<PrintFile> ignoredPrintFiles) {
+File-Manager Service: Quick Access & Configuration Checklist
+1️⃣ Kafka
 
-    // --- Validate inputs ---
-    processedFiles = validateProcessedFiles(processedFiles, ignoredPrintFiles);
-    if (processedFiles.isEmpty()) return Collections.emptyList();
-    if (errorMap == null) {
-        logger.warn("[buildProcessedFileEntries] errorMap is null. Using empty map.");
-        errorMap = Collections.emptyMap();
-    }
+Check input topic access and validate permissions.
 
-    logger.info("[buildProcessedFileEntries] Start building entries. processedFilesCount={}", processedFiles.size());
+Check output topic access and validate permissions.
 
-    List<ProcessedFileEntry> allEntries = new ArrayList<>();
-    Set<String> uniqueKeys = new HashSet<>();
+Check consumer group configuration and access.
 
-    for (SummaryProcessedFile file : processedFiles) {
-        if (file == null) {
-            logger.debug("[buildProcessedFileEntries] Skipping null SummaryProcessedFile.");
-            continue;
-        }
+Configure and validate SSL certificates: keystore.jks, truststore.jks.
 
-        String archiveFileName = extractArchiveFileName(file);
-        String key = generateUniqueKey(file, archiveFileName);
+Install required certificates on environment.
 
-        if (!uniqueKeys.add(key)) {
-            logger.debug("[GT] Duplicate skipped. customerId={}, account={}, archiveFile={}",
-                    file.getCustomerId(), file.getAccountNumber(), archiveFileName);
-            continue;
-        }
+Check authentication credentials for Kafka.
 
-        String account = getAccount(file, archiveFileName);
+Validate read/write permissions for topics.
 
-        Map<String, String> errors = errorMap.getOrDefault(account, Collections.emptyMap());
+2️⃣ Azure Blob Storage
 
-        ProcessedFileEntry entry = mapToProcessedFileEntry(file, errors);
-        entry.setOverallStatus(determineOverallStatus(entry, account, errorMap));
+Check AZURE_CLIENT_ID is configured.
 
-        logger.info("[GT] customerId={}, account={}, archiveFile={} | email={}, mobstat={}, print={}, archive={}, overall={}",
-                entry.getCustomerId(), account, archiveFileName,
-                entry.getEmailStatus(), entry.getMobstatStatus(), entry.getPrintStatus(),
-                entry.getArchiveStatus(), entry.getOverallStatus());
+Check AZURE_TENANT_ID is configured.
 
-        allEntries.add(entry);
-    }
+Check account key / client secret is available.
 
-    logger.info("[buildProcessedFileEntries] Completed. totalEntries={}", allEntries.size());
-    return allEntries;
-}
+Check account name is correct.
 
-// --- Helper Methods ---
+Check mount path access for temporary file storage.
 
-private static List<SummaryProcessedFile> validateProcessedFiles(List<SummaryProcessedFile> processedFiles, List<PrintFile> ignoredPrintFiles) {
-    if (processedFiles == null || processedFiles.isEmpty()) {
-        logger.warn("[buildProcessedFileEntries] processedFiles is null/empty. Returning empty list.");
-        if (ignoredPrintFiles != null && !ignoredPrintFiles.isEmpty()) {
-            logger.debug("[buildProcessedFileEntries] ignoredPrintFiles present but not used. count={}", ignoredPrintFiles.size());
-        }
-        return Collections.emptyList();
-    }
-    if (ignoredPrintFiles == null) {
-        logger.debug("[buildProcessedFileEntries] ignoredPrintFiles is null.");
-    } else if (!ignoredPrintFiles.isEmpty()) {
-        logger.debug("[buildProcessedFileEntries] ignoredPrintFiles provided (not used). count={}", ignoredPrintFiles.size());
-    }
-    return processedFiles;
-}
+Containers & Access:
 
-private static String extractArchiveFileName(SummaryProcessedFile file) {
-    return file.getArchiveBlobUrl() != null ? new java.io.File(file.getArchiveBlobUrl()).getName() : "";
-}
+Check access to archive container (original input files).
 
-private static String generateUniqueKey(SummaryProcessedFile file, String archiveFileName) {
-    return file.getCustomerId() + "|" + file.getAccountNumber() + "|" + archiveFileName;
-}
+Check access to email container (EMAIL files).
 
-private static String getAccount(SummaryProcessedFile file, String archiveFileName) {
-    String account = file.getAccountNumber();
-    if ((account == null || account.isBlank()) && isNonEmpty(file.getArchiveBlobUrl())) {
-        account = extractAccountFromFileName(archiveFileName);
-        logger.debug("[GT] Account missing. Extracted from archive file. customerId={}, extractedAccount={}, archiveFile={}",
-                file.getCustomerId(), account, archiveFileName);
-    }
-    return account;
-}
+Check access to print container (PRINT files).
 
-private static ProcessedFileEntry mapToProcessedFileEntry(SummaryProcessedFile file, Map<String, String> errors) {
-    ProcessedFileEntry entry = new ProcessedFileEntry();
-    entry.setCustomerId(file.getCustomerId());
-    entry.setAccountNumber(file.getAccountNumber());
-    entry.setEmailBlobUrl(file.getPdfEmailFileUrl());
-    entry.setMobstatBlobUrl(file.getPdfMobstatFileUrl());
-    entry.setPrintBlobUrl(file.getPrintFileUrl());
-    entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
+Check access to mobstat container (mobile/status files).
 
-    entry.setEmailStatus(isNonEmpty(file.getPdfEmailFileUrl()) ? "SUCCESS" :
-            "FAILED".equalsIgnoreCase(errors.getOrDefault("EMAIL", "")) ? "FAILED" : "");
-    entry.setMobstatStatus(isNonEmpty(file.getPdfMobstatFileUrl()) ? "SUCCESS" :
-            "FAILED".equalsIgnoreCase(errors.getOrDefault("MOBSTAT", "")) ? "FAILED" : "");
-    entry.setPrintStatus(isNonEmpty(file.getPrintFileUrl()) ? "SUCCESS" :
-            "FAILED".equalsIgnoreCase(errors.getOrDefault("PRINT", "")) ? "FAILED" : "");
-    entry.setArchiveStatus(isNonEmpty(file.getArchiveBlobUrl()) ? "SUCCESS" :
-            "FAILED".equalsIgnoreCase(errors.getOrDefault("ARCHIVE", "")) ? "FAILED" : "");
+Check access to summary container (summary.json files).
 
-    return entry;
-}
+Validate read access for input files.
 
-private static String determineOverallStatus(ProcessedFileEntry entry, String account, Map<String, Map<String, String>> errorMap) {
-    boolean emailSuccess = "SUCCESS".equals(entry.getEmailStatus());
-    boolean mobstatSuccess = "SUCCESS".equals(entry.getMobstatStatus());
-    boolean printSuccess  = "SUCCESS".equals(entry.getPrintStatus());
-    boolean archiveSuccess= "SUCCESS".equals(entry.getArchiveStatus());
+Validate write access for processed files.
 
-    String overallStatus;
-    if ((emailSuccess && archiveSuccess) ||
-        (mobstatSuccess && archiveSuccess && !emailSuccess && !printSuccess) ||
-        (printSuccess && archiveSuccess && !emailSuccess && !mobstatSuccess)) {
-        overallStatus = "SUCCESS";
-    } else if (archiveSuccess) {
-        overallStatus = "PARTIAL";
-    } else {
-        overallStatus = "FAILED";
-    }
+Validate write access for summary.json files.
 
-    if (errorMap.containsKey(account) && !"FAILED".equals(overallStatus)) {
-        overallStatus = "PARTIAL";
-    }
+Validate proper naming conventions inside each container.
 
-    return overallStatus;
-}
+3️⃣ Azure AD / App Registration
 
-public static String extractAccountFromFileName(String fileName) {
-    if (fileName == null || !fileName.contains("_")) return null;
-    return fileName.split("_")[0];
-}
+Check File-Manager service is registered in Azure AD directory.
+
+Check Azure Client ID from app registration.
+
+Check Azure Tenant ID for the directory.
+
+Validate app permissions for Blob Storage, KeyVault, OpenText.
+
+Validate app registration credentials can access required resources.
+
+4️⃣ KeyVault
+
+Check access to fetch OTDS token.
+
+Check access to fetch Azure credentials if stored in KeyVault.
+
+Validate read permissions on KeyVault.
+
+5️⃣ OpenText Service
+
+Check OTDS token availability and validity.
+
+Check access to call OpenText APIs.
+
+Validate network/firewall access to OT endpoint.
+
+6️⃣ File / Folder Permissions
+
+Check mount path read/write access for downloaded files.
+
+Check temporary path storage availability.
+
+Validate permissions for generating and storing processed files.
+
+7️⃣ Summary Generation
+
+Check access to Blob Storage to write summary.json.
+
+Validate uploaded summary URL accessibility.
+
+Check naming conventions for summary files per batch.
+
+8️⃣ General / Validation
+
+Check logging is enabled for each step.
+
+Validate no duplicate processing of Kafka messages.
+
+Check all environment variables are correctly set.
+
+Validate SSL for all connections (Kafka, Blob Storage, OpenText).
