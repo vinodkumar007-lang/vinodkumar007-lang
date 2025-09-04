@@ -1,1 +1,1 @@
-I have pushed code for latest comments as well, please review and help us to approve PR.
+I’ve pushed the latest changes addressing the review comments. Please review and help approve the PR if all looks good
