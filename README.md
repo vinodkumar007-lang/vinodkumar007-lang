@@ -15,3 +15,6 @@ and the repository exists.
 
 proxy.host=proxyprod.africa.nedcor.net
 proxy.port=80
+
+git config --global http.proxy http://proxyprod.africa.nedcor.net:80
+git config --global https.proxy http://proxyprod.africa.nedcor.net:80
