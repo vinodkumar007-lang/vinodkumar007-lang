@@ -9,3 +9,5 @@ git: 'credential-manager-core' is not a git command. See 'git --help'.
 fatal: Authentication failed for 'https://dev.azure.com/Nedbank-Limited/ECM_Exstream/_git/ECM_comp_Filemanager/'
 
 git config --global http.sslVerify false
+
+git config --global --unset credential.helper
