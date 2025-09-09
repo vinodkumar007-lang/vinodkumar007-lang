@@ -1,21 +1,37 @@
 /**
  * Returns all delivery file URLs matching the account.
+ * Added debug logs for troubleshooting.
  */
 private List<String> findFilesByAccount(Map<String, String> fileMap, String account) {
     if (fileMap == null || fileMap.isEmpty() || account == null) {
+        logger.warn("findFilesByAccount called with empty map or null account");
         return Collections.emptyList();
     }
 
     String normalizedAccount = account.trim().toLowerCase();
 
-    return fileMap.entrySet().stream()
+    // Log all available keys for debugging
+    logger.debug("Available files in map: {}", fileMap.keySet());
+    logger.debug("Searching for account: {}", normalizedAccount);
+
+    List<String> matchedFiles = fileMap.entrySet().stream()
             .filter(e -> e.getKey() != null && e.getKey().toLowerCase().contains(normalizedAccount))
+            .peek(e -> logger.debug("Matched file: {} -> {}", e.getKey(), e.getValue()))
             .map(Map.Entry::getValue)
             .toList();
+
+    if (matchedFiles.isEmpty()) {
+        logger.warn("No files matched for account: {}", account);
+    } else {
+        logger.info("Matched {} files for account: {}", matchedFiles.size(), account);
+    }
+
+    return matchedFiles;
 }
 
 /**
  * Uploads all files from the specified delivery folders and returns a map of folder -> (filename -> file URL).
+ * Includes detailed debug logs to track every file.
  */
 private Map<String, Map<String, String>> uploadDeliveryFiles(
         Path jobDir,
@@ -31,7 +47,10 @@ private Map<String, Map<String, String>> uploadDeliveryFiles(
         deliveryFileMaps.put(folder, new HashMap<>());
         Path folderPath = jobDir.resolve(folder);
 
+        logger.info("[{}] Scanning folder: {}", msg.getBatchId(), folderPath.toAbsolutePath());
+
         if (!Files.exists(folderPath)) {
+            logger.warn("[{}] Folder does not exist: {}", msg.getBatchId(), folder);
             continue;
         }
 
@@ -40,6 +59,8 @@ private Map<String, Map<String, String>> uploadDeliveryFiles(
                   .filter(file -> !file.getFileName().toString().endsWith(".tmp"))
                   .forEach(file -> {
                       String fileName = file.getFileName().toString(); // only filename
+                      logger.debug("[{}] Found file: {}", msg.getBatchId(), fileName);
+
                       try {
                           // Upload file and get the full URL
                           String uploadedUrl = blobStorageService.uploadFileByMessage(file.toFile(), folder, msg);
@@ -65,7 +86,11 @@ private Map<String, Map<String, String>> uploadDeliveryFiles(
                                           " upload failed: " + e.getMessage());
                       }
                   });
+        } catch (Exception e) {
+            logger.error("[{}] ⚠️ Error scanning folder {}: {}", msg.getBatchId(), folder, e.getMessage(), e);
         }
+
+        logger.info("[{}] Total files uploaded in folder {}: {}", msg.getBatchId(), folder, deliveryFileMaps.get(folder).size());
     }
 
     return deliveryFileMaps;
