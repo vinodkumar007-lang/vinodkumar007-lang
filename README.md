@@ -1,112 +1,103 @@
-/**
- * Scans a folder and uploads all files to blob storage.
- * Stores only the filename as the key, and the blob URL as the value.
- */
-private Map<String, String> uploadDeliveryFiles(Path folderPath, String folderName, String tenant, String batchId) {
-    Map<String, String> fileMap = new HashMap<>();
+private Map<String, Map<String, String>> uploadDeliveryFiles(
+            Path jobDir,
+            List<String> deliveryFolders,
+            Map<String, String> folderToOutputMethod,
+            KafkaMessage msg,
+            Map<String, Map<String, String>> errorMap) throws IOException {
 
-    if (folderPath == null || !Files.exists(folderPath)) {
-        log.warn("Folder {} does not exist for tenant {}", folderName, tenant);
-        return fileMap;
+        Map<String, Map<String, String>> deliveryFileMaps = new HashMap<>();
+        for (String folder : deliveryFolders) {
+            deliveryFileMaps.put(folder, new HashMap<>());
+            Path folderPath = jobDir.resolve(folder);
+            if (!Files.exists(folderPath)) continue;
+
+            try (Stream<Path> stream = Files.walk(folderPath)) {
+                stream.filter(Files::isRegularFile)
+                        .filter(file -> !file.getFileName().toString().endsWith(".tmp"))
+                        .forEach(file -> {
+                            String fileName = file.getFileName().toString();
+                            try {
+                                String url = decodeUrl(blobStorageService.uploadFileByMessage(file.toFile(), folder, msg));
+                                deliveryFileMaps.get(folder).put(fileName, url);
+                                logger.info("[{}] ✅ Uploaded {} file: {}", msg.getBatchId(), folderToOutputMethod.get(folder), url);
+                            } catch (Exception e) {
+                                logger.error("[{}] ⚠️ Failed to upload {} file {}: {}", msg.getBatchId(),
+                                        folderToOutputMethod.getOrDefault(folder, folder), fileName, e.getMessage(), e);
+                                errorMap.computeIfAbsent("UNKNOWN", k -> new HashMap<>())
+                                        .put(fileName, folderToOutputMethod.getOrDefault(folder, folder) + " upload failed: " + e.getMessage());
+                            }
+                        });
+            }
+        }
+        return deliveryFileMaps;
     }
 
-    try (Stream<Path> files = Files.list(folderPath)) {
-        files.filter(Files::isRegularFile).forEach(file -> {
-            try {
-                String fileName = file.getFileName().toString(); // ✅ only filename as key
-                String blobUrl = blobStorageService.uploadFileAndReturnLocation(
-                        file, tenant, batchId, folderName, fileName);
+    /**
+     * Build final processed list combining archive + delivery files
+     * Creates separate entry for each delivery file if multiple exist
+     */
+    private List<SummaryProcessedFile> buildFinalProcessedList(
+            List<SummaryProcessedFile> customerList,
+            Map<String, Map<String, String>> accountToArchiveMap,
+            Map<String, Map<String, String>> deliveryFileMaps,
+            KafkaMessage msg) {
 
-                fileMap.put(fileName, blobUrl); // ✅ key = filename, value = blob URL
-                log.info("Uploaded {} file: {} -> {}", folderName, fileName, blobUrl);
+        List<SummaryProcessedFile> finalList = new ArrayList<>();
+        Set<String> uniqueKeys = new HashSet<>();
+        boolean isMfc = AppConstants.SOURCE_MFC.equalsIgnoreCase(msg.getSourceSystem());
 
-            } catch (Exception e) {
-                log.error("Failed to upload file {} from folder {}", file, folderName, e);
+        for (SummaryProcessedFile customer : customerList) {
+            if (customer == null || customer.getAccountNumber() == null) continue;
+
+            String account = customer.getAccountNumber();
+            Map<String, String> archivesForAccount = accountToArchiveMap.getOrDefault(account, Collections.emptyMap());
+
+            for (Map.Entry<String, String> archiveEntry : archivesForAccount.entrySet()) {
+                String archiveFileName = archiveEntry.getKey();
+                String archiveUrl = archiveEntry.getValue();
+
+                List<String> emailFiles = findFilesByAccount(deliveryFileMaps.get(AppConstants.FOLDER_EMAIL), account);
+                List<String> mobstatFiles = findFilesByAccount(deliveryFileMaps.get(AppConstants.FOLDER_MOBSTAT), account);
+                List<String> printFiles = findFilesByAccount(deliveryFileMaps.get(AppConstants.FOLDER_PRINT), account);
+
+                if (emailFiles.isEmpty() && mobstatFiles.isEmpty() && printFiles.isEmpty()) {
+                    SummaryProcessedFile entry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, entry);
+                    entry.setArchiveBlobUrl(archiveUrl);
+                    finalList.add(entry);
+                    continue;
+                }
+
+                int maxFiles = Math.max(emailFiles.size(), Math.max(mobstatFiles.size(), printFiles.size()));
+                for (int i = 0; i < maxFiles; i++) {
+                    SummaryProcessedFile entry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, entry);
+                    entry.setArchiveBlobUrl(archiveUrl);
+
+                    entry.setPdfEmailFileUrl(i < emailFiles.size() ? emailFiles.get(i) : null);
+                    entry.setPdfMobstatFileUrl(i < mobstatFiles.size() ? mobstatFiles.get(i) : null);
+                    entry.setPrintFileUrl(i < printFiles.size() ? printFiles.get(i) : null);
+
+                    String key = customer.getCustomerId() + "|" + account + "|" + archiveFileName
+                            + "|" + entry.getPdfEmailFileUrl() + "|" + entry.getPdfMobstatFileUrl() + "|" + entry.getPrintFileUrl();
+                    if (!uniqueKeys.add(key)) continue;
+
+                    finalList.add(entry);
+                }
             }
-        });
-    } catch (Exception e) {
-        log.error("Error scanning folder {} for tenant {}", folderName, tenant, e);
+        }
+        return finalList;
     }
 
-    return fileMap;
-}
+    /**
+     * Returns all delivery file URLs matching the account
+     */
+    private List<String> findFilesByAccount(Map<String, String> fileMap, String account) {
+        if (fileMap == null || fileMap.isEmpty() || account == null) return Collections.emptyList();
 
-/**
- * Returns all delivery file URLs matching the account
- */
-private List<String> findFilesByAccount(Map<String, String> fileMap, String account) {
-    if (fileMap == null || fileMap.isEmpty() || account == null) return Collections.emptyList();
-
-    return fileMap.entrySet().stream()
-            .filter(e -> e.getKey().toLowerCase().contains(account.toLowerCase())) // ✅ match inside filename
-            .map(Map.Entry::getValue) // ✅ return blob URLs
-            .toList();
-}
-
-/**
- * Builds processed file entries for all delivery channels (archive, email, print, mobstat).
- */
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        List<SummaryProcessedFile> customerEntries,
-        Map<String, Map<String, String>> deliveryFileMaps) {
-
-    List<SummaryProcessedFile> results = new ArrayList<>();
-
-    for (SummaryProcessedFile entry : customerEntries) {
-        String account = entry.getAccountNumber();
-
-        // 🔹 Archive (always expected)
-        List<String> archiveFiles = findFilesByAccount(deliveryFileMaps.get(AppConstants.FOLDER_ARCHIVE), account);
-        if (!archiveFiles.isEmpty()) {
-            for (String url : archiveFiles) {
-                SummaryProcessedFile newEntry = new SummaryProcessedFile(entry);
-                newEntry.setArchiveBlobUrl(url);
-                newEntry.setArchiveStatus("SUCCESS");
-                results.add(newEntry);
-            }
-        }
-
-        // 🔹 Email
-        List<String> emailFiles = findFilesByAccount(deliveryFileMaps.get(AppConstants.FOLDER_EMAIL), account);
-        if (!emailFiles.isEmpty()) {
-            for (String url : emailFiles) {
-                SummaryProcessedFile newEntry = new SummaryProcessedFile(entry);
-                newEntry.setPdfEmailFileUrl(url);
-                newEntry.setEmailStatus("SUCCESS");
-                results.add(newEntry);
-            }
-        }
-
-        // 🔹 Print
-        List<String> printFiles = findFilesByAccount(deliveryFileMaps.get(AppConstants.FOLDER_PRINT), account);
-        if (!printFiles.isEmpty()) {
-            for (String url : printFiles) {
-                SummaryProcessedFile newEntry = new SummaryProcessedFile(entry);
-                newEntry.setPrintFileUrl(url);
-                newEntry.setPrintStatus("SUCCESS");
-                results.add(newEntry);
-            }
-        }
-
-        // 🔹 Mobstat
-        List<String> mobstatFiles = findFilesByAccount(deliveryFileMaps.get(AppConstants.FOLDER_MOBSTAT), account);
-        if (!mobstatFiles.isEmpty()) {
-            for (String url : mobstatFiles) {
-                SummaryProcessedFile newEntry = new SummaryProcessedFile(entry);
-                newEntry.setPdfMobstatFileUrl(url);
-                newEntry.setMobstatStatus("SUCCESS");
-                results.add(newEntry);
-            }
-        }
-
-        // If no files found at all → keep original with failure
-        if (archiveFiles.isEmpty() && emailFiles.isEmpty() && printFiles.isEmpty() && mobstatFiles.isEmpty()) {
-            SummaryProcessedFile failedEntry = new SummaryProcessedFile(entry);
-            failedEntry.setOverallStatus("FAILED");
-            results.add(failedEntry);
-        }
+        return fileMap.entrySet().stream()
+                .filter(e -> e.getKey().toLowerCase().contains(account.toLowerCase()))
+                .map(Map.Entry::getValue)
+                .toList();
     }
-
-    return results;
-}
-
+    
