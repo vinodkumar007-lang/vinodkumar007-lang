@@ -56,6 +56,15 @@ public class KafkaListenerService {
     @Value("${rpt.poll.interval.millis}")
     private int rptPollIntervalMillis;
 
+    //@Value("${ot.orchestration.api.url}")
+    //private String otOrchestrationApiUrl;
+
+    //@Value("${ot.service.mfc.url}")
+    //private String orchestrationMfcUrl;
+
+    //@Value("${ot.auth.token}")
+    //private String orchestrationAuthToken;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final BlobStorageService blobStorageService;
     private final KafkaTemplate<String, String> kafkaTemplate;
@@ -176,9 +185,7 @@ public class KafkaListenerService {
 
             SourceSystemProperties.SystemConfig config = matchingConfig.get();
             String url = config.getUrl();
-
-            String secretName = sourceSystemProperties.getSystems().get(0).getToken();
-            String token = blobStorageService.getSecret(secretName);
+            String token = blobStorageService.getOtdsToken();
 
             if (url == null || url.isBlank()) {
                 logger.error("❌ [batchId: {}] Orchestration URL not configured for source system '{}'", batchId, sourceSystem);
@@ -322,8 +329,8 @@ public class KafkaListenerService {
                         return spf;
                     })
                     .collect(Collectors.toList());
-            String sanitizedSourceSystem = message.getSourceSystem().replaceAll(FILENAME_SANITIZE_REGEX, REPLACEMENT_UNDERSCORE);
-            Path jobDir = Paths.get(mountPath, AppConstants.OUTPUT_FOLDER, sanitizedSourceSystem, otResponse.getJobId());
+
+            Path jobDir = Paths.get(mountPath, AppConstants.OUTPUT_FOLDER, message.getSourceSystem(), otResponse.getJobId());
             logger.info("[{}] 📂 Resolved jobDir path = {}", batchId, jobDir.toAbsolutePath());
             logger.info("[{}] 🔄 Invoking buildDetailedProcessedFiles...", batchId);
             List<SummaryProcessedFile> processedFiles =
@@ -614,7 +621,7 @@ public class KafkaListenerService {
      * @param msg           Kafka message for path info
      * @return List of SummaryProcessedFile objects with blob URLs and status
      */
-
+// --- FIXED version: skip missing temp files safely ---
     private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             Path jobDir,
             List<SummaryProcessedFile> customerList,
@@ -622,10 +629,7 @@ public class KafkaListenerService {
             KafkaMessage msg) throws IOException {
 
         List<SummaryProcessedFile> finalList = new ArrayList<>();
-
-        if (!validateInputs(jobDir, customerList, msg)) {
-            return finalList;
-        }
+        if (jobDir == null || customerList == null || msg == null) return finalList;
 
         List<String> deliveryFolders = List.of(
                 AppConstants.FOLDER_EMAIL,
@@ -639,199 +643,77 @@ public class KafkaListenerService {
                 AppConstants.FOLDER_PRINT, AppConstants.OUTPUT_PRINT
         );
 
-        // Step 1: Upload all archive files
-        Map<String, Map<String, String>> accountToArchiveMap = uploadAllFiles(jobDir, msg, errorMap);
+        // -------- Upload all archive files and map by account + filename --------
+        Path archivePath = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
+        Map<String, Map<String, String>> accountToArchiveMap = new HashMap<>(); // account -> (filename -> URL)
+        if (Files.exists(archivePath)) {
+            try (Stream<Path> stream = Files.walk(archivePath)) {
+                stream.filter(Files::isRegularFile).forEach(file -> {
+                    // ✅ Skip temp/missing files
+                    if (!Files.exists(file)) {
+                        logger.warn("[{}] ⏩ Skipping missing archive file: {}", msg.getBatchId(), file);
+                        return;
+                    }
 
-        // Step 2: Upload delivery files
-        Map<String, Map<String, String>> deliveryFileMaps = uploadDeliveryFiles(jobDir, deliveryFolders, folderToOutputMethod, msg, errorMap);
+                    String fileName = file.getFileName().toString();
+                    String account = extractAccountFromFileName(fileName);
+                    if (account == null) return;
 
-        // Step 3: Build final list
-        finalList = buildFinalProcessedList(customerList, accountToArchiveMap, deliveryFileMaps, msg);
-
-        logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
-        return finalList;
-    }
-
-    private boolean validateInputs(Path jobDir, List<SummaryProcessedFile> customerList, KafkaMessage msg) {
-        if (jobDir == null) {
-            logger.warn("[{}] ⚠️ jobDir is null. Skipping buildDetailedProcessedFiles.", msg != null ? msg.getBatchId() : "UNKNOWN");
-            return false;
-        }
-        if (customerList == null || customerList.isEmpty()) {
-            logger.warn("[{}] ⚠️ customerList is null/empty. Nothing to process.", msg != null ? msg.getBatchId() : "UNKNOWN");
-            return false;
-        }
-        if (msg == null) {
-            logger.warn("[UNKNOWN] ⚠️ KafkaMessage is null. Skipping buildDetailedProcessedFiles.");
-            return false;
-        }
-        return true;
-    }
-
-    /**
-     * Uploads all files from available folders (ARCHIVE, EMAIL, PRINT, MOBSTAT).
-     */
-    private Map<String, Map<String, String>> uploadAllFiles(Path jobDir,
-                                                            KafkaMessage msg,
-                                                            Map<String, Map<String, String>> errorMap) throws IOException {
-        Map<String, Map<String, String>> accountToFiles = new HashMap<>();
-
-        // list of all supported folders
-        List<String> folders = Arrays.asList(
-                AppConstants.FOLDER_ARCHIVE,
-                AppConstants.FOLDER_EMAIL,
-                AppConstants.FOLDER_PRINT,
-                AppConstants.FOLDER_MOBSTAT
-        );
-
-        for (String folder : folders) {
-            Map<String, Map<String, String>> uploaded = uploadFilesByFolder(jobDir, folder, msg, errorMap);
-
-            // merge uploaded results into master map
-            uploaded.forEach((acct, files) ->
-                    accountToFiles.merge(acct, files, (oldMap, newMap) -> {
-                        oldMap.putAll(newMap);
-                        return oldMap;
-                    })
-            );
+                    try {
+                        String archiveUrl = decodeUrl(
+                                blobStorageService.uploadFileByMessage(file.toFile(), AppConstants.FOLDER_ARCHIVE, msg)
+                        );
+                        accountToArchiveMap.computeIfAbsent(account, k -> new HashMap<>()).put(fileName, archiveUrl);
+                        logger.info("[{}] 📦 Uploaded archive file for account {}: {}", msg.getBatchId(), account, archiveUrl);
+                    } catch (Exception e) {
+                        logger.error("[{}] ⚠️ Failed to upload archive file {}: {}", msg.getBatchId(), fileName, e.getMessage(), e);
+                    }
+                });
+            }
         }
 
-        return accountToFiles;
-    }
-
-    /**
-     * Upload files from a specific folder under jobDir.
-     */
-    private Map<String, Map<String, String>> uploadFilesByFolder(Path jobDir,
-                                                                 String folderName,
-                                                                 KafkaMessage msg,
-                                                                 Map<String, Map<String, String>> errorMap) throws IOException {
-        Map<String, Map<String, String>> accountToFileMap = new HashMap<>();
-        Path targetPath = jobDir.resolve(folderName);
-
-        if (!Files.exists(targetPath)) {
-            logger.warn("[{}] ⚠️ Folder does not exist: {}", msg.getBatchId(), targetPath);
-            return accountToFileMap;
-        }
-
-        try (Stream<Path> stream = Files.walk(targetPath)) {
-            stream.filter(Files::isRegularFile)
-                    .filter(file -> !file.getFileName().toString().endsWith(".tmp"))
-                    .forEach(file -> processFileByFolder(file, folderName, msg, accountToFileMap, errorMap));
-        }
-
-        return accountToFileMap;
-    }
-
-    /**
-     * Process a single file and upload it to Blob.
-     */
-    private void processFileByFolder(Path file,
-                                     String folderName,
-                                     KafkaMessage msg,
-                                     Map<String, Map<String, String>> accountToFileMap,
-                                     Map<String, Map<String, String>> errorMap) {
-        if (!Files.exists(file)) {
-            logger.warn("[{}] ⏩ Skipping missing {} file: {}", msg.getBatchId(), folderName, file);
-            return;
-        }
-
-        String fileName = file.getFileName().toString();
-        String account = extractAccountFromFileName(fileName);
-        if (account == null) {
-            logger.debug("[{}] ⚠️ Skipping {} file without account mapping: {}", msg.getBatchId(), folderName, fileName);
-            return;
-        }
-
-        try {
-            String blobUrl = decodeUrl(
-                    blobStorageService.uploadFileByMessage(file.toFile(), folderName, msg)
-            );
-
-            accountToFileMap
-                    .computeIfAbsent(account, k -> new HashMap<>())
-                    .put(fileName, blobUrl);
-
-            logger.info("[{}] 📦 Uploaded {} file for account [{}]: {}", msg.getBatchId(), folderName, account, blobUrl);
-        } catch (Exception e) {
-            logger.error("[{}] ⚠️ Failed to upload {} file {}: {}", msg.getBatchId(), folderName, fileName, e.getMessage(), e);
-            errorMap.computeIfAbsent(account, k -> new HashMap<>())
-                    .put(fileName, folderName + " upload failed: " + e.getMessage());
-        }
-    }
-
-    private Map<String, Map<String, String>> uploadDeliveryFiles(
-            Path jobDir,
-            List<String> deliveryFolders,
-            Map<String, String> folderToOutputMethod,
-            KafkaMessage msg,
-            Map<String, Map<String, String>> errorMap) throws IOException {
-
-        Map<String, Map<String, String>> deliveryFileMaps = new HashMap<>();
-        for (String folder : deliveryFolders) {
-            deliveryFileMaps.put(folder, new HashMap<>());
-        }
+        // -------- Upload delivery files --------
+        Map<String, String> emailFileMap = new HashMap<>();
+        Map<String, String> mobstatFileMap = new HashMap<>();
+        Map<String, String> printFileMap = new HashMap<>();
 
         for (String folder : deliveryFolders) {
             Path folderPath = jobDir.resolve(folder);
-            if (!Files.exists(folderPath)) {
-                logger.debug("[{}] ℹ️ Delivery folder not found: {}", msg.getBatchId(), folder);
-                continue;
-            }
+            if (!Files.exists(folderPath)) continue;
 
             try (Stream<Path> stream = Files.walk(folderPath)) {
-                stream.filter(Files::isRegularFile)
-                        .filter(file -> !file.getFileName().toString().endsWith(".tmp"))
-                        .forEach(file -> processDeliveryFile(
-                                file, folder, folderToOutputMethod, msg, deliveryFileMaps, errorMap));
+                stream.filter(Files::isRegularFile).forEach(file -> {
+                    // ✅ Skip temp/missing files
+                    if (!Files.exists(file)) {
+                        logger.warn("[{}] ⏩ Skipping missing {} file: {}", msg.getBatchId(), folder, file);
+                        return;
+                    }
+
+                    String fileName = file.getFileName().toString();
+                    try {
+                        String url = decodeUrl(
+                                blobStorageService.uploadFileByMessage(file.toFile(), folder, msg)
+                        );
+                        switch (folder) {
+                            case AppConstants.FOLDER_EMAIL -> emailFileMap.put(fileName, url);
+                            case AppConstants.FOLDER_MOBSTAT -> mobstatFileMap.put(fileName, url);
+                            case AppConstants.FOLDER_PRINT -> printFileMap.put(fileName, url);
+                        }
+                        logger.info("[{}] ✅ Uploaded {} file: {}", msg.getBatchId(), folderToOutputMethod.get(folder), url);
+                    } catch (Exception e) {
+                        logger.error("[{}] ⚠️ Failed to upload {} file {}: {}", msg.getBatchId(), folderToOutputMethod.get(folder), fileName, e.getMessage(), e);
+                    }
+                });
             }
         }
 
-        return deliveryFileMaps;
-    }
-
-    private void processDeliveryFile(Path file, String folder,
-                                     Map<String, String> folderToOutputMethod,
-                                     KafkaMessage msg,
-                                     Map<String, Map<String, String>> deliveryFileMaps,
-                                     Map<String, Map<String, String>> errorMap) {
-        if (!Files.exists(file)) {
-            logger.warn("[{}] ⏩ Skipping missing {} file: {}", msg.getBatchId(), folder, file);
-            return;
-        }
-
-        String fileName = file.getFileName().toString();
-        try {
-            String url = decodeUrl(
-                    blobStorageService.uploadFileByMessage(file.toFile(), folder, msg)
-            );
-            deliveryFileMaps.get(folder).put(fileName, url);
-
-            logger.info("[{}] ✅ Uploaded {} file: {}", msg.getBatchId(),
-                    folderToOutputMethod.get(folder), url);
-        } catch (Exception e) {
-            logger.error("[{}] ⚠️ Failed to upload {} file {}: {}", msg.getBatchId(),
-                    folderToOutputMethod.getOrDefault(folder, folder), fileName, e.getMessage(), e);
-            errorMap.computeIfAbsent("UNKNOWN", k -> new HashMap<>())
-                    .put(fileName, folderToOutputMethod.getOrDefault(folder, folder) + " upload failed: " + e.getMessage());
-        }
-    }
-
-    private List<SummaryProcessedFile> buildFinalProcessedList(
-            List<SummaryProcessedFile> customerList,
-            Map<String, Map<String, String>> accountToArchiveMap,
-            Map<String, Map<String, String>> deliveryFileMaps,
-            KafkaMessage msg) {
-
-        List<SummaryProcessedFile> finalList = new ArrayList<>();
+        // -------- Build final list --------
         Set<String> uniqueKeys = new HashSet<>();
-        boolean isMfc = AppConstants.SOURCE_MFC.equalsIgnoreCase(msg.getSourceSystem());
+
+        boolean isMfc = "MFC".equalsIgnoreCase(msg.getSourceSystem());
 
         for (SummaryProcessedFile customer : customerList) {
-            if (customer == null || customer.getAccountNumber() == null) {
-                logger.debug("[{}] ⏩ Skipping null/invalid customer entry.", msg.getBatchId());
-                continue;
-            }
+            if (customer == null || customer.getAccountNumber() == null) continue;
 
             String account = customer.getAccountNumber();
             Map<String, String> archivesForAccount = accountToArchiveMap.getOrDefault(account, Collections.emptyMap());
@@ -841,41 +723,42 @@ public class KafkaListenerService {
                 String archiveUrl = archiveEntry.getValue();
 
                 String key = customer.getCustomerId() + "|" + account + "|" + archiveFileName;
-                if (!uniqueKeys.add(key)) {
-                    logger.debug("[{}] ⏩ Duplicate entry skipped for key={}", msg.getBatchId(), key);
-                    continue;
-                }
+                if (uniqueKeys.contains(key)) continue;
+                uniqueKeys.add(key);
 
                 SummaryProcessedFile entry = new SummaryProcessedFile();
                 BeanUtils.copyProperties(customer, entry);
                 entry.setArchiveBlobUrl(archiveUrl);
 
                 if (isMfc) {
-                    // MFC mapping stays the same
-                    entry.setPdfEmailFileUrl(findFileByAccount(deliveryFileMaps.get(AppConstants.FOLDER_EMAIL), account));
-                    entry.setPdfMobstatFileUrl(findFileByAccount(deliveryFileMaps.get(AppConstants.FOLDER_MOBSTAT), account));
-                    entry.setPrintFileUrl(findFileByAccount(deliveryFileMaps.get(AppConstants.FOLDER_PRINT), account));
+                    // 🔹 MFC: match delivery files by account
+                    entry.setPdfEmailFileUrl(findFileByAccount(emailFileMap, account));
+                    entry.setPdfMobstatFileUrl(findFileByAccount(mobstatFileMap, account));
+                    entry.setPrintFileUrl(findFileByAccount(printFileMap, account));
                 } else {
-                    // FIX: map delivery files by account for non-MFC
-                    entry.setPdfEmailFileUrl(findFileByAccount(deliveryFileMaps.get(AppConstants.FOLDER_EMAIL), account));
-                    entry.setPdfMobstatFileUrl(findFileByAccount(deliveryFileMaps.get(AppConstants.FOLDER_MOBSTAT), account));
-                    entry.setPrintFileUrl(findFileByAccount(deliveryFileMaps.get(AppConstants.FOLDER_PRINT), account));
+                    // 🔹 DEBTMAN: match delivery files by exact filename
+                    entry.setPdfEmailFileUrl(emailFileMap.get(archiveFileName));
+                    entry.setPdfMobstatFileUrl(mobstatFileMap.get(archiveFileName));
+                    entry.setPrintFileUrl(printFileMap.get(archiveFileName));
                 }
 
                 finalList.add(entry);
             }
         }
+
+        logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
         return finalList;
     }
-
+    
+    // --- Helper for MFC to match by account ---
     private String findFileByAccount(Map<String, String> fileMap, String account) {
-        if (fileMap == null || fileMap.isEmpty() || account == null) return null;
+        if (account == null) return null;
         return fileMap.entrySet().stream()
                 .filter(e -> {
                     String fileName = e.getKey();
-                    return fileName.startsWith(account + "_")
-                            || fileName.contains("_" + account + "_")
-                            || fileName.endsWith("_" + account + ".pdf");
+                    return fileName.startsWith(account + "_")               // case: 12345_statement.pdf
+                            || fileName.contains("_" + account + "_")      // case: statement_12345_extra.pdf
+                            || fileName.endsWith("_" + account + ".pdf");  // case: Statement-2025-08-02_12345.pdf (MFC)
                 })
                 .map(Map.Entry::getValue)
                 .findFirst()
