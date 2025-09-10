@@ -1,6 +1,42 @@
-2025-09-10T06:05:20.307+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 📂 Resolved jobDir path = /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/9236e1c9-b030-48c7-89ef-071c7369fc07
-2025-09-10T06:05:20.307+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 🔄 Invoking buildDetailedProcessedFiles...
-2025-09-10T06:05:22.798+02:00 DEBUG 1 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
-2025-09-10T06:05:23.499+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2FAA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1005943885_EMLCR006.pdf'
-2025-09-10T06:05:23.500+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 📦 Uploaded archive file for account [1005943885]: https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN/076f2b3c-37bc-4bcb-ab6a-29041acfc0f9/AA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1005943885_EMLCR006.pdf
-2025-09-10T06:05:23.913+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2FAA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1012821374_EMLCR006.pdf'
+private Map<String, Map<String, String>> uploadDeliveryFiles(
+        Path jobDir,
+        List<String> deliveryFolders,
+        Map<String, String> folderToOutputMethod,
+        KafkaMessage msg,
+        Map<String, Map<String, String>> errorMap) throws IOException {
+
+    Map<String, Map<String, String>> deliveryFileMaps = new HashMap<>();
+    for (String folder : deliveryFolders) {
+        deliveryFileMaps.put(folder, new HashMap<>());
+    }
+
+    // Walk entire jobDir recursively to find all matching delivery folders
+    try (Stream<Path> allDirs = Files.walk(jobDir)) {
+        List<Path> folderPaths = allDirs
+                .filter(Files::isDirectory)
+                .filter(p -> deliveryFolders.contains(p.getFileName().toString()))
+                .toList();
+
+        if (folderPaths.isEmpty()) {
+            logger.warn("[{}] ⚠️ No delivery folders found under jobDir: {}", msg.getBatchId(), jobDir);
+            return deliveryFileMaps;
+        }
+
+        for (Path folderPath : folderPaths) {
+            String folderName = folderPath.getFileName().toString();
+            logger.info("[{}] 🔎 Processing delivery folder: {}", msg.getBatchId(), folderPath);
+
+            try (Stream<Path> files = Files.walk(folderPath)) {
+                files.filter(Files::isRegularFile)
+                     .filter(f -> !f.getFileName().toString().endsWith(".tmp"))
+                     .forEach(file -> {
+                         logger.debug("[{}] 📂 Found {} file: {}", 
+                                 msg.getBatchId(), folderName, file.getFileName());
+                         processDeliveryFile(file, folderName, folderToOutputMethod, msg, deliveryFileMaps, errorMap);
+                     });
+            }
+        }
+    }
+
+    return deliveryFileMaps;
+}
