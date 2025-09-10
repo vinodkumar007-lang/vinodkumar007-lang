@@ -1,112 +1,136 @@
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        Path jobDir,
-        List<SummaryProcessedFile> customerList,
-        KafkaMessage msg) throws IOException {
-
-    List<SummaryProcessedFile> finalList = new ArrayList<>();
-
-    if (customerList == null || customerList.isEmpty() || jobDir == null || !Files.exists(jobDir)) {
-        logger.warn("[{}] ⚠️ Job directory or customer list empty", msg.getBatchId());
-        return finalList;
-    }
-
-    List<String> deliveryFolders = List.of(
-            AppConstants.FOLDER_ARCHIVE,
-            AppConstants.FOLDER_EMAIL,
-            AppConstants.FOLDER_MOBSTAT,
-            AppConstants.FOLDER_PRINT
-    );
-
-    // Load all archive files first for combination
-    Map<String, List<Path>> archiveFilesMap = new HashMap<>();
-    Path archiveFolder = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
-    if (Files.exists(archiveFolder)) {
-        try (Stream<Path> stream = Files.walk(archiveFolder)) {
-            stream.filter(Files::isRegularFile)
-                  .filter(f -> !isTempFile(f))
-                  .forEach(f -> {
-                      String fileName = f.getFileName().toString();
-                      customerList.forEach(cust -> {
-                          if (fileName.contains(cust.getAccountNumber())) {
-                              archiveFilesMap.computeIfAbsent(cust.getAccountNumber(), k -> new ArrayList<>()).add(f);
-                          }
-                      });
-                  });
-        }
-    }
-
-    // Process each delivery folder
-    for (String folder : deliveryFolders) {
-        Path folderPath = jobDir.resolve(folder);
-
-        if (!Files.exists(folderPath)) {
-            logger.warn("[{}] ⚠️ Folder not found: {}", msg.getBatchId(), folderPath);
-            continue;
-        }
-
-        try (Stream<Path> stream = Files.walk(folderPath)) {
-            stream.filter(Files::isRegularFile)
-                  .filter(f -> !isTempFile(f))
-                  .forEach(file -> {
-                      try {
-                          String fileName = file.getFileName().toString();
-
-                          // Upload delivery file to blob
-                          String blobUrl = blobStorageService.uploadFileByMessage(file.toFile(), folder, msg);
-                          logger.info("[{}] ✅ Uploaded {} file: {}", msg.getBatchId(), folder, blobUrl);
-
-                          // Match accounts in filename
-                          customerList.forEach(customerEntry -> {
-                              boolean matchesAccount = fileName.contains(customerEntry.getAccountNumber()) || fileName.endsWith(".ps");
-                              if (matchesAccount) {
-                                  // Original entry
-                                  SummaryProcessedFile entry = new SummaryProcessedFile();
-                                  BeanUtils.copyProperties(customerEntry, entry);
-                                  switch (folder) {
-                                      case AppConstants.FOLDER_ARCHIVE -> entry.setArchiveBlobUrl(blobUrl);
-                                      case AppConstants.FOLDER_EMAIL -> entry.setPdfEmailFileUrl(blobUrl);
-                                      case AppConstants.FOLDER_MOBSTAT -> entry.setPdfMobstatFileUrl(blobUrl);
-                                      case AppConstants.FOLDER_PRINT -> entry.setPrintFileUrl(blobUrl);
-                                  }
-                                  finalList.add(entry);
-
-                                  // Add archive + delivery combinations if folder != archive
-                                  if (!folder.equals(AppConstants.FOLDER_ARCHIVE)) {
-                                      List<Path> archives = archiveFilesMap.getOrDefault(customerEntry.getAccountNumber(), Collections.emptyList());
-                                      for (Path archiveFile : archives) {
-                                          try {
-                                              String archiveBlobUrl = blobStorageService.uploadFileByMessage(archiveFile.toFile(), AppConstants.FOLDER_ARCHIVE, msg);
-                                              SummaryProcessedFile comboEntry = new SummaryProcessedFile();
-                                              BeanUtils.copyProperties(customerEntry, comboEntry);
-
-                                              // Set delivery file
-                                              switch (folder) {
-                                                  case AppConstants.FOLDER_EMAIL -> comboEntry.setPdfEmailFileUrl(blobUrl);
-                                                  case AppConstants.FOLDER_MOBSTAT -> comboEntry.setPdfMobstatFileUrl(blobUrl);
-                                                  case AppConstants.FOLDER_PRINT -> comboEntry.setPrintFileUrl(blobUrl);
-                                              }
-                                              comboEntry.setArchiveBlobUrl(archiveBlobUrl);
-                                              finalList.add(comboEntry);
-                                          } catch (Exception e) {
-                                              logger.error("[{}] ⚠️ Failed archive combo upload: {}", msg.getBatchId(), e.getMessage());
-                                          }
-                                      }
-                                  }
-                              }
-                          });
-                      } catch (Exception e) {
-                          logger.error("[{}] ⚠️ Failed to process file {}: {}", msg.getBatchId(), file.getFileName(), e.getMessage());
-                      }
-                  });
-        }
-    }
-
-    logger.info("[{}] ✅ Total processed files: {}", msg.getBatchId(), finalList.size());
-    return finalList;
-}
-
-// Helper method: Skip temp/hidden files
-private boolean isTempFile(Path file) {
-    String name = file.getFileName().toString().toLowerCase();
-    return name.startsWith("~") || name.endsWith(".tmp") || name.endsWith(".temp") || name.equals(".ds_store");
-}
+{
+  "batchID" : "076f2b3c-37bc-4bcb-ab6a-29041acfc0f9",
+  "fileName" : "DEBTMAN_20250906_024612.TXT",
+  "header" : {
+    "tenantCode" : "ZANBL",
+    "channelID" : null,
+    "audienceID" : null,
+    "timestamp" : "1757402705",
+    "sourceSystem" : "DEBTMAN",
+    "product" : "DEBTMAN",
+    "jobName" : "DEBTMAN"
+  },
+  "metadata" : {
+    "totalCustomersProcessed" : 91,
+    "processingStatus" : "PARTIAL",
+    "eventOutcomeCode" : "0",
+    "eventOutcomeDescription" : "partial"
+  },
+  "payload" : {
+    "uniqueConsumerRef" : null,
+    "uniqueECPBatchRef" : null,
+    "runPriority" : null,
+    "eventID" : null,
+    "eventType" : null,
+    "restartKey" : null,
+    "fileCount" : 92
+  },
+  "processedFileList" : [ {
+    "customerId" : "191052925900",
+    "accountNumber" : "1005943885",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1005943885_EMLCR006.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "191847085636",
+    "accountNumber" : "1012821374",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1012821374_EMLCR006.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "191852387503",
+    "accountNumber" : "1013476654",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1013476654_EMLCA002.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "191493634603",
+    "accountNumber" : "1014069203",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1014069203_MOBCA002.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "191909376009",
+    "accountNumber" : "1020885327",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1020885327_EMLCR006.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "191641164007",
+    "accountNumber" : "1021441384",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1021441384_EMLCR006.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "191928648306",
+    "accountNumber" : "1026215196",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1026215196_EMLCA002.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "191946897601",
+    "accountNumber" : "1028770413",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1028770413_EMLCA002.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "191964067500",
+    "accountNumber" : "1030966346",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1030966346_ECO009.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "191943471906",
+    "accountNumber" : "1032468343",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1032468343_EMLCR006.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "191969912508",
+    "accountNumber" : "1032754184",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1032754184_EMLCR006.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "164000132177",
+    "accountNumber" : "1033192821",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1033192821_EMLCA002.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }
