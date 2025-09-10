@@ -26,7 +26,9 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
     Path archiveFolder = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
     if (Files.exists(archiveFolder)) {
         try (Stream<Path> stream = Files.walk(archiveFolder)) {
-            stream.filter(Files::isRegularFile).forEach(f -> {
+            stream.filter(Files::isRegularFile)
+                  .filter(f -> !isTempFile(f))   // Skip temp files
+                  .forEach(f -> {
                 String fileName = f.getFileName().toString();
                 for (String account : accountMap.keySet()) {
                     if (fileName.contains(account)) {
@@ -47,7 +49,9 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         }
 
         try (Stream<Path> stream = Files.walk(folderPath)) {
-            stream.filter(Files::isRegularFile).forEach(file -> {
+            stream.filter(Files::isRegularFile)
+                  .filter(f -> !isTempFile(f))   // Skip temp files
+                  .forEach(file -> {
                 try {
                     String fileName = file.getFileName().toString();
 
@@ -111,4 +115,10 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 
     logger.info("[{}] ✅ Total processed files: {}", msg.getBatchId(), finalList.size());
     return finalList;
+}
+
+// Helper method: Skip temp/hidden files
+private boolean isTempFile(Path file) {
+    String name = file.getFileName().toString().toLowerCase();
+    return name.startsWith("~") || name.endsWith(".tmp") || name.endsWith(".temp") || name.equals(".ds_store");
 }
