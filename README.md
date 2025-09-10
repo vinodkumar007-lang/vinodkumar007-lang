@@ -10,6 +10,8 @@ private List<SummaryProcessedFile> buildFinalProcessedList(
 
     // Step 1: Build account -> delivery map for easy lookup
     Map<String, Map<String, String>> accountToDeliveryMap = new HashMap<>();
+    Map<String, List<String>> accountToPrintFiles = new HashMap<>(); // NEW: list of .ps files
+
     for (String folder : deliveryFileMaps.keySet()) {
         Map<String, String> files = deliveryFileMaps.get(folder);
         for (Map.Entry<String, String> entry : files.entrySet()) {
@@ -18,9 +20,11 @@ private List<SummaryProcessedFile> buildFinalProcessedList(
             String account = extractAccountFromFileName(fileName);
             if (account == null) account = "UNKNOWN";
 
-            accountToDeliveryMap
-                    .computeIfAbsent(account, k -> new HashMap<>())
-                    .put(folder, url); // folder = EMAIL / MOBSTAT / PRINT
+            if (AppConstants.FOLDER_PRINT.equals(folder)) {
+                accountToPrintFiles.computeIfAbsent(account, k -> new ArrayList<>()).add(url);
+            } else {
+                accountToDeliveryMap.computeIfAbsent(account, k -> new HashMap<>()).put(folder, url);
+            }
         }
     }
 
@@ -34,6 +38,7 @@ private List<SummaryProcessedFile> buildFinalProcessedList(
         String account = customer.getAccountNumber();
         Map<String, String> archivesForAccount = accountToArchiveMap.getOrDefault(account, Collections.emptyMap());
         Map<String, String> deliveryForAccount = accountToDeliveryMap.getOrDefault(account, Collections.emptyMap());
+        List<String> printUrls = accountToPrintFiles.getOrDefault(account, Collections.emptyList());
 
         for (Map.Entry<String, String> archiveEntry : archivesForAccount.entrySet()) {
             String archiveFileName = archiveEntry.getKey();
@@ -53,12 +58,13 @@ private List<SummaryProcessedFile> buildFinalProcessedList(
             if (isMfc) {
                 entry.setPdfEmailFileUrl(findFileByAccount(deliveryFileMaps.get(AppConstants.FOLDER_EMAIL), account));
                 entry.setPdfMobstatFileUrl(findFileByAccount(deliveryFileMaps.get(AppConstants.FOLDER_MOBSTAT), account));
-                entry.setPrintFileUrl(findFileByAccount(deliveryFileMaps.get(AppConstants.FOLDER_PRINT), account));
             } else {
                 entry.setPdfEmailFileUrl(deliveryForAccount.get(AppConstants.FOLDER_EMAIL));
                 entry.setPdfMobstatFileUrl(deliveryForAccount.get(AppConstants.FOLDER_MOBSTAT));
-                entry.setPrintFileUrl(deliveryForAccount.get(AppConstants.FOLDER_PRINT));
             }
+
+            // NEW: assign list of print files
+            entry.setPrintFileUrls(printUrls);
 
             finalList.add(entry);
         }
