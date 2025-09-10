@@ -1,56 +1,15 @@
-private List<PrintFile> uploadPrintFiles(Path jobDir, KafkaMessage msg) {
-    List<PrintFile> printFiles = new ArrayList<>();
-
-    if (jobDir == null || msg == null || msg.getSourceSystem() == null) {
-        logger.error("❌ Invalid input: jobDir={}, msg={}, sourceSystem={}", 
-                jobDir, msg, msg != null ? msg.getSourceSystem() : null);
-        return printFiles;
-    }
-
-    try (Stream<Path> allDirs = Files.walk(jobDir)) {
-        // Step 1: Find all directories whose name contains "print"
-        List<Path> printDirs = allDirs
-                .filter(Files::isDirectory)
-                .filter(p -> p.getFileName().toString().trim().toLowerCase()
-                        .contains(AppConstants.PRINT_FOLDER_NAME.toLowerCase()))
-                .toList();
-
-        if (printDirs.isEmpty()) {
-            logger.info("ℹ️ No '{}' directories found under jobDir: {}", 
-                    AppConstants.PRINT_FOLDER_NAME, jobDir);
-            return printFiles;
-        }
-
-        // Step 2: Process all .ps files under each matching directory
-        for (Path printDir : printDirs) {
-            try (Stream<Path> files = Files.walk(printDir)) {
-                files.filter(Files::isRegularFile)
-                        .filter(f -> f.getFileName().toString().toLowerCase().endsWith(".ps"))
-                        .forEach(f -> {
-                            try {
-                                String fileName = f.getFileName() != null 
-                                        ? f.getFileName().toString() 
-                                        : AppConstants.UNKNOWN_FILE_NAME;
-
-                                String uploadPath = msg.getSourceSystem() + "/" +
-                                        msg.getBatchId() + "/" +
-                                        msg.getUniqueConsumerRef() + "/" +
-                                        AppConstants.PRINT_FOLDER_NAME + "/" + fileName;
-
-                                String blob = blobStorageService.uploadFile(f.toFile(), uploadPath);
-                                printFiles.add(new PrintFile(blob));
-
-                                logger.info("📤 Uploaded print file: {} -> {}", fileName, blob);
-                            } catch (Exception e) {
-                                logger.warn("⚠️ Failed to upload print file: {}", f, e);
-                            }
-                        });
-            }
-        }
-    } catch (IOException e) {
-        logger.error("❌ Failed to list files in '{}' directories under jobDir: {}", 
-                AppConstants.PRINT_FOLDER_NAME, jobDir, e);
-    }
-
-    return printFiles;
-}
+2025-09-10T14:43:03.260+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 🚀 Starting delivery file upload. jobDir: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/5bc9f9e6-9d95-43ac-b532-51ab5f962454, folders: [email, mobstat, print]
+2025-09-10T14:43:03.417+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 📂 All discovered directories under jobDir:
+2025-09-10T14:43:03.450+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     :    - /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/5bc9f9e6-9d95-43ac-b532-51ab5f962454
+2025-09-10T14:43:03.450+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     :    - /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/5bc9f9e6-9d95-43ac-b532-51ab5f962454/archive
+2025-09-10T14:43:03.450+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     :    - /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/5bc9f9e6-9d95-43ac-b532-51ab5f962454/print
+2025-09-10T14:43:03.453+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ Delivery folder 'email' not found under jobDir: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/5bc9f9e6-9d95-43ac-b532-51ab5f962454
+2025-09-10T14:43:03.453+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ Delivery folder 'mobstat' not found under jobDir: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/5bc9f9e6-9d95-43ac-b532-51ab5f962454
+2025-09-10T14:43:03.453+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 🔎 Processing delivery folder: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/5bc9f9e6-9d95-43ac-b532-51ab5f962454/print (key=print)
+2025-09-10T14:43:03.463+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] Found 1 file(s) in folder print
+2025-09-10T14:43:03.463+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 📂 Found file to upload: PRODDebtmanNormal_HL_20250906.ps
+2025-09-10T14:43:03.850+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2FAA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fprint%2FPRODDebtmanNormal_HL_20250906.ps'
+2025-09-10T14:43:03.850+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ✅ Uploaded PRINT file: https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN/076f2b3c-37bc-4bcb-ab6a-29041acfc0f9/AA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/print/PRODDebtmanNormal_HL_20250906.ps
+2025-09-10T14:43:03.851+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ✅ Finished delivery file upload. Result: {print={PRODDebtmanNormal_HL_20250906.ps=https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN/076f2b3c-37bc-4bcb-ab6a-29041acfc0f9/AA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/print/PRODDebtmanNormal_HL_20250906.ps}, mobstat={}, email={}}
+2025-09-10T14:43:04.560+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ✅ buildFinalProcessedList completed. Total entries=107
+2025-09-10T14:43:04.560+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ✅ buildDetailedProcessedFiles completed. Final processed list size=107
