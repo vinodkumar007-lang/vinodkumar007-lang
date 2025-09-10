@@ -1,35 +1,49 @@
-private void processDeliveryFile(Path file, String folderKey,
-                                 Map<String, String> folderToOutputMethod,
-                                 KafkaMessage msg,
-                                 Map<String, Map<String, String>> deliveryFileMaps,
-                                 Map<String, Map<String, String>> errorMap) {
+private List<PrintFile> uploadPrintFiles(Path jobDir, KafkaMessage msg) {
+        List<PrintFile> printFiles = new ArrayList<>();
 
-    if (!Files.exists(file)) {
-        logger.info("[{}] ⏩ Skipping missing file: {} in folder {}", msg.getBatchId(), file, folderKey);
-        return;
+        if (jobDir == null || msg == null || msg.getSourceSystem() == null) {
+            logger.error("❌ Invalid input: jobDir={}, msg={}, sourceSystem={}", jobDir, msg, msg != null ? msg.getSourceSystem() : null);
+            return printFiles;
+        }
+
+        // Step 1: Find all directories named 'print' recursively
+        try (Stream<Path> allDirs = Files.walk(jobDir)) {
+            List<Path> printDirs = allDirs
+                    .filter(Files::isDirectory)
+                    .filter(p -> AppConstants.PRINT_FOLDER_NAME.equalsIgnoreCase(p.getFileName().toString()))
+                    .toList();
+
+            if (printDirs.isEmpty()) {
+                logger.info("ℹ️ No '{}' directories found under jobDir: {}", AppConstants.PRINT_FOLDER_NAME, jobDir);
+                return printFiles;
+            }
+
+            // Step 2: Process all files under each print directory
+            for (Path printDir : printDirs) {
+                try (Stream<Path> files = Files.walk(printDir)) {
+                    files.filter(Files::isRegularFile)
+                            .filter(f -> f.getFileName().toString().endsWith(".ps"))
+                            .forEach(f -> {
+                                try {
+                                    String fileName = f.getFileName() != null ? f.getFileName().toString() : AppConstants.UNKNOWN_FILE_NAME;
+                                    String uploadPath = msg.getSourceSystem() + "/" +
+                                            msg.getBatchId() + "/" +
+                                            msg.getUniqueConsumerRef() + "/" +
+                                            AppConstants.PRINT_FOLDER_NAME + "/" + fileName;
+
+                                    String blob = blobStorageService.uploadFile(f.toFile(), uploadPath);
+                                    printFiles.add(new PrintFile(blob));
+
+                                    logger.info("📤 Uploaded print file: {} -> {}", fileName, blob);
+                                } catch (Exception e) {
+                                    logger.warn("⚠️ Failed to upload print file: {}", f, e);
+                                }
+                            });
+                }
+            }
+        } catch (IOException e) {
+            logger.error("❌ Failed to list files in '{}' directories under jobDir: {}", AppConstants.PRINT_FOLDER_NAME, jobDir, e);
+        }
+
+        return printFiles;
     }
-
-    String fileName = file.getFileName().toString();
-    String normalizedKey = folderKey.toLowerCase(); // normalize once
-
-    deliveryFileMaps.computeIfAbsent(normalizedKey, k -> new HashMap<>());
-
-    try {
-        // Upload file
-        String url = decodeUrl(blobStorageService.uploadFileByMessage(file.toFile(), normalizedKey, msg));
-        deliveryFileMaps.get(normalizedKey).put(fileName, url);
-
-        logger.info("[{}] ✅ Uploaded {} file: {}", 
-                msg.getBatchId(),
-                folderToOutputMethod.getOrDefault(normalizedKey, normalizedKey),
-                url);
-
-    } catch (Exception e) {
-        logger.error("[{}] ⚠️ Failed to upload file {} in folder {}: {}", 
-                msg.getBatchId(), fileName, normalizedKey, e.getMessage(), e);
-
-        errorMap.computeIfAbsent("UNKNOWN", k -> new HashMap<>())
-                .put(fileName, folderToOutputMethod.getOrDefault(normalizedKey, normalizedKey)
-                        + " upload failed: " + e.getMessage());
-    }
-}
