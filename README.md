@@ -5,21 +5,20 @@ private Map<String, Map<String, String>> uploadDeliveryFiles(
         KafkaMessage msg,
         Map<String, Map<String, String>> errorMap) throws IOException {
 
-    // Normalize deliveryFolders to lowercase for case-insensitive matching
-    List<String> normalizedFolders = deliveryFolders.stream()
-            .map(String::toLowerCase)
-            .toList();
-
     Map<String, Map<String, String>> deliveryFileMaps = new HashMap<>();
     for (String folder : deliveryFolders) {
         deliveryFileMaps.put(folder.toLowerCase(), new HashMap<>());
     }
 
+    logger.info("[{}] 🚀 Starting delivery file upload. jobDir: {}, folders: {}",
+            msg.getBatchId(), jobDir, deliveryFolders);
+
     // Walk entire jobDir recursively to find all matching delivery folders
     try (Stream<Path> allDirs = Files.walk(jobDir)) {
         List<Path> folderPaths = allDirs
                 .filter(Files::isDirectory)
-                .filter(p -> normalizedFolders.contains(p.getFileName().toString().toLowerCase()))
+                .filter(p -> deliveryFolders.stream()
+                        .anyMatch(f -> f.equalsIgnoreCase(p.getFileName().toString())))
                 .toList();
 
         if (folderPaths.isEmpty()) {
@@ -29,44 +28,58 @@ private Map<String, Map<String, String>> uploadDeliveryFiles(
 
         for (Path folderPath : folderPaths) {
             String folderName = folderPath.getFileName().toString();
-            String folderKey = folderName.toLowerCase(); // use lowercase as key
-            logger.info("[{}] 🔎 Processing delivery folder: {}", msg.getBatchId(), folderPath);
+            String folderKey = folderName.toLowerCase();
+            logger.info("[{}] 🔎 Processing delivery folder: {} (key={})", msg.getBatchId(), folderPath, folderKey);
 
             try (Stream<Path> files = Files.walk(folderPath)) {
-                files.filter(Files::isRegularFile)
+                List<Path> fileList = files.filter(Files::isRegularFile)
                         .filter(f -> !f.getFileName().toString().endsWith(".tmp"))
-                        .forEach(file -> {
-                            logger.debug("[{}] 📂 Found {} file: {}", msg.getBatchId(), folderName, file.getFileName());
-                            processDeliveryFile(file, folderKey, folderToOutputMethod, msg, deliveryFileMaps, errorMap);
-                        });
+                        .toList();
+
+                if (fileList.isEmpty()) {
+                    logger.warn("[{}] ⚠️ No files found in folder: {}", msg.getBatchId(), folderPath);
+                } else {
+                    logger.info("[{}] Found {} file(s) in folder {}", msg.getBatchId(), fileList.size(), folderName);
+                }
+
+                for (Path file : fileList) {
+                    logger.info("[{}] 📂 Found file to upload: {}", msg.getBatchId(), file.getFileName());
+                    processDeliveryFile(file, folderName, folderToOutputMethod, msg, deliveryFileMaps, errorMap);
+                }
             }
         }
     }
 
+    logger.info("[{}] ✅ Finished delivery file upload. Result: {}", msg.getBatchId(), deliveryFileMaps);
     return deliveryFileMaps;
 }
 
-private void processDeliveryFile(Path file, String folderKey,
+private void processDeliveryFile(Path file, String folderName,
                                  Map<String, String> folderToOutputMethod,
                                  KafkaMessage msg,
                                  Map<String, Map<String, String>> deliveryFileMaps,
                                  Map<String, Map<String, String>> errorMap) {
+
     if (!Files.exists(file)) {
-        logger.warn("[{}] ⏩ Skipping missing {} file: {}", msg.getBatchId(), folderKey, file);
+        logger.warn("[{}] ⏩ Skipping missing file: {} in folder {}", msg.getBatchId(), file, folderName);
         return;
     }
 
     String fileName = file.getFileName().toString();
+    String folderKey = folderName.toLowerCase(); // key in map
+
+    deliveryFileMaps.computeIfAbsent(folderKey, k -> new HashMap<>());
+
     try {
-        String url = decodeUrl(blobStorageService.uploadFileByMessage(file.toFile(), folderKey, msg));
+        // Use original folderName for uploading to avoid case issues
+        String url = decodeUrl(blobStorageService.uploadFileByMessage(file.toFile(), folderName, msg));
         deliveryFileMaps.get(folderKey).put(fileName, url);
 
         logger.info("[{}] ✅ Uploaded {} file: {}", msg.getBatchId(),
-                folderToOutputMethod.getOrDefault(folderKey, folderKey), url);
+                folderToOutputMethod.getOrDefault(folderName, folderName), url);
     } catch (Exception e) {
-        logger.error("[{}] ⚠️ Failed to upload {} file {}: {}", msg.getBatchId(),
-                folderToOutputMethod.getOrDefault(folderKey, folderKey), fileName, e.getMessage(), e);
+        logger.error("[{}] ⚠️ Failed to upload file {} in folder {}: {}", msg.getBatchId(), fileName, folderName, e.getMessage(), e);
         errorMap.computeIfAbsent("UNKNOWN", k -> new HashMap<>())
-                .put(fileName, folderToOutputMethod.getOrDefault(folderKey, folderKey) + " upload failed: " + e.getMessage());
+                .put(fileName, folderToOutputMethod.getOrDefault(folderName, folderName) + " upload failed: " + e.getMessage());
     }
 }
