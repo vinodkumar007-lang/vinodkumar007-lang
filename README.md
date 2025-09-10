@@ -1,85 +1,23 @@
-private Map<String, Map<String, String>> uploadDeliveryFiles(
-        Path jobDir,
-        List<String> deliveryFolders,
-        Map<String, String> folderToOutputMethod,
-        KafkaMessage msg,
-        Map<String, Map<String, String>> errorMap) throws IOException {
-
-    Map<String, Map<String, String>> deliveryFileMaps = new HashMap<>();
-    for (String folder : deliveryFolders) {
-        deliveryFileMaps.put(folder.toLowerCase(), new HashMap<>());
-    }
-
-    logger.info("[{}] 🚀 Starting delivery file upload. jobDir: {}, folders: {}",
-            msg.getBatchId(), jobDir, deliveryFolders);
-
-    // Walk entire jobDir recursively to find all matching delivery folders
-    try (Stream<Path> allDirs = Files.walk(jobDir)) {
-        List<Path> folderPaths = allDirs
-                .filter(Files::isDirectory)
-                .filter(p -> deliveryFolders.stream()
-                        .anyMatch(f -> f.equalsIgnoreCase(p.getFileName().toString())))
-                .toList();
-
-        if (folderPaths.isEmpty()) {
-            logger.warn("[{}] ⚠️ No delivery folders found under jobDir: {}", msg.getBatchId(), jobDir);
-            return deliveryFileMaps;
-        }
-
-        for (Path folderPath : folderPaths) {
-            String folderName = folderPath.getFileName().toString();
-            String folderKey = folderName.toLowerCase();
-            logger.info("[{}] 🔎 Processing delivery folder: {} (key={})", msg.getBatchId(), folderPath, folderKey);
-
-            try (Stream<Path> files = Files.walk(folderPath)) {
-                List<Path> fileList = files.filter(Files::isRegularFile)
-                        .filter(f -> !f.getFileName().toString().endsWith(".tmp"))
-                        .toList();
-
-                if (fileList.isEmpty()) {
-                    logger.warn("[{}] ⚠️ No files found in folder: {}", msg.getBatchId(), folderPath);
-                } else {
-                    logger.info("[{}] Found {} file(s) in folder {}", msg.getBatchId(), fileList.size(), folderName);
-                }
-
-                for (Path file : fileList) {
-                    logger.info("[{}] 📂 Found file to upload: {}", msg.getBatchId(), file.getFileName());
-                    processDeliveryFile(file, folderName, folderToOutputMethod, msg, deliveryFileMaps, errorMap);
-                }
-            }
-        }
-    }
-
-    logger.info("[{}] ✅ Finished delivery file upload. Result: {}", msg.getBatchId(), deliveryFileMaps);
-    return deliveryFileMaps;
-}
-
-private void processDeliveryFile(Path file, String folderName,
-                                 Map<String, String> folderToOutputMethod,
-                                 KafkaMessage msg,
-                                 Map<String, Map<String, String>> deliveryFileMaps,
-                                 Map<String, Map<String, String>> errorMap) {
-
-    if (!Files.exists(file)) {
-        logger.warn("[{}] ⏩ Skipping missing file: {} in folder {}", msg.getBatchId(), file, folderName);
-        return;
-    }
-
-    String fileName = file.getFileName().toString();
-    String folderKey = folderName.toLowerCase(); // key in map
-
-    deliveryFileMaps.computeIfAbsent(folderKey, k -> new HashMap<>());
-
-    try {
-        // Use original folderName for uploading to avoid case issues
-        String url = decodeUrl(blobStorageService.uploadFileByMessage(file.toFile(), folderName, msg));
-        deliveryFileMaps.get(folderKey).put(fileName, url);
-
-        logger.info("[{}] ✅ Uploaded {} file: {}", msg.getBatchId(),
-                folderToOutputMethod.getOrDefault(folderName, folderName), url);
-    } catch (Exception e) {
-        logger.error("[{}] ⚠️ Failed to upload file {} in folder {}: {}", msg.getBatchId(), fileName, folderName, e.getMessage(), e);
-        errorMap.computeIfAbsent("UNKNOWN", k -> new HashMap<>())
-                .put(fileName, folderToOutputMethod.getOrDefault(folderName, folderName) + " upload failed: " + e.getMessage());
-    }
-}
+2025-09-10T12:22:57.008+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 📦 Uploaded archive file for account [1283745607]: https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN/076f2b3c-37bc-4bcb-ab6a-29041acfc0f9/AA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1283745607_EMLCR006.pdf
+2025-09-10T12:22:57.147+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2FAA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Farchive%2F1284432580_EMLCA002.pdf'
+2025-09-10T12:22:57.147+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 📦 Uploaded archive file for account [1284432580]: https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN/076f2b3c-37bc-4bcb-ab6a-29041acfc0f9/AA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1284432580_EMLCA002.pdf
+2025-09-10T12:22:57.177+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 🚀 Starting delivery file upload. jobDir: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/0f0c9adc-0434-4da6-896d-00a2a5a1418f, folders: [email, mobstat, print]
+2025-09-10T12:22:57.612+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 🔎 Processing delivery folder: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/0f0c9adc-0434-4da6-896d-00a2a5a1418f/print (key=print)
+2025-09-10T12:22:57.705+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] Found 1 file(s) in folder print
+2025-09-10T12:22:57.705+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 📂 Found file to upload: PRODDebtmanNormal_HL_20250906.ps
+2025-09-10T12:22:57.906+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2FAA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fprint%2FPRODDebtmanNormal_HL_20250906.ps'
+2025-09-10T12:22:57.906+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ✅ Uploaded PRINT file: https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN/076f2b3c-37bc-4bcb-ab6a-29041acfc0f9/AA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/print/PRODDebtmanNormal_HL_20250906.ps
+2025-09-10T12:22:57.906+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ✅ Finished delivery file upload. Result: {print={PRODDebtmanNormal_HL_20250906.ps=https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN/076f2b3c-37bc-4bcb-ab6a-29041acfc0f9/AA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/print/PRODDebtmanNormal_HL_20250906.ps}, mobstat={}, email={}}
+2025-09-10T12:22:58.800+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ✅ buildFinalProcessedList completed. Total entries=136
+2025-09-10T12:22:58.800+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ✅ buildDetailedProcessedFiles completed. Final processed list size=136
+2025-09-10T12:22:58.800+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 📦 Processed 136 customer records
+2025-09-10T12:22:59.512+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2FAA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fprint%2FPRODDebtmanNormal_HL_20250906.ps'
+2025-09-10T12:22:59.514+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : 📤 Uploaded print file: PRODDebtmanNormal_HL_20250906.ps -> https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2FAA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fprint%2FPRODDebtmanNormal_HL_20250906.ps
+2025-09-10T12:22:59.514+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 🖨️ Uploaded 1 print files
+2025-09-10T12:22:59.523+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : ⚠️ No .trigger file found in MOBSTAT job directory: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/0f0c9adc-0434-4da6-896d-00a2a5a1418f
+2025-09-10T12:22:59.523+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 📱 Found Mobstat URL: null
+2025-09-10T12:22:59.704+02:00 DEBUG 1 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
+2025-09-10T12:23:00.102+02:00 DEBUG 1 --- [ntainer#0-1-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
+2025-09-10T12:23:00.211+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : 📄 Extracted summary counts from _STDDELIVERYFILE.xml: customersProcessed=1573, pagesProcessed=3458
+2025-09-10T12:23:00.212+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.utils.SummaryJsonWriter          : [GT] Start building payload. batchId=076f2b3c-37bc-4bcb-ab6a-29041acfc0f9, fileName=DEBTMAN_20250906_024612.TXT, processedListSize=136, printFilesSize=1
+2025-09-10T12:23:00.212+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.utils.SummaryJsonWriter          : [buildProcessedFileEntries] Start building entries. processedFilesCount=136
