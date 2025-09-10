@@ -79,7 +79,8 @@ private Map<String, Map<String, String>> uploadArchiveFiles(Path jobDir, KafkaMe
 }
 
 /**
- * Processes and uploads a single archive file
+ * Processes and uploads all archive files per account.
+ * Supports multiple files with different suffixes for the same account.
  */
 private void processArchiveFile(Path file, KafkaMessage msg,
                                 Map<String, Map<String, String>> accountToArchiveMap,
@@ -100,6 +101,8 @@ private void processArchiveFile(Path file, KafkaMessage msg,
         String archiveUrl = decodeUrl(
                 blobStorageService.uploadFileByMessage(file.toFile(), AppConstants.FOLDER_ARCHIVE, msg)
         );
+
+        // Add to existing map, supporting multiple files per account
         accountToArchiveMap
                 .computeIfAbsent(account, k -> new HashMap<>())
                 .put(fileName, archiveUrl);
@@ -189,7 +192,7 @@ private void processDeliveryFile(Path file, String folder,
 
 /**
  * Builds final processed list combining archive and delivery files.
- * Avoids duplicates and matches OT counts with actual uploaded files.
+ * Picks all files for same account (including different suffixes).
  */
 private List<SummaryProcessedFile> buildFinalProcessedList(
         List<SummaryProcessedFile> customerList,
@@ -207,14 +210,14 @@ private List<SummaryProcessedFile> buildFinalProcessedList(
         SummaryProcessedFile entry = new SummaryProcessedFile();
         BeanUtils.copyProperties(customer, entry);
 
-        // Multiple archive files combined into comma-separated string to avoid duplicate OT
+        // Multiple archive files combined
         Map<String, String> archivesForAccount = accountToArchiveMap.getOrDefault(account, Collections.emptyMap());
         entry.setArchiveBlobUrl(String.join(",", archivesForAccount.values()));
 
-        // Delivery URLs
-        entry.setPdfEmailFileUrl(findFileByAccount(deliveryFileMaps.get(AppConstants.FOLDER_EMAIL), account));
-        entry.setPdfMobstatFileUrl(findFileByAccount(deliveryFileMaps.get(AppConstants.FOLDER_MOBSTAT), account));
-        entry.setPrintFileUrl(findFileByAccount(deliveryFileMaps.get(AppConstants.FOLDER_PRINT), account));
+        // Multiple delivery files combined
+        entry.setPdfEmailFileUrl(String.join(",", findFilesByAccount(deliveryFileMaps.get(AppConstants.FOLDER_EMAIL), account)));
+        entry.setPdfMobstatFileUrl(String.join(",", findFilesByAccount(deliveryFileMaps.get(AppConstants.FOLDER_MOBSTAT), account)));
+        entry.setPrintFileUrl(String.join(",", findFilesByAccount(deliveryFileMaps.get(AppConstants.FOLDER_PRINT), account)));
 
         finalList.add(entry);
     }
@@ -224,15 +227,13 @@ private List<SummaryProcessedFile> buildFinalProcessedList(
 }
 
 /**
- * Robust account matching for delivery files including complex mobstat filenames.
+ * Returns all uploaded files for an account including different suffixes.
  */
-private String findFileByAccount(Map<String, String> fileMap, String account) {
-    if (fileMap == null || fileMap.isEmpty() || account == null) return null;
+private List<String> findFilesByAccount(Map<String, String> fileMap, String account) {
+    if (fileMap == null || fileMap.isEmpty() || account == null) return Collections.emptyList();
 
-    // match anywhere in the file name for robust detection
     return fileMap.entrySet().stream()
             .filter(e -> e.getKey().contains(account))
             .map(Map.Entry::getValue)
-            .findFirst()
-            .orElse(null);
+            .toList();
 }
