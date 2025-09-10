@@ -1,103 +1,13 @@
-private Map<String, Map<String, String>> uploadDeliveryFiles(
-        Path jobDir,
-        List<String> deliveryFolders,
-        Map<String, String> folderToOutputMethod,
-        KafkaMessage msg,
-        Map<String, Map<String, String>> errorMap) throws IOException {
-
-    Map<String, Map<String, String>> deliveryFileMaps = new HashMap<>();
-    for (String folder : deliveryFolders) {
-        deliveryFileMaps.put(folder.toLowerCase(), new HashMap<>());
-    }
-
-    logger.info("[{}] 🚀 Starting delivery file upload. jobDir: {}, folders: {}", 
-            msg.getBatchId(), jobDir, deliveryFolders);
-
-    // Walk entire jobDir recursively to find all directories
-    List<Path> allDirs;
-    try (Stream<Path> stream = Files.walk(jobDir)) {
-        allDirs = stream.filter(Files::isDirectory).toList();
-    }
-
-    // Log all directories for diagnostics
-    allDirs.forEach(p -> logger.debug("[{}] Found directory: {}", msg.getBatchId(), p));
-
-    // Filter directories that match delivery folders (robust to spaces, prefixes, suffixes)
-    List<Path> folderPaths = allDirs.stream()
-            .filter(p -> deliveryFolders.stream()
-                    .anyMatch(f -> p.getFileName().toString().trim().toLowerCase()
-                            .contains(f.toLowerCase())))
-            .toList();
-
-    // Log warning for any missing delivery folder
-    for (String folder : deliveryFolders) {
-        boolean found = folderPaths.stream()
-                .anyMatch(p -> p.getFileName().toString().trim().toLowerCase().contains(folder.toLowerCase()));
-        if (!found) {
-            logger.warn("[{}] ⚠️ Delivery folder '{}' not found under jobDir: {}", msg.getBatchId(), folder, jobDir);
-        }
-    }
-
-    // Process files in each detected folder
-    for (Path folderPath : folderPaths) {
-        String folderName = folderPath.getFileName().toString().trim();
-        String folderKey = deliveryFolders.stream()
-                .filter(f -> folderName.toLowerCase().contains(f.toLowerCase()))
-                .findFirst()
-                .orElse(folderName.toLowerCase());
-
-        logger.info("[{}] 🔎 Processing delivery folder: {} (key={})", msg.getBatchId(), folderPath, folderKey);
-
-        try (Stream<Path> files = Files.walk(folderPath)) {
-            List<Path> fileList = files
-                    .filter(Files::isRegularFile)
-                    .filter(f -> !f.getFileName().toString().endsWith(".tmp"))
-                    .toList();
-
-            if (fileList.isEmpty()) {
-                logger.warn("[{}] ⚠️ No files found in folder: {}", msg.getBatchId(), folderPath);
-                continue;
-            }
-
-            logger.info("[{}] Found {} file(s) in folder {}", msg.getBatchId(), fileList.size(), folderName);
-
-            for (Path file : fileList) {
-                logger.info("[{}] 📂 Found file to upload: {}", msg.getBatchId(), file.getFileName());
-                processDeliveryFile(file, folderName, folderToOutputMethod, msg, deliveryFileMaps, errorMap);
-            }
-        }
-    }
-
-    logger.info("[{}] ✅ Finished delivery file upload. Result: {}", msg.getBatchId(), deliveryFileMaps);
-    return deliveryFileMaps;
-}
-
-private void processDeliveryFile(Path file, String folderName,
-                                 Map<String, String> folderToOutputMethod,
-                                 KafkaMessage msg,
-                                 Map<String, Map<String, String>> deliveryFileMaps,
-                                 Map<String, Map<String, String>> errorMap) {
-
-    if (!Files.exists(file)) {
-        logger.warn("[{}] ⏩ Skipping missing file: {} in folder {}", msg.getBatchId(), file, folderName);
-        return;
-    }
-
-    String fileName = file.getFileName().toString();
-    String folderKey = folderName.toLowerCase(); // key in map
-
-    deliveryFileMaps.computeIfAbsent(folderKey, k -> new HashMap<>());
-
-    try {
-        // Upload file
-        String url = decodeUrl(blobStorageService.uploadFileByMessage(file.toFile(), folderName, msg));
-        deliveryFileMaps.get(folderKey).put(fileName, url);
-
-        logger.info("[{}] ✅ Uploaded {} file: {}", msg.getBatchId(),
-                folderToOutputMethod.getOrDefault(folderName, folderName), url);
-    } catch (Exception e) {
-        logger.error("[{}] ⚠️ Failed to upload file {} in folder {}: {}", msg.getBatchId(), fileName, folderName, e.getMessage(), e);
-        errorMap.computeIfAbsent("UNKNOWN", k -> new HashMap<>())
-                .put(fileName, folderToOutputMethod.getOrDefault(folderName, folderName) + " upload failed: " + e.getMessage());
-    }
-}
+2025-09-10T13:58:43.008+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 🚀 Starting delivery file upload. jobDir: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/197b5b4d-9333-42cf-b162-23b5667f72db, folders: [email, mobstat, print]
+2025-09-10T13:58:43.207+02:00 DEBUG 1 --- [ntainer#0-0-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
+2025-09-10T13:58:43.208+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] Found directory: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/197b5b4d-9333-42cf-b162-23b5667f72db
+2025-09-10T13:58:43.208+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] Found directory: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/197b5b4d-9333-42cf-b162-23b5667f72db/archive
+2025-09-10T13:58:43.208+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] Found directory: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/197b5b4d-9333-42cf-b162-23b5667f72db/print
+2025-09-10T13:58:43.210+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ Delivery folder 'email' not found under jobDir: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/197b5b4d-9333-42cf-b162-23b5667f72db
+2025-09-10T13:58:43.210+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ Delivery folder 'mobstat' not found under jobDir: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/197b5b4d-9333-42cf-b162-23b5667f72db
+2025-09-10T13:58:43.211+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 🔎 Processing delivery folder: /mnt/nfs/dev-exstream/dev-SA/output/DEBTMAN/197b5b4d-9333-42cf-b162-23b5667f72db/print (key=print)
+2025-09-10T13:58:43.217+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] Found 1 file(s) in folder print
+2025-09-10T13:58:43.217+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 📂 Found file to upload: PRODDebtmanNormal_HL_20250906.ps
+2025-09-10T13:58:43.510+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2FAA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fprint%2FPRODDebtmanNormal_HL_20250906.ps'
+2025-09-10T13:58:43.510+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ✅ Uploaded PRINT file: https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN/076f2b3c-37bc-4bcb-ab6a-29041acfc0f9/AA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/print/PRODDebtmanNormal_HL_20250906.ps
+2025-09-10T13:58:43.510+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ✅ Finished delivery file upload. Result: {print={PRODDebtmanNormal_HL_20250906.ps=https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN/076f2b3c-37bc-4bcb-ab6a-29041acfc0f9/AA19ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/print/PRODDebtmanNormal_HL_20250906.ps}, mobstat={}, email={}}
