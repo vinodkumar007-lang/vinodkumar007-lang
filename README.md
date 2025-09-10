@@ -73,3 +73,33 @@ private Map<String, Map<String, String>> uploadDeliveryFiles(
     logger.info("[{}] ✅ Finished delivery file upload. Result: {}", msg.getBatchId(), deliveryFileMaps);
     return deliveryFileMaps;
 }
+
+private void processDeliveryFile(Path file, String folderName,
+                                     Map<String, String> folderToOutputMethod,
+                                     KafkaMessage msg,
+                                     Map<String, Map<String, String>> deliveryFileMaps,
+                                     Map<String, Map<String, String>> errorMap) {
+
+        if (!Files.exists(file)) {
+            logger.info("[{}] ⏩ Skipping missing file: {} in folder {}", msg.getBatchId(), file, folderName);
+            return;
+        }
+
+        String fileName = file.getFileName().toString();
+        String folderKey = folderName.toLowerCase(); // key in map
+
+        deliveryFileMaps.computeIfAbsent(folderKey, k -> new HashMap<>());
+
+        try {
+            // Upload file
+            String url = decodeUrl(blobStorageService.uploadFileByMessage(file.toFile(), folderName, msg));
+            deliveryFileMaps.get(folderKey).put(fileName, url);
+
+            logger.info("[{}] ✅ Uploaded {} file: {}", msg.getBatchId(),
+                    folderToOutputMethod.getOrDefault(folderName, folderName), url);
+        } catch (Exception e) {
+            logger.error("[{}] ⚠️ Failed to upload file {} in folder {}: {}", msg.getBatchId(), fileName, folderName, e.getMessage(), e);
+            errorMap.computeIfAbsent("UNKNOWN", k -> new HashMap<>())
+                    .put(fileName, folderToOutputMethod.getOrDefault(folderName, folderName) + " upload failed: " + e.getMessage());
+        }
+    }
