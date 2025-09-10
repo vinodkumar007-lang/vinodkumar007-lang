@@ -1,124 +1,20 @@
-private List<SummaryProcessedFile> buildDetailedProcessedFiles(
-        Path jobDir,
-        List<SummaryProcessedFile> customerList,
-        KafkaMessage msg) throws IOException {
-
-    List<SummaryProcessedFile> finalList = new ArrayList<>();
-
-    if (customerList == null || customerList.isEmpty() || jobDir == null || !Files.exists(jobDir)) {
-        logger.warn("[{}] ⚠️ Job directory or customer list empty", msg.getBatchId());
-        return finalList;
-    }
-
-    List<String> deliveryFolders = List.of(
-            AppConstants.FOLDER_ARCHIVE,
-            AppConstants.FOLDER_EMAIL,
-            AppConstants.FOLDER_MOBSTAT,
-            AppConstants.FOLDER_PRINT
-    );
-
-    // Map for quick account-based matching
-    Map<String, SummaryProcessedFile> accountMap = customerList.stream()
-            .collect(Collectors.toMap(SummaryProcessedFile::getAccountNumber, Function.identity()));
-
-    // Load all archive files first for combination
-    Map<String, Path> archiveFiles = new HashMap<>();
-    Path archiveFolder = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
-    if (Files.exists(archiveFolder)) {
-        try (Stream<Path> stream = Files.walk(archiveFolder)) {
-            stream.filter(Files::isRegularFile)
-                  .filter(f -> !isTempFile(f))   // Skip temp files
-                  .forEach(f -> {
-                String fileName = f.getFileName().toString();
-                for (String account : accountMap.keySet()) {
-                    if (fileName.contains(account)) {
-                        archiveFiles.put(account + "_" + fileName, f);
-                    }
-                }
-            });
-        }
-    }
-
-    // Process each delivery folder
-    for (String folder : deliveryFolders) {
-        Path folderPath = jobDir.resolve(folder);
-
-        if (!Files.exists(folderPath)) {
-            logger.warn("[{}] ⚠️ Folder not found: {}", msg.getBatchId(), folderPath);
-            continue;
-        }
-
-        try (Stream<Path> stream = Files.walk(folderPath)) {
-            stream.filter(Files::isRegularFile)
-                  .filter(f -> !isTempFile(f))   // Skip temp files
-                  .forEach(file -> {
-                try {
-                    String fileName = file.getFileName().toString();
-
-                    // Upload to blob
-                    String blobUrl = blobStorageService.uploadFileByMessage(file.toFile(), folder, msg);
-                    logger.info("[{}] ✅ Uploaded {} file: {}", msg.getBatchId(), folder, blobUrl);
-
-                    // Match account in filename
-                    for (Map.Entry<String, SummaryProcessedFile> entry : accountMap.entrySet()) {
-                        String account = entry.getKey();
-                        SummaryProcessedFile customerEntry = entry.getValue();
-
-                        boolean matchesAccount = fileName.contains(account) || fileName.endsWith(".ps");
-
-                        if (matchesAccount) {
-                            // Original file entry
-                            SummaryProcessedFile singleFileEntry = new SummaryProcessedFile();
-                            BeanUtils.copyProperties(customerEntry, singleFileEntry);
-
-                            switch (folder) {
-                                case AppConstants.FOLDER_ARCHIVE -> singleFileEntry.setArchiveFileUrl(blobUrl);
-                                case AppConstants.FOLDER_EMAIL -> singleFileEntry.setPdfEmailFileUrl(blobUrl);
-                                case AppConstants.FOLDER_MOBSTAT -> singleFileEntry.setPdfMobstatFileUrl(blobUrl);
-                                case AppConstants.FOLDER_PRINT -> singleFileEntry.setPrintFileUrl(blobUrl);
-                            }
-
-                            finalList.add(singleFileEntry);
-
-                            // Add archive + delivery combinations (skip if already archive)
-                            if (!folder.equals(AppConstants.FOLDER_ARCHIVE)) {
-                                archiveFiles.entrySet().stream()
-                                        .filter(a -> a.getKey().startsWith(account))
-                                        .forEach(a -> {
-                                            try {
-                                                String archiveBlobUrl = blobStorageService.uploadFileByMessage(a.getValue().toFile(), AppConstants.FOLDER_ARCHIVE, msg);
-                                                SummaryProcessedFile comboEntry = new SummaryProcessedFile();
-                                                BeanUtils.copyProperties(customerEntry, comboEntry);
-
-                                                // Set delivery + archive
-                                                switch (folder) {
-                                                    case AppConstants.FOLDER_EMAIL -> comboEntry.setPdfEmailFileUrl(blobUrl);
-                                                    case AppConstants.FOLDER_MOBSTAT -> comboEntry.setPdfMobstatFileUrl(blobUrl);
-                                                    case AppConstants.FOLDER_PRINT -> comboEntry.setPrintFileUrl(blobUrl);
-                                                }
-                                                comboEntry.setArchiveFileUrl(archiveBlobUrl);
-                                                finalList.add(comboEntry);
-                                            } catch (Exception e) {
-                                                logger.error("[{}] ⚠️ Failed archive combo upload: {}", msg.getBatchId(), e.getMessage());
-                                            }
-                                        });
-                            }
-                        }
-                    }
-
-                } catch (Exception e) {
-                    logger.error("[{}] ⚠️ Failed to process file {}: {}", msg.getBatchId(), file.getFileName(), e.getMessage());
-                }
-            });
-        }
-    }
-
-    logger.info("[{}] ✅ Total processed files: {}", msg.getBatchId(), finalList.size());
-    return finalList;
-}
-
-// Helper method: Skip temp/hidden files
-private boolean isTempFile(Path file) {
-    String name = file.getFileName().toString().toLowerCase();
-    return name.startsWith("~") || name.endsWith(".tmp") || name.endsWith(".temp") || name.equals(".ds_store");
-}
+2025-09-10T19:49:20.507+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 🔄 Invoking buildDetailedProcessedFiles...
+2025-09-10T19:49:20.813+02:00 ERROR 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ❌ Error post-OT summary generation: Duplicate key 1141827557 (attempted merging values SummaryProcessedFile(customerId=211490951108, accountNumber=1141827557, firstName=null, lastName=null, email=null, mobileNumber=null, addressLine1=null, addressLine2=null, addressLine3=null, postalCode=null, contactNumber=null, product=null, templateCode=null, templateName=null, balance=null, creditLimit=null, interestRate=null, dueAmount=null, arrears=null, dueDate=null, idNumber=null, accountReference=null, pdfArchiveFileUrl=null, pdfArchiveStatus=null, pdfEmailFileUrl=null, pdfEmailStatus=null, pdfMobstatFileUrl=null, pdfMobstatStatus=null, printFileUrl=null, printStatus=null, statusCode=null, statusDescription=null, fullName=null, status=null, fileType=null, outputMethod=null, reason=null, linkedDeliveryType=null, linkedOutputMethod=null, archiveBlobUrl=null, archiveStatus=null, queueName=null, fileUrl=null, type=null, url=null, errorCode=null, errorMessage=null, outputType=null, errorReportEntry=null, archiveOutputType=null, blobUrl=null, overallStatus=null, method=null, fileName=null) and SummaryProcessedFile(customerId=211490951108, accountNumber=1141827557, firstName=null, lastName=null, email=null, mobileNumber=null, addressLine1=null, addressLine2=null, addressLine3=null, postalCode=null, contactNumber=null, product=null, templateCode=null, templateName=null, balance=null, creditLimit=null, interestRate=null, dueAmount=null, arrears=null, dueDate=null, idNumber=null, accountReference=null, pdfArchiveFileUrl=null, pdfArchiveStatus=null, pdfEmailFileUrl=null, pdfEmailStatus=null, pdfMobstatFileUrl=null, pdfMobstatStatus=null, printFileUrl=null, printStatus=null, statusCode=null, statusDescription=null, fullName=null, status=null, fileType=null, outputMethod=null, reason=null, linkedDeliveryType=null, linkedOutputMethod=null, archiveBlobUrl=null, archiveStatus=null, queueName=null, fileUrl=null, type=null, url=null, errorCode=null, errorMessage=null, outputType=null, errorReportEntry=null, archiveOutputType=null, blobUrl=null, overallStatus=null, method=null, fileName=null))
+java.lang.IllegalStateException: Duplicate key 1141827557 (attempted merging values SummaryProcessedFile(customerId=211490951108, accountNumber=1141827557, firstName=null, lastName=null, email=null, mobileNumber=null, addressLine1=null, addressLine2=null, addressLine3=null, postalCode=null, contactNumber=null, product=null, templateCode=null, templateName=null, balance=null, creditLimit=null, interestRate=null, dueAmount=null, arrears=null, dueDate=null, idNumber=null, accountReference=null, pdfArchiveFileUrl=null, pdfArchiveStatus=null, pdfEmailFileUrl=null, pdfEmailStatus=null, pdfMobstatFileUrl=null, pdfMobstatStatus=null, printFileUrl=null, printStatus=null, statusCode=null, statusDescription=null, fullName=null, status=null, fileType=null, outputMethod=null, reason=null, linkedDeliveryType=null, linkedOutputMethod=null, archiveBlobUrl=null, archiveStatus=null, queueName=null, fileUrl=null, type=null, url=null, errorCode=null, errorMessage=null, outputType=null, errorReportEntry=null, archiveOutputType=null, blobUrl=null, overallStatus=null, method=null, fileName=null) and SummaryProcessedFile(customerId=211490951108, accountNumber=1141827557, firstName=null, lastName=null, email=null, mobileNumber=null, addressLine1=null, addressLine2=null, addressLine3=null, postalCode=null, contactNumber=null, product=null, templateCode=null, templateName=null, balance=null, creditLimit=null, interestRate=null, dueAmount=null, arrears=null, dueDate=null, idNumber=null, accountReference=null, pdfArchiveFileUrl=null, pdfArchiveStatus=null, pdfEmailFileUrl=null, pdfEmailStatus=null, pdfMobstatFileUrl=null, pdfMobstatStatus=null, printFileUrl=null, printStatus=null, statusCode=null, statusDescription=null, fullName=null, status=null, fileType=null, outputMethod=null, reason=null, linkedDeliveryType=null, linkedOutputMethod=null, archiveBlobUrl=null, archiveStatus=null, queueName=null, fileUrl=null, type=null, url=null, errorCode=null, errorMessage=null, outputType=null, errorReportEntry=null, archiveOutputType=null, blobUrl=null, overallStatus=null, method=null, fileName=null))
+ at java.base/java.util.stream.Collectors.duplicateKeyException(Collectors.java:135) ~[na:na]
+ at java.base/java.util.stream.Collectors.lambda$uniqKeysMapAccumulator$1(Collectors.java:182) ~[na:na]
+ at java.base/java.util.stream.ReduceOps$3ReducingSink.accept(ReduceOps.java:169) ~[na:na]
+ at java.base/java.util.ArrayList$ArrayListSpliterator.forEachRemaining(ArrayList.java:1625) ~[na:na]
+ at java.base/java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:509) ~[na:na]
+ at java.base/java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:499) ~[na:na]
+ at java.base/java.util.stream.ReduceOps$ReduceOp.evaluateSequential(ReduceOps.java:921) ~[na:na]
+ at java.base/java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234) ~[na:na]
+ at java.base/java.util.stream.ReferencePipeline.collect(ReferencePipeline.java:682) ~[na:na]
+ at com.nedbank.kafka.filemanage.service.KafkaListenerService.buildDetailedProcessedFiles(KafkaListenerService.java:649) ~[classes!/:na]
+ at com.nedbank.kafka.filemanage.service.KafkaListenerService.processAfterOT(KafkaListenerService.java:338) ~[classes!/:na]
+ at com.nedbank.kafka.filemanage.service.KafkaListenerService.lambda$onKafkaMessage$2(KafkaListenerService.java:206) ~[classes!/:na]
+ at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539) ~[na:na]
+ at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264) ~[na:na]
+ at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136) ~[na:na]
+ at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635) ~[na:na]
+ at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
