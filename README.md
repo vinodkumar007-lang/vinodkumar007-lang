@@ -15,38 +15,33 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             AppConstants.FOLDER_MOBSTAT
     );
 
-    // Step 1: Upload all archive files and map per account+filename
-    Map<String, List<String>> archiveUrlsMap = new HashMap<>();
+    // Step 1: Upload all archive files first
+    Map<String, List<String>> archiveUrlsMap = new HashMap<>(); // account -> list of archive URLs
     Path archiveFolder = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
     int archiveCount = 0;
 
     if (Files.exists(archiveFolder)) {
         try (Stream<Path> stream = Files.walk(archiveFolder)) {
-            for (Path file : stream.filter(Files::isRegularFile)
-                                   .filter(f -> !isTempFile(f))
-                                   .toList()) {
+            for (Path file : stream.filter(Files::isRegularFile).filter(f -> !isTempFile(f)).toList()) {
                 String fileName = file.getFileName().toString();
-                for (SummaryProcessedFile customer : customerList) {
-                    if (fileName.contains(customer.getAccountNumber())) {
-                        String blobUrl = blobStorageService.uploadFileByMessage(file.toFile(), AppConstants.FOLDER_ARCHIVE, msg);
-                        archiveUrlsMap.computeIfAbsent(customer.getAccountNumber(), k -> new ArrayList<>()).add(blobUrl);
+                String blobUrl = blobStorageService.uploadFileByMessage(file.toFile(), AppConstants.FOLDER_ARCHIVE, msg);
+                archiveCount++;
 
-                        SummaryProcessedFile entry = new SummaryProcessedFile();
-                        BeanUtils.copyProperties(customer, entry);
-                        entry.setArchiveBlobUrl(blobUrl);
-                        finalList.add(entry);
-                        archiveCount++;
+                // Map archive URLs per account
+                customerList.forEach(cust -> {
+                    if (fileName.contains(cust.getAccountNumber())) {
+                        archiveUrlsMap.computeIfAbsent(cust.getAccountNumber(), k -> new ArrayList<>()).add(blobUrl);
                     }
-                }
+                });
             }
         }
     }
-    logger.info("[{}] ✅ Uploaded {} archive files", msg.getBatchId(), archiveCount);
+    logger.info("[{}] ✅ Total archive files uploaded: {}", msg.getBatchId(), archiveCount);
 
-    // Step 2: Upload other delivery files and combine with all relevant archives
-    Map<String, Integer> folderCounts = new HashMap<>();
+    // Step 2: Process email/mobstat folders
+    Map<String, Integer> folderUploadCount = new HashMap<>();
     for (String folder : deliveryFolders) {
-        if (folder.equals(AppConstants.FOLDER_ARCHIVE)) continue; // Already handled
+        if (folder.equals(AppConstants.FOLDER_ARCHIVE)) continue; // already done
 
         Path folderPath = jobDir.resolve(folder);
         if (!Files.exists(folderPath)) {
@@ -54,67 +49,70 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             continue;
         }
 
-        int count = 0;
+        int folderCount = 0;
         try (Stream<Path> stream = Files.walk(folderPath)) {
-            for (Path file : stream.filter(Files::isRegularFile)
-                                   .filter(f -> !isTempFile(f))
-                                   .toList()) {
+            for (Path file : stream.filter(Files::isRegularFile).filter(f -> !isTempFile(f)).toList()) {
                 String fileName = file.getFileName().toString();
-                for (SummaryProcessedFile customer : customerList) {
-                    boolean matchesAccount = fileName.contains(customer.getAccountNumber()) || fileName.endsWith(".ps");
-                    if (matchesAccount) {
-                        String blobUrl = blobStorageService.uploadFileByMessage(file.toFile(), folder, msg);
+                String blobUrl = blobStorageService.uploadFileByMessage(file.toFile(), folder, msg);
+                folderCount++;
 
-                        // Combine with all archives for this account
-                        List<String> archives = archiveUrlsMap.getOrDefault(customer.getAccountNumber(), List.of());
+                // Match customer: filename first, fallback to account number
+                customerList.forEach(cust -> {
+                    boolean matched = fileName.contains(cust.getAccountNumber());
+                    if (!matched) {
+                        matched = true; // fallback: always associate by account number
+                    }
+
+                    if (matched) {
+                        // For each archive URL for this account, create a combined entry
+                        List<String> archives = archiveUrlsMap.getOrDefault(cust.getAccountNumber(), Collections.emptyList());
                         if (archives.isEmpty()) {
-                            // No archive, just add delivery file entry
+                            // If no archive, still create one entry with delivery only
                             SummaryProcessedFile entry = new SummaryProcessedFile();
-                            BeanUtils.copyProperties(customer, entry);
-                            switch (folder) {
-                                case AppConstants.FOLDER_EMAIL -> entry.setPdfEmailFileUrl(blobUrl);
-                                case AppConstants.FOLDER_MOBSTAT -> entry.setPdfMobstatFileUrl(blobUrl);
-                            }
+                            BeanUtils.copyProperties(cust, entry);
+                            setDeliveryUrl(entry, folder, blobUrl);
                             finalList.add(entry);
                         } else {
-                            // Add entry per archive combo
                             for (String archiveUrl : archives) {
-                                SummaryProcessedFile comboEntry = new SummaryProcessedFile();
-                                BeanUtils.copyProperties(customer, comboEntry);
-                                comboEntry.setArchiveBlobUrl(archiveUrl);
-                                switch (folder) {
-                                    case AppConstants.FOLDER_EMAIL -> comboEntry.setPdfEmailFileUrl(blobUrl);
-                                    case AppConstants.FOLDER_MOBSTAT -> comboEntry.setPdfMobstatFileUrl(blobUrl);
-                                }
-                                finalList.add(comboEntry);
+                                SummaryProcessedFile entry = new SummaryProcessedFile();
+                                BeanUtils.copyProperties(cust, entry);
+                                entry.setArchiveBlobUrl(archiveUrl);
+                                setDeliveryUrl(entry, folder, blobUrl);
+                                finalList.add(entry);
                             }
                         }
-                        count++;
                     }
-                }
+                });
             }
         }
-        folderCounts.put(folder, count);
-        logger.info("[{}] ✅ Uploaded {} {} files", msg.getBatchId(), count, folder);
+        folderUploadCount.put(folder, folderCount);
+        logger.info("[{}] ✅ Total {} files uploaded: {}", msg.getBatchId(), folder, folderCount);
     }
 
-    // Step 3: Find all .ps files in jobDir and add to summary
+    // Step 3: Collect all .ps files from jobDir for summary
     List<String> psFiles = new ArrayList<>();
     try (Stream<Path> stream = Files.walk(jobDir)) {
-        for (Path file : stream.filter(Files::isRegularFile)
-                               .filter(f -> f.getFileName().toString().endsWith(".ps"))
-                               .filter(f -> !isTempFile(f))
-                               .toList()) {
-            psFiles.add(file.toAbsolutePath().toString());
-        }
+        psFiles = stream.filter(Files::isRegularFile)
+                .filter(f -> f.getFileName().toString().toLowerCase().endsWith(".ps"))
+                .map(Path::toString)
+                .collect(Collectors.toList());
     }
-    logger.info("[{}] ✅ Found {} .ps files in jobDir", msg.getBatchId(), psFiles.size());
+    logger.info("[{}] ✅ Total .ps files found: {}", msg.getBatchId(), psFiles.size());
 
-    logger.info("[{}] ✅ Total processed files: {}", msg.getBatchId(), finalList.size());
+    logger.info("[{}] ✅ Total processed entries in final list: {}", msg.getBatchId(), finalList.size());
     return finalList;
 }
 
-// Helper: Skip temp/hidden files
+// Helper: set delivery URL
+private void setDeliveryUrl(SummaryProcessedFile entry, String folder, String url) {
+    switch (folder) {
+        case AppConstants.FOLDER_EMAIL -> entry.setPdfEmailFileUrl(url);
+        case AppConstants.FOLDER_MOBSTAT -> entry.setPdfMobstatFileUrl(url);
+        case AppConstants.FOLDER_PRINT -> entry.setPrintFileUrl(url);
+    }
+}
+
+// Helper: skip temp/hidden files
 private boolean isTempFile(Path file) {
     String name = file.getFileName().toString().toLowerCase();
     return name.startsWith("~") || name.endsWith(".tmp") || name.endsWith(".temp") || name.equals(".ds_store");
