@@ -22,29 +22,27 @@ private Map<String, Map<String, String>> uploadDeliveryFiles(
     logger.info("[{}] 📂 All discovered directories under jobDir:", msg.getBatchId());
     allDirs.forEach(d -> logger.info("   - {}", d));
 
-    // 🔹 Match by folder name only (case-insensitive, partial match allowed)
+    // 🔹 Match by folder name anywhere in the path (case-insensitive)
     List<Path> folderPaths = allDirs.stream()
-            .filter(p -> {
-                String name = p.getFileName().toString().toLowerCase();
-                return deliveryFolders.stream().anyMatch(f -> name.contains(f.toLowerCase()));
-            })
+            .filter(p -> deliveryFolders.stream()
+                    .anyMatch(f -> p.toString().toLowerCase().contains("/" + f.toLowerCase())))
             .toList();
 
     // Log warning for any missing delivery folder
     for (String folder : deliveryFolders) {
         boolean found = folderPaths.stream()
-                .anyMatch(p -> p.getFileName().toString().toLowerCase().contains(folder.toLowerCase()));
+                .anyMatch(p -> p.toString().toLowerCase().contains("/" + folder.toLowerCase()));
         if (!found) {
             logger.warn("[{}] ⚠️ Delivery folder '{}' not found under jobDir: {}",
                     msg.getBatchId(), folder, jobDir);
         }
     }
 
-    // Process files
+    // Process files in all detected folders
     for (Path folderPath : folderPaths) {
         String folderName = folderPath.getFileName().toString().trim();
         String folderKey = deliveryFolders.stream()
-                .filter(f -> folderName.toLowerCase().contains(f.toLowerCase()))
+                .filter(f -> folderPath.toString().toLowerCase().contains("/" + f.toLowerCase()))
                 .findFirst()
                 .orElse(folderName.toLowerCase());
 
