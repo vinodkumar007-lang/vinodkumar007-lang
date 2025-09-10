@@ -18,95 +18,108 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             AppConstants.FOLDER_PRINT
     );
 
-    // Step 1: Pre-upload all archive files once
-    Map<String, List<String>> archiveBlobUrlsMap = new HashMap<>();
+    // Counters for logging
+    Map<String, Integer> uploadCounts = new HashMap<>();
+    deliveryFolders.forEach(f -> uploadCounts.put(f, 0));
+
+    // Step 1: Upload all archive files and group by account
+    Map<String, List<String>> accountToArchiveUrls = new HashMap<>();
     Path archiveFolder = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
-    if (Files.exists(archiveFolder) && Files.isDirectory(archiveFolder)) {
+    if (Files.exists(archiveFolder)) {
         try (Stream<Path> stream = Files.walk(archiveFolder)) {
             stream.filter(Files::isRegularFile)
-                    .filter(f -> !isTempFile(f))
-                    .forEach(f -> {
-                        String fileName = f.getFileName().toString();
-                        customerList.forEach(cust -> {
-                            if (fileName.contains(cust.getAccountNumber())) {
-                                try {
-                                    String blobUrl = blobStorageService.uploadFileByMessage(f.toFile(), AppConstants.FOLDER_ARCHIVE, msg);
-                                    archiveBlobUrlsMap.computeIfAbsent(cust.getAccountNumber(), k -> new ArrayList<>()).add(blobUrl);
-                                    logger.info("[{}] ✅ Pre-uploaded archive file for account {}: {}", msg.getBatchId(), cust.getAccountNumber(), blobUrl);
-                                } catch (Exception e) {
-                                    logger.error("[{}] ⚠️ Failed to upload archive file {}: {}", msg.getBatchId(), f.getFileName(), e.getMessage());
-                                }
-                            }
-                        });
-                    });
+                  .filter(f -> !isTempFile(f))
+                  .forEach(f -> {
+                      String fileName = f.getFileName().toString();
+                      customerList.forEach(cust -> {
+                          if (fileName.contains(cust.getAccountNumber())) {
+                              try {
+                                  String blobUrl = blobStorageService.uploadFileByMessage(f.toFile(), AppConstants.FOLDER_ARCHIVE, msg);
+                                  accountToArchiveUrls.computeIfAbsent(cust.getAccountNumber(), k -> new ArrayList<>()).add(blobUrl);
+                                  uploadCounts.put(AppConstants.FOLDER_ARCHIVE, uploadCounts.get(AppConstants.FOLDER_ARCHIVE) + 1);
+
+                                  // Add archive-only entry
+                                  SummaryProcessedFile entry = new SummaryProcessedFile();
+                                  BeanUtils.copyProperties(cust, entry);
+                                  entry.setArchiveBlobUrl(blobUrl);
+                                  finalList.add(entry);
+
+                              } catch (Exception e) {
+                                  logger.error("[{}] ⚠️ Failed to upload archive file {}: {}", msg.getBatchId(), fileName, e.getMessage());
+                              }
+                          }
+                      });
+                  });
         }
-    } else {
-        logger.warn("[{}] ⚠️ Archive folder missing: {}", msg.getBatchId(), archiveFolder);
     }
 
-    // Step 2: Process each delivery folder
+    // Step 2: Process other delivery folders
     for (String folder : deliveryFolders) {
-        Path folderPath = jobDir.resolve(folder);
-        logger.info("[{}] 🔍 Checking folder: {}", msg.getBatchId(), folderPath.toAbsolutePath());
+        if (folder.equals(AppConstants.FOLDER_ARCHIVE)) continue; // Already processed
 
-        if (!Files.exists(folderPath) || !Files.isDirectory(folderPath)) {
+        Path folderPath = jobDir.resolve(folder);
+        if (!Files.exists(folderPath)) {
             logger.warn("[{}] ⚠️ Folder not found: {}", msg.getBatchId(), folderPath);
             continue;
         }
 
         try (Stream<Path> stream = Files.walk(folderPath)) {
             stream.filter(Files::isRegularFile)
-                    .filter(f -> !isTempFile(f))
-                    .forEach(file -> {
-                        try {
-                            String fileName = file.getFileName().toString();
-                            String blobUrl = blobStorageService.uploadFileByMessage(file.toFile(), folder, msg);
-                            logger.info("[{}] ✅ Uploaded {} file: {}", msg.getBatchId(), folder, blobUrl);
+                  .filter(f -> !isTempFile(f))
+                  .forEach(file -> {
+                      String fileName = file.getFileName().toString();
+                      customerList.forEach(customerEntry -> {
+                          boolean matchesAccount = fileName.contains(customerEntry.getAccountNumber()) || fileName.endsWith(".ps");
+                          if (matchesAccount) {
+                              try {
+                                  // Upload delivery file
+                                  String deliveryBlobUrl = blobStorageService.uploadFileByMessage(file.toFile(), folder, msg);
+                                  uploadCounts.put(folder, uploadCounts.get(folder) + 1);
+                                  logger.info("[{}] ✅ Uploaded {} file: {}", msg.getBatchId(), folder, deliveryBlobUrl);
 
-                            // Match accounts in filename
-                            customerList.forEach(customerEntry -> {
-                                boolean matchesAccount = fileName.contains(customerEntry.getAccountNumber()) || fileName.endsWith(".ps");
-                                if (matchesAccount) {
-                                    // Original entry
-                                    SummaryProcessedFile entry = new SummaryProcessedFile();
-                                    BeanUtils.copyProperties(customerEntry, entry);
-                                    switch (folder) {
-                                        case AppConstants.FOLDER_ARCHIVE -> entry.setArchiveBlobUrl(blobUrl);
-                                        case AppConstants.FOLDER_EMAIL -> entry.setPdfEmailFileUrl(blobUrl);
-                                        case AppConstants.FOLDER_MOBSTAT -> entry.setPdfMobstatFileUrl(blobUrl);
-                                        case AppConstants.FOLDER_PRINT -> entry.setPrintFileUrl(blobUrl);
-                                    }
-                                    finalList.add(entry);
-
-                                    // Archive + delivery combos if folder != archive
-                                    if (!folder.equals(AppConstants.FOLDER_ARCHIVE)) {
-                                        List<String> archives = archiveBlobUrlsMap.getOrDefault(customerEntry.getAccountNumber(), Collections.emptyList());
-                                        for (String archiveBlobUrl : archives) {
-                                            SummaryProcessedFile comboEntry = new SummaryProcessedFile();
-                                            BeanUtils.copyProperties(customerEntry, comboEntry);
-                                            switch (folder) {
-                                                case AppConstants.FOLDER_EMAIL -> comboEntry.setPdfEmailFileUrl(blobUrl);
-                                                case AppConstants.FOLDER_MOBSTAT -> comboEntry.setPdfMobstatFileUrl(blobUrl);
-                                                case AppConstants.FOLDER_PRINT -> comboEntry.setPrintFileUrl(blobUrl);
-                                            }
-                                            comboEntry.setArchiveBlobUrl(archiveBlobUrl);
-                                            finalList.add(comboEntry);
-                                        }
-                                    }
-                                }
-                            });
-                        } catch (Exception e) {
-                            logger.error("[{}] ⚠️ Failed to process file {}: {}", msg.getBatchId(), file.getFileName(), e.getMessage());
-                        }
-                    });
+                                  // Combine with all archive files for the same account
+                                  List<String> archives = accountToArchiveUrls.getOrDefault(customerEntry.getAccountNumber(), Collections.emptyList());
+                                  if (archives.isEmpty()) {
+                                      // No archive, still add delivery only
+                                      SummaryProcessedFile entry = new SummaryProcessedFile();
+                                      BeanUtils.copyProperties(customerEntry, entry);
+                                      setDeliveryFileUrl(entry, folder, deliveryBlobUrl);
+                                      finalList.add(entry);
+                                  } else {
+                                      for (String archiveUrl : archives) {
+                                          SummaryProcessedFile comboEntry = new SummaryProcessedFile();
+                                          BeanUtils.copyProperties(customerEntry, comboEntry);
+                                          comboEntry.setArchiveBlobUrl(archiveUrl);
+                                          setDeliveryFileUrl(comboEntry, folder, deliveryBlobUrl);
+                                          finalList.add(comboEntry);
+                                      }
+                                  }
+                              } catch (Exception e) {
+                                  logger.error("[{}] ⚠️ Failed to upload delivery file {}: {}", msg.getBatchId(), fileName, e.getMessage());
+                              }
+                          }
+                      });
+                  });
         }
     }
 
-    logger.info("[{}] ✅ Total processed files: {}", msg.getBatchId(), finalList.size());
+    // Log summary of uploaded files
+    uploadCounts.forEach((folder, count) -> logger.info("[{}] 📂 Total {} files uploaded: {}", msg.getBatchId(), folder, count));
+
+    logger.info("[{}] ✅ Total processed entries in summary.json: {}", msg.getBatchId(), finalList.size());
     return finalList;
 }
 
-// Helper method: Skip temp/hidden files
+// Helper: Set the delivery URL based on folder type
+private void setDeliveryFileUrl(SummaryProcessedFile entry, String folder, String url) {
+    switch (folder) {
+        case AppConstants.FOLDER_EMAIL -> entry.setPdfEmailFileUrl(url);
+        case AppConstants.FOLDER_MOBSTAT -> entry.setPdfMobstatFileUrl(url);
+        case AppConstants.FOLDER_PRINT -> entry.setPrintFileUrl(url);
+    }
+}
+
+// Helper: Skip temp/hidden files
 private boolean isTempFile(Path file) {
     String name = file.getFileName().toString().toLowerCase();
     return name.startsWith("~") || name.endsWith(".tmp") || name.endsWith(".temp") || name.equals(".ds_store");
