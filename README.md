@@ -121,3 +121,48 @@ private OTResponse callOrchestrationBatchApi(String token, String url, KafkaMess
             return otResponse;
         }
     }
+
+GET - https://ete-exstream.nednet.co.za/orchestration/api/v1/runtime/ete-SA/jobs/a39d0871-e2f9-4907-b682-…
+ 
+{
+    "status": "success",
+    "data": {
+        "id": "a39d0871-e2f9-4907-b682-349fb9514dba",
+        "domainId": "ete-SA",
+        "channel": "ECPDebtmanService",
+        "mode": "BATCH",
+        "status": "started",
+        "flowModelType": "COMMUNICATION",
+        "msg": "Batch Job",
+        "externalId": null,
+        "triggeredBy": "tenantadmin@exstream.role",
+        "aggregatedFMCSnapshotId": "90097ec8-6a86-4812-b08b-a4b6fb594088",
+        "startDate": 1757584755471,
+        "endDate": null,
+        "expirationDate": null,
+        "traceId": "d877b2ecb27eed0a",
+        "simulation": false
+    }
+}
+ 
+{
+    "status": "success",
+    "data": {
+        "id": "088612f7-db40-42ab-90f0-f50dcc1e0204",
+        "domainId": "ete-SA",
+        "channel": "ECPDebtmanService",
+        "mode": "BATCH",
+        "status": "complete",
+        "flowModelType": "COMMUNICATION",
+        "msg": "Batch Job",
+        "externalId": null,
+        "triggeredBy": "tenantadmin@exstream.role",
+        "aggregatedFMCSnapshotId": "90097ec8-6a86-4812-b08b-a4b6fb594088",
+        "startDate": 1757584405639,
+        "endDate": 1757584411005,
+        "expirationDate": null,
+        "traceId": "251b4938c8590f32",
+        "simulation": false
+    }
+}
+ 
