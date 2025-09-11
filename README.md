@@ -21,8 +21,17 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                 return;
             }
 
-            String fileName = file.getFileName().toString();
-            String parentFolder = file.getParent().getFileName().toString().toLowerCase(); // folder name
+            String fileName = file.getFileName().toString().toLowerCase();
+
+            // 🚫 Skip temp/junk files
+            if (fileName.endsWith(".tmp") || fileName.endsWith(".temp") ||
+                fileName.endsWith(".partial") || fileName.startsWith("~") ||
+                fileName.equals(".ds_store")) {
+                logger.warn("[{}] 🚫 Skipping temp/junk file: {}", msg.getBatchId(), fileName);
+                return;
+            }
+
+            String parentFolder = file.getParent().getFileName().toString().toLowerCase();
 
             try {
                 String url = decodeUrl(blobStorageService.uploadFileByMessage(file.toFile(), parentFolder, msg));
