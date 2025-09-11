@@ -1,73 +1,42 @@
-private File waitForXmlFile(String jobId, String id) throws InterruptedException {
-    Path docgenRoot = Paths.get(mountPath, "jobs", jobId, id, AppConstants.DOCGEN_FOLDER);
-    long startTime = System.currentTimeMillis();
-    File xmlFile = null;
+private OTResponse callOrchestrationBatchApi(String token, String url, KafkaMessage msg) {
+        OTResponse otResponse = new OTResponse();
+        try {
+            logger.info("📡 Initiating OT orchestration call to URL: {} for batchId: {} and sourceSystem: {}",
+                    url, msg.getBatchId(), msg.getSourceSystem());
 
-    int stableCounter = 0;
-    long pollInterval = rptPollIntervalMillis; // initial poll interval
-    final long maxPollInterval = 15000L;       // max 15 sec
-    final double growthFactor = 1.5;           // adaptive interval increase
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(AppConstants.HEADER_AUTHORIZATION, AppConstants.BEARER_PREFIX + token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
 
-    // --- dynamic stable check based on file size ---
-    int baseStableCount = 3; // for small files (<5MB)
-    final long smallFileThreshold = 5 * 1024 * 1024;   // 5 MB
-    final long largeFileThreshold = 50 * 1024 * 1024;  // 50 MB
-    int stableCheckCount = baseStableCount;
+            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
+            logger.debug("📨 OT Request Payload: {}", objectMapper.writeValueAsString(msg));
 
-    while ((System.currentTimeMillis() - startTime) < rptMaxWaitSeconds * 1000L) {
-        if (Files.exists(docgenRoot)) {
-            try (Stream<Path> paths = Files.walk(docgenRoot)) {
-                Optional<Path> xmlPathOpt = paths
-                        .filter(Files::isRegularFile)
-                        .filter(p -> p.getFileName().toString().equalsIgnoreCase(AppConstants.XML_FILE_NAME))
-                        .findFirst();
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, request, Map.class);
+            logger.info("✅ Received OT response with status: {} for batchId: {}",
+                    response.getStatusCode(), msg.getBatchId());
 
-                if (xmlPathOpt.isPresent()) {
-                    xmlFile = xmlPathOpt.get().toFile();
-                    long fileSize = xmlFile.length();
+            List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get(AppConstants.OT_RESPONSE_DATA_KEY);
+            if (data != null && !data.isEmpty()) {
+                Map<String, Object> item = data.get(0);
+                otResponse.setJobId((String) item.get(AppConstants.OT_JOB_ID_KEY));
+                otResponse.setId((String) item.get(AppConstants.OT_ID_KEY));
+                msg.setJobName(otResponse.getJobId());
+                otResponse.setSuccess(true);
 
-                    // --- dynamically adjust stableCheckCount ---
-                    if (fileSize <= smallFileThreshold) stableCheckCount = 3;
-                    else if (fileSize <= largeFileThreshold) stableCheckCount = 4;
-                    else stableCheckCount = 6; // very large files
-
-                    long size1 = fileSize;
-                    TimeUnit.MILLISECONDS.sleep(pollInterval);
-                    long size2 = xmlFile.length();
-                    TimeUnit.MILLISECONDS.sleep(pollInterval);
-                    long size3 = xmlFile.length();
-
-                    if (size1 > 0 && size1 == size2 && size2 == size3) {
-                        stableCounter++;
-                        logger.info("[{}] 📄 XML file appears stable ({}/{}) size={} MB",
-                                jobId, stableCounter, stableCheckCount, size1 / (1024 * 1024));
-
-                        if (stableCounter >= stableCheckCount) {
-                            logger.info(AppConstants.LOG_FOUND_STABLE_XML, xmlFile.getAbsolutePath());
-                            return xmlFile;
-                        }
-
-                        pollInterval = rptPollIntervalMillis; // reset interval
-                    } else {
-                        stableCounter = 0; // reset if file still growing
-                        logger.info(AppConstants.LOG_XML_SIZE_CHANGING, xmlFile.getAbsolutePath());
-
-                        // gradually increase poll interval for large files
-                        pollInterval = Math.min(maxPollInterval, (long) (pollInterval * growthFactor));
-                        logger.debug("[{}] ⏱ Increasing poll interval to {} ms", jobId, pollInterval);
-                    }
-                }
-            } catch (IOException e) {
-                logger.warn(AppConstants.LOG_ERROR_SCANNING_FOLDER, jobId, id, e.getMessage(), e);
+                logger.info("🎯 OT Job created successfully - JobID: {}, ID: {}, BatchID: {}",
+                        otResponse.getJobId(), otResponse.getId(), msg.getBatchId());
+            } else {
+                logger.error("❌ No data found in OT orchestration response for batchId: {}", msg.getBatchId());
+                otResponse.setSuccess(false);
+                otResponse.setMessage(AppConstants.NO_OT_DATA_MESSAGE);
             }
-        } else {
-            logger.debug(AppConstants.LOG_DOCGEN_FOLDER_NOT_FOUND, jobId, id, docgenRoot);
+
+            return otResponse;
+        } catch (Exception e) {
+            logger.error("❌ Exception during OT orchestration call for batchId: {} - {}",
+                    msg.getBatchId(), e.getMessage(), e);
+            otResponse.setSuccess(false);
+            otResponse.setMessage(AppConstants.OT_CALL_FAILURE_PREFIX + e.getMessage());
+            return otResponse;
         }
-
-        TimeUnit.MILLISECONDS.sleep(pollInterval);
     }
-
-    String errMsg = String.format(AppConstants.LOG_XML_TIMEOUT, docgenRoot, jobId, id);
-    logger.error(errMsg);
-    throw new IllegalStateException(errMsg);
-}
