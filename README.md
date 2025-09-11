@@ -1,11 +1,158 @@
-2025-09-11T07:08:21.306+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ Delivery folder not found: email
-2025-09-11T07:08:21.311+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ Delivery folder not found: mobstat
-2025-09-11T07:08:21.400+02:00 DEBUG 1 --- [ntainer#0-1-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
-2025-09-11T07:08:21.406+02:00 DEBUG 1 --- [ntainer#0-2-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
-2025-09-11T07:08:21.447+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fprint%2FPRODDebtmanNormal_HL_20250906.ps'
-2025-09-11T07:08:21.447+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ✅ Uploaded PRINT file: PRODDebtmanNormal_HL_20250906.ps → https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN/076f2b3c-37bc-4bcb-ab6a-29041acfc0f9/39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/print/PRODDebtmanNormal_HL_20250906.ps
-2025-09-11T07:08:21.448+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ No archive files found for customerId=191518160408, account=8000013557201
-2025-09-11T07:08:21.448+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ No archive files found for customerId=181001195892, account=8001453741101
-2025-09-11T07:08:21.448+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ No archive files found for customerId=191845897203, account=8002477818301
-2025-09-11T07:08:21.448+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ No archive files found for customerId=191429053705, account=8153693344101
-2025-09-11T07:08:21.450+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ No archive files found for customerId=146365821189, account=8870140400101
+// --- Helper to extract account from filename ---
+public static String extractAccountFromFileName(String fileName) {
+    if (fileName == null) return null;
+
+    // pick first sequence of 6–15 digits anywhere in filename
+    Matcher matcher = Pattern.compile("\\d{6,15}").matcher(fileName);
+    if (matcher.find()) return matcher.group();
+    return null;
+}
+
+// --- Main method ---
+private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+        Path jobDir,
+        List<SummaryProcessedFile> customerList,
+        Map<String, Map<String, String>> errorMap,
+        KafkaMessage msg) throws IOException {
+
+    List<SummaryProcessedFile> finalList = new ArrayList<>();
+    if (jobDir == null || customerList == null || msg == null) return finalList;
+
+    List<String> deliveryFolders = List.of(
+            AppConstants.FOLDER_EMAIL,
+            AppConstants.FOLDER_MOBSTAT,
+            AppConstants.FOLDER_PRINT
+    );
+
+    Map<String, String> folderToOutputMethod = Map.of(
+            AppConstants.FOLDER_EMAIL, AppConstants.OUTPUT_EMAIL,
+            AppConstants.FOLDER_MOBSTAT, AppConstants.OUTPUT_MOBSTAT,
+            AppConstants.FOLDER_PRINT, AppConstants.OUTPUT_PRINT
+    );
+
+    // -------- Upload archive files and map by account --------
+    Path archivePath = jobDir.resolve(AppConstants.FOLDER_ARCHIVE);
+    Map<String, Map<String, String>> accountToArchiveMap = new HashMap<>();
+    if (Files.exists(archivePath) && Files.isDirectory(archivePath)) {
+        try (Stream<Path> stream = Files.walk(archivePath)) {
+            stream.filter(Files::isRegularFile)
+                  .filter(f -> f.getFileName().toString().endsWith(".pdf")) // skip .tmp or other files
+                  .forEach(file -> {
+                      String fileName = file.getFileName().toString();
+                      String account = extractAccountFromFileName(fileName);
+                      if (account == null) {
+                          logger.warn("[{}] ⚠️ No account extracted from archive file: {}", msg.getBatchId(), fileName);
+                          return;
+                      }
+
+                      try {
+                          String archiveUrl = decodeUrl(
+                                  blobStorageService.uploadFileByMessage(file.toFile(), AppConstants.FOLDER_ARCHIVE, msg)
+                          );
+                          accountToArchiveMap.computeIfAbsent(account, k -> new HashMap<>()).put(fileName, archiveUrl);
+                          logger.info("[{}] 📦 Uploaded archive file={} for account={}, url={}",
+                                  msg.getBatchId(), fileName, account, archiveUrl);
+                      } catch (Exception e) {
+                          logger.error("[{}] ⚠️ Failed to upload archive file {}: {}",
+                                  msg.getBatchId(), fileName, e.getMessage(), e);
+                      }
+                  });
+        }
+    } else {
+        logger.warn("[{}] ⚠️ Archive folder does not exist: {}", msg.getBatchId(), archivePath);
+    }
+
+    // -------- Upload delivery files --------
+    Map<String, String> emailFileMap = new HashMap<>();
+    Map<String, String> mobstatFileMap = new HashMap<>();
+    Map<String, String> printFileMap = new HashMap<>();
+
+    for (String folder : deliveryFolders) {
+        Path folderPath = jobDir.resolve(folder);
+        if (!Files.exists(folderPath) || !Files.isDirectory(folderPath)) {
+            logger.warn("[{}] ⚠️ Delivery folder not found: {}", msg.getBatchId(), folder);
+            continue;
+        }
+
+        try (Stream<Path> stream = Files.walk(folderPath)) {
+            stream.filter(Files::isRegularFile)
+                  .filter(f -> !f.getFileName().toString().endsWith(".tmp")) // skip temp files
+                  .forEach(file -> {
+                      String fileName = file.getFileName().toString();
+                      try {
+                          String url = decodeUrl(
+                                  blobStorageService.uploadFileByMessage(file.toFile(), folder, msg)
+                          );
+                          switch (folder) {
+                              case AppConstants.FOLDER_EMAIL -> emailFileMap.put(fileName, url);
+                              case AppConstants.FOLDER_MOBSTAT -> mobstatFileMap.put(fileName, url);
+                              case AppConstants.FOLDER_PRINT -> printFileMap.put(fileName, url);
+                          }
+                          logger.info("[{}] ✅ Uploaded {} file: {} → {}",
+                                  msg.getBatchId(), folderToOutputMethod.get(folder), fileName, url);
+                      } catch (Exception e) {
+                          logger.error("[{}] ⚠️ Failed to upload {} file {}: {}",
+                                  msg.getBatchId(), folderToOutputMethod.get(folder), fileName, e.getMessage(), e);
+                      }
+                  });
+        }
+    }
+
+    // -------- Build final processed list --------
+    boolean isMfc = "MFC".equalsIgnoreCase(msg.getSourceSystem());
+    boolean isDebtman = "DEBTMAN".equalsIgnoreCase(msg.getSourceSystem());
+
+    for (SummaryProcessedFile customer : customerList) {
+        if (customer == null || customer.getAccountNumber() == null) {
+            logger.warn("[{}] ⏩ Skipping customer with null account: {}", msg.getBatchId(), customer);
+            continue;
+        }
+
+        String account = customer.getAccountNumber();
+        Map<String, String> archivesForAccount = accountToArchiveMap.getOrDefault(account, Collections.emptyMap());
+
+        if (archivesForAccount.isEmpty()) {
+            logger.warn("[{}] ⚠️ No archive files found for customerId={}, account={}",
+                    msg.getBatchId(), customer.getCustomerId(), account);
+        }
+
+        for (Map.Entry<String, String> archiveEntry : archivesForAccount.entrySet()) {
+            String archiveFileName = archiveEntry.getKey();
+            String archiveUrl = archiveEntry.getValue();
+
+            SummaryProcessedFile entry = new SummaryProcessedFile();
+            BeanUtils.copyProperties(customer, entry);
+            entry.setArchiveBlobUrl(archiveUrl);
+
+            if (isMfc || isDebtman) {
+                entry.setPdfEmailFileUrl(findFileByAccount(emailFileMap, account));
+                entry.setPdfMobstatFileUrl(findFileByAccount(mobstatFileMap, account));
+                entry.setPrintFileUrl(findFileByAccount(printFileMap, account));
+                logger.debug("[{}] Linked by account={} → email={}, mobstat={}, print={}",
+                        msg.getBatchId(), account, entry.getPdfEmailFileUrl(),
+                        entry.getPdfMobstatFileUrl(), entry.getPrintFileUrl());
+            } else {
+                entry.setPdfEmailFileUrl(emailFileMap.get(archiveFileName));
+                entry.setPdfMobstatFileUrl(mobstatFileMap.get(archiveFileName));
+                entry.setPrintFileUrl(printFileMap.get(archiveFileName));
+                logger.debug("[{}] Linked by filename={} → email={}, mobstat={}, print={}",
+                        msg.getBatchId(), archiveFileName, entry.getPdfEmailFileUrl(),
+                        entry.getPdfMobstatFileUrl(), entry.getPrintFileUrl());
+            }
+
+            finalList.add(entry);
+        }
+    }
+
+    // -------- Final summary log --------
+    int archiveCount = accountToArchiveMap.values().stream().mapToInt(Map::size).sum();
+    int emailCount = emailFileMap.size();
+    int mobstatCount = mobstatFileMap.size();
+    int printCount = printFileMap.size();
+    int processedCount = finalList.size();
+
+    logger.info("[{}] 📝 Summary stats → Archives={}, Email={}, Mobstat={}, Print={}, ProcessedEntries={}",
+            msg.getBatchId(), archiveCount, emailCount, mobstatCount, printCount, processedCount);
+
+    return finalList;
+}
