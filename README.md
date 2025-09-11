@@ -1,45 +1,123 @@
-private File waitForXmlFile(String jobId, String id) throws InterruptedException {
-        Path docgenRoot = Paths.get(mountPath, "jobs", jobId, id, AppConstants.DOCGEN_FOLDER);
-        long startTime = System.currentTimeMillis();
-        File xmlFile = null;
+private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
+        String batchId = message.getBatchId(); // golden thread
+        try {
+            logger.info("[{}] ⏳ Waiting for XML for jobId={}, id={}", batchId, otResponse.getJobId(), otResponse.getId());
+            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
+            if (xmlFile == null) throw new IllegalStateException("XML not found");
 
-        while ((System.currentTimeMillis() - startTime) < rptMaxWaitSeconds * 1000L) {
-            if (Files.exists(docgenRoot)) {
-                try (Stream<Path> paths = Files.walk(docgenRoot)) {
-                    Optional<Path> xmlPath = paths
-                            .filter(Files::isRegularFile)
-                            .filter(p -> p.getFileName().toString().equalsIgnoreCase(AppConstants.XML_FILE_NAME))
-                            .findFirst();
+            logger.info("[{}] ✅ Found XML file: {}", batchId, xmlFile);
 
-                    if (xmlPath.isPresent()) {
-                        xmlFile = xmlPath.get().toFile();
+            Map<String, Map<String, String>> errorMap = parseErrorReport(message);
+            logger.info("[{}] 🧾 Parsed error report with {} entries", batchId, errorMap.size());
 
-                        long size1 = xmlFile.length();
-                        TimeUnit.SECONDS.sleep(1);
-                        long size2 = xmlFile.length();
+            List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile, errorMap);
+            logger.info("[{}] 📊 Total customerSummaries parsed: {}", batchId, customerSummaries.size());
 
-                        if (size1 > 0 && size1 == size2) {
-                            logger.info(AppConstants.LOG_FOUND_STABLE_XML, xmlFile.getAbsolutePath());
-                            return xmlFile;
-                        } else {
-                            logger.info(AppConstants.LOG_XML_SIZE_CHANGING, xmlFile.getAbsolutePath());
-                        }
-                    }
-                } catch (IOException e) {
-                    logger.warn(AppConstants.LOG_ERROR_SCANNING_FOLDER, jobId, id, e.getMessage(), e);
-                }
-            } else {
-                logger.debug(AppConstants.LOG_DOCGEN_FOLDER_NOT_FOUND, jobId, id, docgenRoot);
+            List<SummaryProcessedFile> customerList = customerSummaries.stream()
+                    .map(cs -> {
+                        SummaryProcessedFile spf = new SummaryProcessedFile();
+                        spf.setAccountNumber(cs.getAccountNumber());
+                        spf.setCustomerId(cs.getCisNumber());
+                        return spf;
+                    })
+                    .collect(Collectors.toList());
+
+            Path jobDir = Paths.get(mountPath, AppConstants.OUTPUT_FOLDER, message.getSourceSystem(), otResponse.getJobId());
+            logger.info("[{}] 📂 Resolved jobDir path = {}", batchId, jobDir.toAbsolutePath());
+            logger.info("[{}] 🔄 Invoking buildDetailedProcessedFiles...", batchId);
+            List<SummaryProcessedFile> processedFiles =
+                    buildDetailedProcessedFiles(jobDir, customerList, errorMap, message);
+            logger.info("[{}] 📦 Processed {} customer records", batchId, processedFiles.size());
+
+            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
+            logger.info("[{}] 🖨️ Uploaded {} print files", batchId, printFiles.size());
+
+            String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
+            logger.info("[{}] 📱 Found Mobstat URL: {}", batchId, mobstatTriggerUrl);
+
+            Map<String, Integer> summaryCounts = extractSummaryCountsFromXml(xmlFile);
+
+            String allFileNames = message.getBatchFiles().stream()
+                    .map(BatchFile::getFilename)
+                    .collect(Collectors.joining(", "));
+
+            SummaryPayload payload = SummaryJsonWriter.buildPayload(
+                    message, processedFiles, allFileNames, batchId,
+                    String.valueOf(message.getTimestamp()), errorMap, printFiles
+            );
+
+            if (payload.getHeader() != null) {
+                payload.getHeader().setTimestamp(String.valueOf(message.getTimestamp()));
             }
 
-            TimeUnit.MILLISECONDS.sleep(rptPollIntervalMillis);
-        }
+            String fileName = AppConstants.SUMMARY_FILENAME_PREFIX + batchId + AppConstants.JSON_EXTENSION;
+            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
+            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, fileName);
+            payload.setSummaryFileURL(decodeUrl(summaryUrl));
+            logger.info("[{}] 📁 Summary JSON uploaded to: {}", batchId, decodeUrl(summaryUrl));
 
-        String errMsg = String.format(AppConstants.LOG_XML_TIMEOUT, docgenRoot, jobId, id);
-        logger.error(errMsg);
-        throw new IllegalStateException(errMsg);
+            logger.info("[{}] 📄 Final Summary Payload:\n{}", batchId,
+                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
+
+            SummaryResponse response = new SummaryResponse();
+            response.setBatchID(batchId);
+            response.setFileName(payload.getFileName());
+            response.setHeader(payload.getHeader());
+            response.setMetadata(payload.getMetadata());
+            response.setPayload(payload.getPayload());
+            response.setSummaryFileURL(decodeUrl(summaryUrl));
+            response.setTimestamp(String.valueOf(message.getTimestamp()));
+
+            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
+                    new ApiResponse("Summary generated", "COMPLETED", response)));
+
+            logger.info("[{}] ✅ Kafka output sent with response: {}", batchId,
+                    objectMapper.writeValueAsString(response));
+
+        } catch (Exception e) {
+            logger.error("[{}] ❌ Error post-OT summary generation: {}", batchId, e.getMessage(), e);
+        }
     }
 
-    
-rpt.max.wait.seconds=3600
-rpt.poll.interval.millis=5000
+private OTResponse callOrchestrationBatchApi(String token, String url, KafkaMessage msg) {
+        OTResponse otResponse = new OTResponse();
+        try {
+            logger.info("📡 Initiating OT orchestration call to URL: {} for batchId: {} and sourceSystem: {}",
+                    url, msg.getBatchId(), msg.getSourceSystem());
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(AppConstants.HEADER_AUTHORIZATION, AppConstants.BEARER_PREFIX + token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
+            logger.debug("📨 OT Request Payload: {}", objectMapper.writeValueAsString(msg));
+
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, request, Map.class);
+            logger.info("✅ Received OT response with status: {} for batchId: {}",
+                    response.getStatusCode(), msg.getBatchId());
+
+            List<Map<String, Object>> data = (List<Map<String, Object>>) response.getBody().get(AppConstants.OT_RESPONSE_DATA_KEY);
+            if (data != null && !data.isEmpty()) {
+                Map<String, Object> item = data.get(0);
+                otResponse.setJobId((String) item.get(AppConstants.OT_JOB_ID_KEY));
+                otResponse.setId((String) item.get(AppConstants.OT_ID_KEY));
+                msg.setJobName(otResponse.getJobId());
+                otResponse.setSuccess(true);
+
+                logger.info("🎯 OT Job created successfully - JobID: {}, ID: {}, BatchID: {}",
+                        otResponse.getJobId(), otResponse.getId(), msg.getBatchId());
+            } else {
+                logger.error("❌ No data found in OT orchestration response for batchId: {}", msg.getBatchId());
+                otResponse.setSuccess(false);
+                otResponse.setMessage(AppConstants.NO_OT_DATA_MESSAGE);
+            }
+
+            return otResponse;
+        } catch (Exception e) {
+            logger.error("❌ Exception during OT orchestration call for batchId: {} - {}",
+                    msg.getBatchId(), e.getMessage(), e);
+            otResponse.setSuccess(false);
+            otResponse.setMessage(AppConstants.OT_CALL_FAILURE_PREFIX + e.getMessage());
+            return otResponse;
+        }
+    }
