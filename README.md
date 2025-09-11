@@ -194,5 +194,11 @@ private File waitForXmlFile(String jobId, String id) throws InterruptedException
     throw new IllegalStateException(errMsg);
 }
 
+2025-09-11T15:52:03.347+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : ✅ Received OT response with status: 201 CREATED for batchId: 076f2b3c-37bc-4bcb-ab6a-29041acfc0f9
+2025-09-11T15:52:03.347+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : 🎯 OT Job created successfully - JobID: 8f9ee8fe-c512-44f3-9caf-786020b42e2b, ID: df625d4a-2da4-4d90-8e34-75a48f42318e, BatchID: 076f2b3c-37bc-4bcb-ab6a-29041acfc0f9
+2025-09-11T15:52:03.902+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : ⚠️ Runtime status check failed for JobID 8f9ee8fe-c512-44f3-9caf-786020b42e2b - class java.util.ArrayList cannot be cast to class java.util.Map (java.util.ArrayList and java.util.Map are in module java.base of loader 'bootstrap')
+
+
+
 
 
