@@ -25,11 +25,6 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
     if (Files.exists(archivePath)) {
         try (Stream<Path> stream = Files.walk(archivePath)) {
             stream.filter(Files::isRegularFile).forEach(file -> {
-                if (!Files.exists(file)) {
-                    logger.warn("[{}] ⏩ Skipping missing archive file: {}", msg.getBatchId(), file);
-                    return;
-                }
-
                 String fileName = file.getFileName().toString();
                 String account = extractAccountFromFileName(fileName);
                 if (account == null) {
@@ -42,8 +37,8 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                             blobStorageService.uploadFileByMessage(file.toFile(), AppConstants.FOLDER_ARCHIVE, msg)
                     );
                     accountToArchiveMap.computeIfAbsent(account, k -> new HashMap<>()).put(fileName, archiveUrl);
-                    logger.info("[{}] 📦 Uploaded archive file={} for account={}, url={}", 
-                                msg.getBatchId(), fileName, account, archiveUrl);
+                    logger.info("[{}] 📦 Uploaded archive file={} for account={}, url={}",
+                            msg.getBatchId(), fileName, account, archiveUrl);
                 } catch (Exception e) {
                     logger.error("[{}] ⚠️ Failed to upload archive file {}: {}", 
                                  msg.getBatchId(), fileName, e.getMessage(), e);
@@ -68,11 +63,6 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 
         try (Stream<Path> stream = Files.walk(folderPath)) {
             stream.filter(Files::isRegularFile).forEach(file -> {
-                if (!Files.exists(file)) {
-                    logger.warn("[{}] ⏩ Skipping missing {} file: {}", msg.getBatchId(), folder, file);
-                    return;
-                }
-
                 String fileName = file.getFileName().toString();
                 try {
                     String url = decodeUrl(
@@ -83,10 +73,10 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                         case AppConstants.FOLDER_MOBSTAT -> mobstatFileMap.put(fileName, url);
                         case AppConstants.FOLDER_PRINT -> printFileMap.put(fileName, url);
                     }
-                    logger.info("[{}] ✅ Uploaded {} file: {} → {}", 
-                                msg.getBatchId(), folderToOutputMethod.get(folder), fileName, url);
+                    logger.info("[{}] ✅ Uploaded {} file: {} → {}",
+                            msg.getBatchId(), folderToOutputMethod.get(folder), fileName, url);
                 } catch (Exception e) {
-                    logger.error("[{}] ⚠️ Failed to upload {} file {}: {}", 
+                    logger.error("[{}] ⚠️ Failed to upload {} file {}: {}",
                                  msg.getBatchId(), folderToOutputMethod.get(folder), fileName, e.getMessage(), e);
                 }
             });
@@ -107,8 +97,8 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         Map<String, String> archivesForAccount = accountToArchiveMap.getOrDefault(account, Collections.emptyMap());
 
         if (archivesForAccount.isEmpty()) {
-            logger.warn("[{}] ⚠️ No archive files found for customerId={}, account={}", 
-                        msg.getBatchId(), customer.getCustomerId(), account);
+            logger.warn("[{}] ⚠️ No archive files found for customerId={}, account={}",
+                    msg.getBatchId(), customer.getCustomerId(), account);
         }
 
         for (Map.Entry<String, String> archiveEntry : archivesForAccount.entrySet()) {
@@ -120,29 +110,35 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             entry.setArchiveBlobUrl(archiveUrl);
 
             if (isMfc || isDebtman) {
-                // 🔹 Match delivery files by account number
                 entry.setPdfEmailFileUrl(findFileByAccount(emailFileMap, account));
                 entry.setPdfMobstatFileUrl(findFileByAccount(mobstatFileMap, account));
                 entry.setPrintFileUrl(findFileByAccount(printFileMap, account));
-                logger.debug("[{}] Linked by account={} → email={}, mobstat={}, print={}", 
-                             msg.getBatchId(), account, entry.getPdfEmailFileUrl(),
-                             entry.getPdfMobstatFileUrl(), entry.getPrintFileUrl());
+                logger.debug("[{}] Linked by account={} → email={}, mobstat={}, print={}",
+                        msg.getBatchId(), account, entry.getPdfEmailFileUrl(),
+                        entry.getPdfMobstatFileUrl(), entry.getPrintFileUrl());
             } else {
-                // 🔹 Other systems: match by exact filename
                 entry.setPdfEmailFileUrl(emailFileMap.get(archiveFileName));
                 entry.setPdfMobstatFileUrl(mobstatFileMap.get(archiveFileName));
                 entry.setPrintFileUrl(printFileMap.get(archiveFileName));
-                logger.debug("[{}] Linked by filename={} → email={}, mobstat={}, print={}", 
-                             msg.getBatchId(), archiveFileName, entry.getPdfEmailFileUrl(),
-                             entry.getPdfMobstatFileUrl(), entry.getPrintFileUrl());
+                logger.debug("[{}] Linked by filename={} → email={}, mobstat={}, print={}",
+                        msg.getBatchId(), archiveFileName, entry.getPdfEmailFileUrl(),
+                        entry.getPdfMobstatFileUrl(), entry.getPrintFileUrl());
             }
 
             finalList.add(entry);
         }
     }
 
-    logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", 
-                msg.getBatchId(), finalList.size());
+    // -------- Final summary log --------
+    int archiveCount = accountToArchiveMap.values().stream().mapToInt(Map::size).sum();
+    int emailCount = emailFileMap.size();
+    int mobstatCount = mobstatFileMap.size();
+    int printCount = printFileMap.size();
+    int processedCount = finalList.size();
+
+    logger.info("[{}] 📝 Summary stats → Archives={}, Email={}, Mobstat={}, Print={}, ProcessedEntries={}",
+            msg.getBatchId(), archiveCount, emailCount, mobstatCount, printCount, processedCount);
+
     return finalList;
 }
 
