@@ -40,3 +40,26 @@ private OTResponse callOrchestrationBatchApi(String token, String url, KafkaMess
             return otResponse;
         }
     }
+
+{
+    "status": "success",
+    "data": {
+        "id": "088612f7-db40-42ab-90f0-f50dcc1e0204",
+        "domainId": "ete-SA",
+        "channel": "ECPDebtmanService",
+        "mode": "BATCH",
+        "status": "complete",
+        "flowModelType": "COMMUNICATION",
+        "msg": "Batch Job",
+        "externalId": null,
+        "triggeredBy": "tenantadmin@exstream.role",
+        "aggregatedFMCSnapshotId": "90097ec8-6a86-4812-b08b-a4b6fb594088",
+        "startDate": 1757584405639,
+        "endDate": 1757584411005,
+        "expirationDate": null,
+        "traceId": "251b4938c8590f32",
+        "simulation": false
+    }
+}
+
+http://exstream-deployment-orchestration-service.dev-exstream:8300/orchestration/api/v1/runtime/dev-SA/jobs/%7B%7BjobId%7D%7D
