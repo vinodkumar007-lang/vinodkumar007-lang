@@ -1,11 +1,9 @@
-2025-09-11T07:38:20.760+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] 📦 Uploaded archive file=1224125193_MOBCR008.pdf for account=1224125193, url=https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN/076f2b3c-37bc-4bcb-ab6a-29041acfc0f9/39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/archive/1224125193_MOBCR008.pdf
-2025-09-11T07:38:20.765+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ Delivery folder not found: email
-2025-09-11T07:38:20.770+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ Delivery folder not found: mobstat
-2025-09-11T07:38:21.062+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2F076f2b3c-37bc-4bcb-ab6a-29041acfc0f9%2F39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs%2Fprint%2FPRODDebtmanNormal_HL_20250906.ps'
-2025-09-11T07:38:21.062+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ✅ Uploaded PRINT file: PRODDebtmanNormal_HL_20250906.ps → https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN/076f2b3c-37bc-4bcb-ab6a-29041acfc0f9/39ef9d68-b114-4803-b09b-ncdnc7-c8c6-d6cs/print/PRODDebtmanNormal_HL_20250906.ps
-2025-09-11T07:38:21.062+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ No archive files found for customerId=191518160408, account=8000013557201
-2025-09-11T07:38:21.063+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ No archive files found for customerId=181001195892, account=8001453741101
-2025-09-11T07:38:21.063+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ No archive files found for customerId=191845897203, account=8002477818301
-2025-09-11T07:38:21.063+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ No archive files found for customerId=191429053705, account=8153693344101
-2025-09-11T07:38:21.063+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ No archive files found for customerId=146365821189, account=8870140400101
-2025-09-11T07:38:21.461+02:00  WARN 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [076f2b3c-37bc-4bcb-ab6a-29041acfc0f9] ⚠️ No archive files found for customerId=414253112968, account=1048536297
+ // --- Helper to extract account from filename ---
+    public static String extractAccountFromFileName(String fileName) {
+        if (fileName == null) return null;
+
+        // pick first sequence of 6–15 digits anywhere in filename
+        Matcher matcher = Pattern.compile("\\d{6,20}").matcher(fileName);
+        if (matcher.find()) return matcher.group();
+        return null;
+    }
