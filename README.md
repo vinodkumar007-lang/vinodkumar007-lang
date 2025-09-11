@@ -22,16 +22,13 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             }
 
             String fileName = file.getFileName().toString().toLowerCase();
+            String parentFolder = file.getParent().getFileName().toString().toLowerCase();
 
-            // 🚫 Skip temp/junk files
-            if (fileName.endsWith(".tmp") || fileName.endsWith(".temp") ||
-                fileName.endsWith(".partial") || fileName.startsWith("~") ||
-                fileName.equals(".ds_store")) {
-                logger.warn("[{}] 🚫 Skipping temp/junk file: {}", msg.getBatchId(), fileName);
+            // ✅ Only allow PDF and PS files
+            if (!(fileName.endsWith(".pdf") || fileName.endsWith(".ps"))) {
+                logger.debug("[{}] ⏩ Skipping non-pdf/ps file: {}", msg.getBatchId(), fileName);
                 return;
             }
-
-            String parentFolder = file.getParent().getFileName().toString().toLowerCase();
 
             try {
                 String url = decodeUrl(blobStorageService.uploadFileByMessage(file.toFile(), parentFolder, msg));
