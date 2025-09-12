@@ -1,4 +1,4 @@
-    private List<SummaryProcessedFile> buildDetailedProcessedFiles(
+ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             Path jobDir,
             List<SummaryProcessedFile> customerList,
             Map<String, Map<String, String>> errorMap,
