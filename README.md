@@ -1,4 +1,1 @@
-int customerCount = msg.getBatchFiles().stream()
-        .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
-        .mapToInt(BatchFile::getCustomerCount)
-        .sum();
+The updated Kafka messages are now being picked up by FileManager. Please continue your testing in DEV and let us know if you find any issues or observations.
