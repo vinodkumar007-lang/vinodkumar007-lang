@@ -171,3 +171,49 @@ public class KafkaAuditProducerConfig {
             ack.acknowledge();
         }
     }
+
+Audit topic message: 
+ 
+BatchId	as received from kafka event
+Servicename	Fmconsume
+SystemEnv	DEV/ETE/QA/PROD azure (container name)
+SourceSystem	DEBTMAN (as received from kafka event)
+TenantCode	as received from kafka event
+ChannelID	as received from kafka event
+Product	as received from kafka event
+Jobname	as received from kafka event
+UniqueConsumerRef	as received from kafka event
+Timestamp	 
+RunPriority	as received from kafka event
+EventType	 
+StartTime	 
+EndTime	 
+BatchFiles	 
+bloburl (incoming data file)	as received from kafka event
+FileName	as received from kafka event
+FileType	as received from kafka event
+CustomerCount	counter in FM?
+
+*********************
+	
+*******************
+
+BatchId	as received from kafka event
+Servicename	Fmcomplete
+SystemEnv	DEV/ETE/QA/PROD azure (container name)
+SourceSystem	DEBTMAN (as received from kafka event)
+TenantCode	as received from kafka event
+ChannelID	as received from kafka event
+Product	as received from kafka event
+Jobname	as received from kafka event
+UniqueConsumerRef	as received from kafka event
+Timestamp	 
+RunPriority	as received from kafka event
+EventType	 
+StartTime	 
+EndTime	 
+BatchFiles	 
+bloburl (incoming data file)	as received from kafka event
+FileName	as received from kafka event
+FileType	as received from kafka event
+CustomerCount	counter in FM?
