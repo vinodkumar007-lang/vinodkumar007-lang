@@ -1,1 +1,1 @@
-The values for FileManager app registration (QA) look correct. Using a different application name with the “QA” suffix will not cause any issue from our side, as the app will be uniquely identified by its Azure Client ID and Tenant ID
+NA
