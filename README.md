@@ -59,7 +59,7 @@ public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
         Files.createDirectories(batchDir);
         logger.info("📁 [batchId: {}] Created input directory: {}", batchId, batchDir);
 
-        // Download and upload files
+        // Download files only (no upload changes)
         for (BatchFile file : message.getBatchFiles()) {
             String blobUrl = file.getBlobUrl();
             Path localPath = batchDir.resolve(file.getFilename());
@@ -78,15 +78,11 @@ public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
                     throw new IOException("Download failed for: " + localPath);
                 }
 
-                // Upload to Azure and set blobUrl in batchFile
-                String uploadedBlobUrl = blobStorageService.uploadFileAndReturnLocation(
-                        localPath, file.getFilename(), message.getSourceSystem(), batchId
-                );
-                file.setBlobUrl(uploadedBlobUrl);
-                logger.info("⬆️ [batchId: {}] Uploaded file to Azure blob: {}", batchId, uploadedBlobUrl);
+                file.setBlobUrl(localPath.toString());
+                logger.info("⬇️ [batchId: {}] Downloaded file: {} to {}", batchId, blobUrl, localPath);
 
             } catch (Exception e) {
-                logger.error("❌ [batchId: {}] Failed to download or upload file: {} - {}", batchId, file.getFilename(), e.getMessage(), e);
+                logger.error("❌ [batchId: {}] Failed to download file: {} - {}", batchId, file.getFilename(), e.getMessage(), e);
                 throw e;
             }
         }
@@ -148,90 +144,3 @@ public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
         ack.acknowledge();
     }
 }
-
-// ---------------------- Helper Methods ----------------------
-private AuditMessage buildAuditMessage(KafkaMessage message,
-                                       Instant startTime,
-                                       Instant endTime,
-                                       String serviceName,
-                                       String eventType,
-                                       long customerCount) {
-    AuditMessage audit = new AuditMessage();
-    audit.setBatchId(message.getBatchId());
-    audit.setServiceName(serviceName);
-    audit.setSystemEnv(systemEnv); // DEV/QA/PROD
-    audit.setSourceSystem(message.getSourceSystem());
-    audit.setTenantCode(message.getTenantCode());
-    audit.setChannelID(message.getChannelID());
-    audit.setProduct(message.getProduct());
-    audit.setJobName(message.getJobName());
-    audit.setUniqueConsumerRef(message.getUniqueConsumerRef());
-    audit.setTimestamp(Instant.now().toString());
-    audit.setRunPriority(message.getRunPriority());
-    audit.setEventType(eventType);
-    audit.setStartTime(startTime.toString());
-    audit.setEndTime(endTime.toString());
-    audit.setCustomerCount(customerCount);
-
-    List<AuditBatchFile> auditFiles = message.getBatchFiles().stream()
-            .map(f -> new AuditBatchFile(f.getBlobUrl(), f.getFilename(), f.getFileType()))
-            .toList();
-    audit.setBatchFiles(auditFiles);
-    return audit;
-}
-
-private void sendToAuditTopic(AuditMessage auditMessage) {
-    try {
-        String auditJson = objectMapper.writeValueAsString(auditMessage);
-        kafkaTemplate.send(auditTopic, auditMessage.getBatchId(), auditJson);
-        logger.info("📣 Audit message sent for batchId {}: {}", auditMessage.getBatchId(), auditJson);
-    } catch (JsonProcessingException e) {
-        logger.error("❌ Failed to serialize audit message for batchId {}: {}", auditMessage.getBatchId(), e.getMessage(), e);
-    }
-}
-
-// ---------------------- Audit DTOs ----------------------
-@Data
-@AllArgsConstructor
-@NoArgsConstructor
-public static class AuditBatchFile {
-    private String blobUrl;
-    private String fileName;
-    private String fileType;
-}
-
-@Data
-@AllArgsConstructor
-@NoArgsConstructor
-public static class AuditMessage {
-    private String batchId;
-    private String serviceName;
-    private String systemEnv;
-    private String sourceSystem;
-    private String tenantCode;
-    private String channelID;
-    private String product;
-    private String jobName;
-    private String uniqueConsumerRef;
-    private String timestamp;
-    private String runPriority;
-    private String eventType;
-    private String startTime;
-    private String endTime;
-    private long customerCount;
-    private List<AuditBatchFile> batchFiles;
-}
-
-// ---------------------- Required @Bean in Configuration ----------------------
-@Bean
-public KafkaTemplate<String, String> kafkaTemplate(ProducerFactory<String, String> producerFactory) {
-    return new KafkaTemplate<>(producerFactory);
-}
-
-@Bean
-public String auditTopic() {
-    return environment.getProperty("kafka.topic.audit", "audit-topic");
-}
-
-@Value("${kafka.topic.audit}")
-private String auditTopic;
