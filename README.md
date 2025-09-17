@@ -1,80 +1,36 @@
-private void processAfterOT(KafkaMessage message, OTResponse otResponse) {
-        String batchId = message.getBatchId(); // golden thread
+private void initSecrets() {
+        if (accountKey != null && accountName != null && containerName != null) {
+            if (lastSecretRefreshTime != null &&
+                    Instant.now().toEpochMilli() - lastSecretRefreshTime.toEpochMilli() < BlobStorageConstants.SECRET_CACHE_TTL_MS) {
+                return;
+            }
+        }
+
         try {
-            logger.info("[{}] ⏳ Waiting for XML for jobId={}, id={}", batchId, otResponse.getJobId(), otResponse.getId());
-            File xmlFile = waitForXmlFile(otResponse.getJobId(), otResponse.getId());
-            if (xmlFile == null) throw new IllegalStateException("XML not found");
+            logger.info("🔐 Fetching secrets from Azure Key Vault...");
+            logger.info("📌 Key Vault URL          : {}", keyVaultUrl);
+            logger.info("📌 Secret Names Requested : {}, {}, {}",
+                    fmAccountKey, fmAccountName, fmContainerName);
 
-            logger.info("[{}] ✅ Found XML file: {}", batchId, xmlFile);
+            SecretClient secretClient = new SecretClientBuilder()
+                    .vaultUrl(keyVaultUrl)
+                    .credential(new DefaultAzureCredentialBuilder().build())
+                    .buildClient();
 
-            Map<String, Map<String, String>> errorMap = parseErrorReport(message);
-            logger.info("[{}] 🧾 Parsed error report with {} entries", batchId, errorMap.size());
+            accountKey = fetchSecret(secretClient, fmAccountKey);
+            accountName = fetchSecret(secretClient, fmAccountName);
+            containerName = fetchSecret(secretClient, fmContainerName);
 
-            List<CustomerSummary> customerSummaries = parseSTDXml(xmlFile, errorMap);
-            logger.info("[{}] 📊 Total customerSummaries parsed: {}", batchId, customerSummaries.size());
+            logger.info("📦 Azure Storage Secrets fetched:");
 
-            List<SummaryProcessedFile> customerList = customerSummaries.stream()
-                    .map(cs -> {
-                        SummaryProcessedFile spf = new SummaryProcessedFile();
-                        spf.setAccountNumber(cs.getAccountNumber());
-                        spf.setCustomerId(cs.getCisNumber());
-                        return spf;
-                    })
-                    .collect(Collectors.toList());
-
-            Path jobDir = Paths.get(mountPath, AppConstants.OUTPUT_FOLDER, message.getSourceSystem(), otResponse.getJobId());
-            logger.info("[{}] 📂 Resolved jobDir path = {}", batchId, jobDir.toAbsolutePath());
-            logger.info("[{}] 🔄 Invoking buildDetailedProcessedFiles...", batchId);
-            List<SummaryProcessedFile> processedFiles =
-                    buildDetailedProcessedFiles(jobDir, customerList, errorMap, message);
-            logger.info("[{}] 📦 Processed {} customer records", batchId, processedFiles.size());
-
-            List<PrintFile> printFiles = uploadPrintFiles(jobDir, message);
-            logger.info("[{}] 🖨️ Uploaded {} print files", batchId, printFiles.size());
-
-            String mobstatTriggerUrl = findAndUploadMobstatTriggerFile(jobDir, message);
-            logger.info("[{}] 📱 Found Mobstat URL: {}", batchId, mobstatTriggerUrl);
-
-            Map<String, Integer> summaryCounts = extractSummaryCountsFromXml(xmlFile);
-
-            String allFileNames = message.getBatchFiles().stream()
-                    .map(BatchFile::getFilename)
-                    .collect(Collectors.joining(", "));
-
-            SummaryPayload payload = SummaryJsonWriter.buildPayload(
-                    message, processedFiles, allFileNames, batchId,
-                    String.valueOf(message.getTimestamp()), errorMap, printFiles
-            );
-
-            if (payload.getHeader() != null) {
-                payload.getHeader().setTimestamp(String.valueOf(message.getTimestamp()));
+            if (accountKey == null || accountName == null || containerName == null) {
+                throw new CustomAppException(BlobStorageConstants.ERR_MISSING_SECRETS, 400, HttpStatus.BAD_REQUEST);
             }
 
-            String fileName = AppConstants.SUMMARY_FILENAME_PREFIX + batchId + AppConstants.JSON_EXTENSION;
-            String summaryPath = SummaryJsonWriter.writeSummaryJsonToFile(payload);
-            String summaryUrl = blobStorageService.uploadSummaryJson(summaryPath, message, fileName);
-            payload.setSummaryFileURL(decodeUrl(summaryUrl));
-            logger.info("[{}] 📁 Summary JSON uploaded to: {}", batchId, decodeUrl(summaryUrl));
-
-            logger.info("[{}] 📄 Final Summary Payload:\n{}", batchId,
-                    objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload));
-
-            SummaryResponse response = new SummaryResponse();
-            response.setBatchID(batchId);
-            response.setFileName(payload.getFileName());
-            response.setHeader(payload.getHeader());
-            response.setMetadata(payload.getMetadata());
-            response.setPayload(payload.getPayload());
-            response.setSummaryFileURL(decodeUrl(summaryUrl));
-            response.setTimestamp(String.valueOf(message.getTimestamp()));
-
-            kafkaTemplate.send(kafkaOutputTopic, objectMapper.writeValueAsString(
-                    new ApiResponse("Summary generated", "COMPLETED", response)));
-
-            logger.info("[{}] ✅ Kafka output sent with response: {}", batchId,
-                    objectMapper.writeValueAsString(response));
-
+            lastSecretRefreshTime = Instant.now();
+            logger.info("✅ Secrets fetched successfully from Key Vault.");
         } catch (Exception e) {
-            logger.error("[{}] ❌ Error post-OT summary generation: {}", batchId, e.getMessage(), e);
+            logger.error("❌ Failed to initialize secrets: {}", e.getMessage(), e);
+            throw new CustomAppException(BlobStorageConstants.ERR_KV_FAILURE, 500, HttpStatus.INTERNAL_SERVER_ERROR, e);
         }
     }
