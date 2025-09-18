@@ -5,24 +5,24 @@ import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectWriter;
-import org.apache.kafka.common.TopicPartition;
 
 import java.time.Duration;
 import java.util.Collections;
 import java.util.Properties;
 
-public class KafkaConsumerApp {
+public class AuditTopicConsumerApp {
 
     public static void main(String[] args) {
         Properties props = new Properties();
 
-        // Kafka Consumer Configuration
-        props.put("bootstrap.servers", "nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093");
-        props.put("group.id", "str-ecp-batch");  // ⚠️ Use a new consumer group to avoid old committed offsets
-        props.put("auto.offset.reset", "latest");       // 🟢 This is key
+        // 🔧 Kafka Consumer Config
+        props.put("bootstrap.servers",
+                "nsnxeteelpka01.nednet.co.za:9093,nsnxeteelpka02.nednet.co.za:9093,nsnxeteelpka03.nednet.co.za:9093");
+        props.put("group.id", "audit-test-consumer");  // ⚠️ Use unique groupId for testing
+        props.put("auto.offset.reset", "latest");      // Read new messages only
         props.put("enable.auto.commit", "true");
 
-        // SSL Configuration
+        // 🔐 SSL Config
         props.put("security.protocol", "SSL");
         props.put("ssl.keystore.location", "C:\\Users\\CC437236\\jdk-17.0.12_windows-x64_bin\\jdk-17.0.12\\lib\\security\\keystore.jks");
         props.put("ssl.keystore.password", "3dX7y3Yz9Jv6L4F");
@@ -31,32 +31,31 @@ public class KafkaConsumerApp {
         props.put("ssl.truststore.password", "nedbank1");
         props.put("ssl.protocol", "TLSv1.2");
 
-        // Deserialization
+        // 🔑 Deserialization
         props.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
         props.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
 
         ObjectMapper mapper = new ObjectMapper();
         ObjectWriter writer = mapper.writerWithDefaultPrettyPrinter();
 
+        String auditTopic = "str-ecp-audit-topic"; // ✅ Replace with your actual audit topic name
+
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
-            //consumer.subscribe(Collections.singletonList("str-ecp-batch-composition"));
-            consumer.assign(Collections.singletonList(new TopicPartition("str-ecp-batch-composition", 0)));
-            //consumer.seekToEnd(Collections.singletonList(new TopicPartition("str-ecp-batch-composition", 0)));
-            consumer.seekToBeginning(Collections.singletonList(new TopicPartition("str-ecp-batch-composition", 0)));
-            System.out.println("Subscribed. Waiting for NEW messages...");
+            consumer.subscribe(Collections.singletonList(auditTopic));
+            System.out.println("✅ Subscribed to Audit Topic: " + auditTopic);
 
             while (true) {
                 ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
                 if (records.isEmpty()) {
-                    System.out.println("Waiting for new messages...");
+                    System.out.println("⏳ Waiting for audit messages...");
                 }
                 for (ConsumerRecord<String, String> record : records) {
                     try {
                         String prettyJson = writer.writeValueAsString(mapper.readTree(record.value()));
-                        System.out.printf("New message [Key=%s, Offset=%d]:\n%s\n",
+                        System.out.printf("📣 [Audit Event] Key=%s, Offset=%d:%n%s%n",
                                 record.key(), record.offset(), prettyJson);
                     } catch (Exception e) {
-                        System.err.println("Invalid JSON: " + record.value());
+                        System.err.println("⚠️ Invalid JSON in audit message: " + record.value());
                     }
                 }
             }
