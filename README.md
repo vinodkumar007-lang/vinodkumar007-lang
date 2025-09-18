@@ -1,61 +1,17 @@
-package com.nedbank.kafka.filemanage.service;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.kafka.core.KafkaTemplate;
-import org.springframework.kafka.support.SendResult;
-import org.springframework.stereotype.Service;
-import org.springframework.util.concurrent.ListenableFuture;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-
-@Service
-public class KafkaListenerService {
-
-    @Value("${kafka.topic.audit}")
-    private String auditTopic;
-
-    private final ObjectMapper objectMapper = new ObjectMapper();
-    private final BlobStorageService blobStorageService;
-    private final KafkaTemplate<String, String> kafkaTemplate;       // For normal topic
-    private final KafkaTemplate<String, String> auditKafkaTemplate;  // For audit topic
-    private final SourceSystemProperties sourceSystemProperties;
-    private final ExecutorService executor = Executors.newFixedThreadPool(5);
-
-    @Autowired
-    public KafkaListenerService(
-            BlobStorageService blobStorageService,
-            @Qualifier("kafkaTemplate") KafkaTemplate<String, String> kafkaTemplate,
-            @Qualifier("auditKafkaTemplate") KafkaTemplate<String, String> auditKafkaTemplate,
-            SourceSystemProperties sourceSystemProperties
-    ) {
-        this.blobStorageService = blobStorageService;
-        this.kafkaTemplate = kafkaTemplate;
-        this.auditKafkaTemplate = auditKafkaTemplate;
-        this.sourceSystemProperties = sourceSystemProperties;
-    }
-
     @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
     public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
         String batchId = "";
         try {
+            logger.info("📩 [batchId: unknown] Received Kafka message: {}", rawMessage);
             KafkaMessage message = objectMapper.readValue(rawMessage, KafkaMessage.class);
             batchId = message.getBatchId();
             List<BatchFile> batchFiles = message.getBatchFiles();
-
             if (batchFiles == null || batchFiles.isEmpty()) {
-                logger.error("❌ [batchId: {}] Empty BatchFiles", batchId);
+                logger.error("❌ [batchId: {}] Rejected - Empty BatchFiles", batchId);
                 ack.acknowledge();
                 return;
             }
 
-            // Validate DATA / REF files
             long dataCount = batchFiles.stream()
                     .filter(f -> FILE_TYPE_DATA.equalsIgnoreCase(f.getFileType()))
                     .count();
@@ -63,87 +19,125 @@ public class KafkaListenerService {
                     .filter(f -> FILE_TYPE_REF.equalsIgnoreCase(f.getFileType()))
                     .count();
 
-            if (dataCount == 0 || dataCount > 1) {
-                logger.error("❌ [batchId: {}] Invalid file combination", batchId);
+            if (dataCount == 1 && refCount == 0) {
+                logger.info("✅ [batchId: {}] Valid with 1 DATA file", batchId);
+            } else if (dataCount > 1) {
+                logger.error("❌ [batchId: {}] Rejected - Multiple DATA files", batchId);
+                ack.acknowledge();
+                return;
+            } else if (dataCount == 0 && refCount > 0) {
+                logger.error("❌ [batchId: {}] Rejected - Only REF files", batchId);
+                ack.acknowledge();
+                return;
+            } else if (dataCount == 1 && refCount > 0) {
+                logger.info("✅ [batchId: {}] Valid with DATA + REF files (both will be passed to OT)", batchId);
+                message.setBatchFiles(batchFiles);
+            } else {
+                logger.error("❌ [batchId: {}] Rejected - Invalid or unsupported file type combination", batchId);
                 ack.acknowledge();
                 return;
             }
 
-            // Download files locally
-            downloadAndPrepareFiles(batchId, message, batchFiles);
+            String sanitizedBatchId = batchId.replaceAll(FILENAME_SANITIZE_REGEX, REPLACEMENT_UNDERSCORE);
+            String sanitizedSourceSystem = message.getSourceSystem().replaceAll(FILENAME_SANITIZE_REGEX, REPLACEMENT_UNDERSCORE);
 
-            // ✅ Send INBOUND audit asynchronously
+            Path batchDir = Paths.get(mountPath, INPUT_FOLDER, sanitizedSourceSystem, sanitizedBatchId);
+            if (Files.exists(batchDir)) {
+                logger.warn("⚠️ [batchId: {}] Directory already exists at path: {}", batchId, batchDir);
+                try (Stream<Path> files = Files.walk(batchDir)) {
+                    files.sorted(Comparator.reverseOrder())
+                            .map(Path::toFile)
+                            .forEach(File::delete);
+                    logger.info("🧹 [batchId: {}] Cleaned existing input directory: {}", batchId, batchDir);
+                } catch (IOException e) {
+                    logger.error("❌ [batchId: {}] Failed to clean directory {} - {}", batchId, batchDir, e.getMessage(), e);
+                    throw e;
+                }
+            }
+
+            Files.createDirectories(batchDir);
+            logger.info("📁 [batchId: {}] Created input directory: {}", batchId, batchDir);
+            // Download files
+            for (BatchFile file : message.getBatchFiles()) {
+                String blobUrl = file.getBlobUrl();
+                Path localPath = batchDir.resolve(file.getFilename());
+
+                try {
+                    if (Files.exists(localPath)) {
+                        logger.warn("♻️ [batchId: {}] File already exists, overwriting: {}", batchId, localPath);
+                        Files.delete(localPath);
+                    }
+
+                    // Download file locally
+                    blobStorageService.downloadFileToLocal(blobUrl, localPath);
+
+                    if (!Files.exists(localPath)) {
+                        logger.error("❌ [batchId: {}] File missing after download: {}", batchId, localPath);
+                        throw new IOException("Download failed for: " + localPath);
+                    }
+
+                    file.setBlobUrl(localPath.toString());
+                    logger.info("⬇️ [batchId: {}] Downloaded file: {} to {}", batchId, blobUrl, localPath);
+
+                } catch (Exception e) {
+                    logger.error("❌ [batchId: {}] Failed to download file: {} - {}", batchId, file.getFilename(), e.getMessage(), e);
+                    throw e;
+                }
+            }
+
+            // Send INBOUND audit after files are ready
             Instant startTime = Instant.now();
-            long customerCount = batchFiles.size();
+            long customerCount = message.getBatchFiles().size();
             AuditMessage inboundAudit = buildAuditMessage(message, startTime, startTime,
                     "FmConsume", "INBOUND", customerCount);
-            sendToAuditTopicAsync(inboundAudit);
+            sendToAuditTopic(inboundAudit);
 
-            // Lookup orchestration
+            // Dynamic lookup for orchestration
             Optional<SourceSystemProperties.SystemConfig> matchingConfig =
-                    sourceSystemProperties.getConfigForSourceSystem(message.getSourceSystem());
+                    sourceSystemProperties.getConfigForSourceSystem(sanitizedSourceSystem);
+
             if (matchingConfig.isEmpty()) {
-                logger.error("❌ [batchId: {}] Unsupported source system", batchId);
+                logger.error("❌ [batchId: {}] Unsupported or unconfigured source system '{}'", batchId, sanitizedSourceSystem);
                 ack.acknowledge();
                 return;
             }
 
             SourceSystemProperties.SystemConfig config = matchingConfig.get();
             String url = config.getUrl();
-            String token = blobStorageService.getSecret(
-                    sourceSystemProperties.getSystems().get(0).getToken()
-            );
+            String secretName = sourceSystemProperties.getSystems().get(0).getToken();
+            String token = blobStorageService.getSecret(secretName);
 
             if (url == null || url.isBlank()) {
-                logger.error("❌ [batchId: {}] Orchestration URL not configured", batchId);
+                logger.error("❌ [batchId: {}] Orchestration URL not configured for source system '{}'", batchId, sanitizedSourceSystem);
                 ack.acknowledge();
                 return;
             }
 
-            // ✅ Acknowledge Kafka offset before async OT call
+            // ✅ Acknowledge before async OT call
             ack.acknowledge();
 
+            String finalBatchId = batchId;
             executor.submit(() -> {
                 Instant otStartTime = Instant.now();
                 try {
+                    logger.info("🚀 [batchId: {}] Calling Orchestration API: {}", finalBatchId, url);
                     OTResponse otResponse = callOrchestrationBatchApi(token, url, message);
+                    logger.info("📤 [batchId: {}] OT request sent successfully", finalBatchId);
                     processAfterOT(message, otResponse);
 
-                    // ✅ Send OUTBOUND audit asynchronously
+                    // Send OUTBOUND audit
                     Instant otEndTime = Instant.now();
                     AuditMessage outboundAudit = buildAuditMessage(message, otStartTime, otEndTime,
                             "FmConsume", "OUTBOUND", customerCount);
-                    sendToAuditTopicAsync(outboundAudit);
+                    sendToAuditTopic(outboundAudit);
 
                 } catch (Exception ex) {
-                    logger.error("❌ [batchId: {}] Error during async OT: {}", batchId, ex.getMessage(), ex);
+                    logger.error("❌ [batchId: {}] Error during async OT or post-processing: {}", finalBatchId, ex.getMessage(), ex);
                 }
             });
 
         } catch (Exception ex) {
-            logger.error("❌ [batchId: {}] Kafka message processing failed: {}", batchId, ex.getMessage(), ex);
+            logger.error("❌ [batchId: {}] Kafka message processing failed. Error: {}", batchId, ex.getMessage(), ex);
             ack.acknowledge();
         }
     }
-
-    /**
-     * Sends audit message asynchronously to prevent blocking listener thread.
-     */
-    private void sendToAuditTopicAsync(AuditMessage auditMessage) {
-        try {
-            String auditJson = objectMapper.writeValueAsString(auditMessage);
-            ListenableFuture<SendResult<String, String>> future =
-                    auditKafkaTemplate.send(auditTopic, auditMessage.getBatchId(), auditJson);
-
-            future.addCallback(
-                    success -> logger.info("📣 Audit message sent for batchId {}: {}", auditMessage.getBatchId(), auditJson),
-                    failure -> logger.error("❌ Failed to send audit message for batchId {}: {}", auditMessage.getBatchId(), failure.getMessage(), failure)
-            );
-
-        } catch (JsonProcessingException e) {
-            logger.error("❌ Failed to serialize audit message for batchId {}: {}", auditMessage.getBatchId(), e.getMessage(), e);
-        }
-    }
-
-    // Keep your existing downloadAndPrepareFiles, processAfterOT, buildAuditMessage, callOrchestrationBatchApi methods intact
-}
