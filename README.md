@@ -1,3 +1,1 @@
-import org.springframework.kafka.support.SendResult;
-import org.springframework.util.concurrent.ListenableFuture;
-import org.springframework.util.concurrent.ListenableFutureCallback;
+Incompatible types. Found: 'java.util.concurrent.CompletableFuture<org.springframework.kafka.support.SendResult<java.lang.String,java.lang.String>>', required: 'org.springframework.util.concurrent.ListenableFuture<org.springframework.kafka.support.SendResult<java.lang.String,java.lang.String>>'
