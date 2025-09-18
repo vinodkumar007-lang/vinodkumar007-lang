@@ -7,3 +7,8 @@ audit.kafka.producer.ssl.keystore-location=C:\\Users\\CC437236\\jdk-17.0.12_wind
 audit.kafka.producer.ssl.keystore-password=3dX7y3Yz9Jv6L4F
 audit.kafka.producer.ssl.key-password=3dX7y3Yz9Jv6L4F
 audit.kafka.producer.ssl.protocol=TLSv1.2
+
+@Autowired private KafkaTemplate<String, String> kafkaTemplate; → for normal messages
+
+@Autowired @Qualifier("auditKafkaTemplate") private KafkaTemplate<String, String> auditKafkaTemplate; → for audit events
+
