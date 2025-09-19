@@ -1,85 +1,41 @@
-Hi Lizelle
+I hope you’re doing well.
 
-Following topics have been created in QA:
+We are currently trying to send audit messages from our Kubernetes pod in Azure to the log-ecp-batch-audit topic in QA. While the main topic (str-ecp-batch-composition) works fine, the audit messages are failing with a timeout.
 
-log-ecp-batch-audit
+After investigation, we found the following:
 
-Onprem
+The log-ecp-batch-audit topic is currently hosted on Onprem Kafka brokers:
 
-str-ecp-batch-request-notification
-
-Onprem
-
-str-ecp-batch-composition
-
-Azure
-
-str-ecp-batch-composition-complete
-
-Azure
-
-str-ecmbatch-archive
-
-Onprem
-
-str-ecmbatch-email
-
-Onprem
-
-str-ecmbatch-print
-
-Onprem
-
-str-ecmbatch-mobstat
-
-Onprem
+nbpigelpdev02.africa.nedcor.net:9093
+nbpproelpdev01.africa.nedcor.net:9093
+nbpinelpdev01.africa.nedcor.net:9093
 
 
+From our Kubernetes pod in Azure, these Onprem brokers are not reachable, resulting in timeouts:
 
-Kafka Connection Details:
+[jboss@file-manager-655fbd4db5-np8dl app]$ curl -v telnet://nbpigelpdev02.africa.nedcor.net:9093
+* Trying 10.58.150.57...
+* TCP_NODELAY set
+* connect to 10.58.150.57 port 9093 failed: Connection timed out
+* Failed to connect to nbpigelpdev02.africa.nedcor.net port 9093: Connection timed out
 
-QA Onprem:
 
-xqaelpka01.africa.nedcor.net
+This explains why the Kafka producer times out when attempting to send audit messages.
 
-10.58.4.16
+Request:
 
-xqaelpka02.africa.nedcor.net
+To resolve this and allow our Kubernetes pod to send audit events reliably, we request the following:
 
-10.58.4.83
+Create the log-ecp-batch-audit topic on Azure Kafka, similar to str-ecp-batch-composition.
 
-xqaelpka03.africa.nedcor.net
+Provide the Azure bootstrap servers and ensure port 9093 is accessible from our pods.
 
-10.58.4.84
+Share the necessary SSL certificates/truststore details for secure connectivity.
 
-xqaelpka05.africa.nedcor.net
+Please confirm that the audit topic and corresponding Azure Kafka servers are correctly installed and accessible so we can proceed with testing.
 
-10.58.4.26
+Once this is done, our audit messages should flow correctly without timeout issues.
 
-xqaelpka06.africa.nedcor.net
+Please let us know if any further details or tests are required from our side.
 
-10.58.4.115
-
- 
-
- 
-
-QA Azure:
-
-nsnxqaelpka1.africa.nedcor.net
-
-172.23.99.80
-
-nsnxqaelpka2.africa.nedcor.net
-
-172.23.99.79
-
-nsnxqaelpka3.africa.nedcor.net
-
-172.23.99.81
-
- 
-
-Port: 9093
-
-Please attempt atleast one connection to each topic and let us know.
+Thank you for your support.
