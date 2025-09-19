@@ -1,15 +1,14 @@
 I hope you’re doing well.
 
-We are currently trying to send audit messages from our Kubernetes pod in Azure to the log-ecp-batch-audit topic in QA. While the main topic (str-ecp-batch-composition) works fine, the audit messages are failing with a timeout.
+We have completed Audit changes ,While doing testing trying to send audit messages from our Kubernetes pod in Azure to the log-ecp-batch-audit topic in DEV. While the main topic (str-ecp-batch-composition-complete) works fine, the audit messages are failing with a timeout.
 
 After investigation, we found the following:
 
-The log-ecp-batch-audit topic is currently hosted on Onprem Kafka brokers:
+Seems to be The log-ecp-batch-audit topic is currently hosted on Onprem Kafka brokers:
 
 nbpigelpdev02.africa.nedcor.net:9093
 nbpproelpdev01.africa.nedcor.net:9093
 nbpinelpdev01.africa.nedcor.net:9093
-
 
 From our Kubernetes pod in Azure, these Onprem brokers are not reachable, resulting in timeouts:
 
@@ -18,9 +17,6 @@ From our Kubernetes pod in Azure, these Onprem brokers are not reachable, result
 * TCP_NODELAY set
 * connect to 10.58.150.57 port 9093 failed: Connection timed out
 * Failed to connect to nbpigelpdev02.africa.nedcor.net port 9093: Connection timed out
-
-
-This explains why the Kafka producer times out when attempting to send audit messages.
 
 Request:
 
