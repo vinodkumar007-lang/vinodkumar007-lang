@@ -6,7 +6,6 @@ public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
         KafkaMessage message = objectMapper.readValue(rawMessage, KafkaMessage.class);
         batchId = message.getBatchId();
         List<BatchFile> batchFiles = message.getBatchFiles();
-
         if (batchFiles == null || batchFiles.isEmpty()) {
             logger.error("❌ [batchId: {}] Rejected - Empty BatchFiles", batchId);
             ack.acknowledge();
@@ -31,7 +30,7 @@ public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
             ack.acknowledge();
             return;
         } else if (dataCount == 1 && refCount > 0) {
-            logger.info("✅ [batchId: {}] Valid with DATA + REF files", batchId);
+            logger.info("✅ [batchId: {}] Valid with DATA + REF files (both will be passed to OT)", batchId);
             message.setBatchFiles(batchFiles);
         } else {
             logger.error("❌ [batchId: {}] Rejected - Invalid or unsupported file type combination", batchId);
@@ -86,7 +85,10 @@ public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
             }
         }
 
-        // ✅ Send INBOUND audit BEFORE ack
+        // ✅ Commit main topic early (before sending INBOUND audit)
+        ack.acknowledge();
+
+        // Send INBOUND audit after commit
         Instant startTime = Instant.now();
         long customerCount = message.getBatchFiles().size();
         AuditMessage inboundAudit = buildAuditMessage(message, startTime, startTime,
@@ -99,7 +101,6 @@ public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
 
         if (matchingConfig.isEmpty()) {
             logger.error("❌ [batchId: {}] Unsupported or unconfigured source system '{}'", batchId, sanitizedSourceSystem);
-            ack.acknowledge();
             return;
         }
 
@@ -110,12 +111,8 @@ public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
 
         if (url == null || url.isBlank()) {
             logger.error("❌ [batchId: {}] Orchestration URL not configured for source system '{}'", batchId, sanitizedSourceSystem);
-            ack.acknowledge();
             return;
         }
-
-        // ✅ Acknowledge AFTER audit sent
-        ack.acknowledge();
 
         String finalBatchId = batchId;
         executor.submit(() -> {
@@ -126,7 +123,7 @@ public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
                 logger.info("📤 [batchId: {}] OT request sent successfully", finalBatchId);
                 processAfterOT(message, otResponse);
 
-                // ✅ Send OUTBOUND audit synchronously here
+                // Send OUTBOUND audit (commit is already done earlier)
                 Instant otEndTime = Instant.now();
                 AuditMessage outboundAudit = buildAuditMessage(message, otStartTime, otEndTime,
                         "FmConsume", "OUTBOUND", customerCount);
