@@ -1,19 +1,71 @@
-source.systems[0].name=DEBTMAN
-source.systems[0].url=${ORCHESTRATION_URL}
-source.systems[0].token=otds-token-dev
-
-source.systems[1].name=MFC
-source.systems[1].url=${OT_SERVICE_MFC_URL}
-source.systems[0].token=otds-token-dev
-
-source.systems[2].name=FCAM
-source.systems[2].url=${OT_SERVICE_FCAM_URL}
-source.systems[0].token=otds-token-dev
-
-source.systems[3].name=EXCON
-source.systems[3].url=${OT_SERVICE_EXCON_URL}
-source.systems[0].token=otds-token-dev
-
-source.systems[4].name=NGB
-source.systems[4].url=${OT_SERVICE_NGB_URL}
-source.systems[0].token=otds-token-dev
+{
+  "batchID" : "4f5bc8e1-ca1e-4738-821a-a9b71474dd64",
+  "fileName" : "NGB_20250904_Cloud_Test.TXT",
+  "header" : {
+    "tenantCode" : "ZANBL",
+    "channelID" : null,
+    "audienceID" : null,
+    "timestamp" : "1758201028",
+    "sourceSystem" : "NGB",
+    "product" : "NGB",
+    "jobName" : "NGB"
+  },
+  "metadata" : {
+    "totalCustomersProcessed" : 4,
+    "processingStatus" : "PARTIAL",
+    "eventOutcomeCode" : "0",
+    "eventOutcomeDescription" : "partial",
+    "customerCount" : 4
+  },
+  "payload" : {
+    "uniqueConsumerRef" : null,
+    "uniqueECPBatchRef" : null,
+    "runPriority" : null,
+    "eventID" : null,
+    "eventType" : null,
+    "restartKey" : null,
+    "fileCount" : 4
+  },
+  "processedFileList" : [ {
+    "customerId" : "",
+    "accountNumber" : "162150",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/NGB/4f5bc8e1-ca1e-4738-821a-a9b71474dd64/19ef9d68-b224-4803-b09b-nefdnc7-c5c7-d6dt/archive/ 162150_StatementforSeptember2025_162150_59104_4.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "",
+    "accountNumber" : "144810",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/NGB/4f5bc8e1-ca1e-4738-821a-a9b71474dd64/19ef9d68-b224-4803-b09b-nefdnc7-c5c7-d6dt/archive/ 144810_StatementforSeptember2025_144810_56132_5.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "",
+    "accountNumber" : "843620",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/NGB/4f5bc8e1-ca1e-4738-821a-a9b71474dd64/19ef9d68-b224-4803-b09b-nefdnc7-c5c7-d6dt/archive/ 843620_StatementforSeptember2025_843620_155466_2.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  }, {
+    "customerId" : "",
+    "accountNumber" : "839420",
+    "archiveBlobUrl" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/NGB/4f5bc8e1-ca1e-4738-821a-a9b71474dd64/19ef9d68-b224-4803-b09b-nefdnc7-c5c7-d6dt/archive/ 839420_StatementforSeptember2025_839420_153685_3.pdf",
+    "archiveStatus" : "SUCCESS",
+    "emailStatus" : "",
+    "printStatus" : "",
+    "mobstatStatus" : "",
+    "overallStatus" : "PARTIAL"
+  } ],
+  "printFiles" : [ {
+    "printFileURL" : "https://nsndvextr01.blob.core.windows.net/nsndevextrm01/NGB/4f5bc8e1-ca1e-4738-821a-a9b71474dd64/19ef9d68-b224-4803-b09b-nefdnc7-c5c7-d6dt/print/ NED_NEDGROUPTRUST_2025-09-22.ps",
+    "printStatus" : "SUCCESS"
+  } ],
+  "timestamp" : "1758201028"
+}
