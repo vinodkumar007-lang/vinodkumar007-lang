@@ -7,7 +7,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
     List<SummaryProcessedFile> finalList = new ArrayList<>();
     if (jobDir == null || customerList == null || msg == null) return finalList;
 
-    // Maps for each type
+    // Maps for each type per account
     Map<String, Map<String, String>> accountToArchiveFiles = new HashMap<>();
     Map<String, Map<String, String>> accountToEmailFiles = new HashMap<>();
     Map<String, Map<String, String>> accountToMobstatFiles = new HashMap<>();
@@ -55,6 +55,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 
     List<PrintFile> printFiles = new ArrayList<>();
 
+    // Build final list grouped by customer + account
     for (SummaryProcessedFile customer : customerList) {
         if (customer == null || customer.getAccountNumber() == null) continue;
         String account = customer.getAccountNumber();
@@ -66,34 +67,38 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 
         // Skip if nothing exists
         if (archivesForAccount.isEmpty() && emailsForAccount.isEmpty() &&
-                mobstatsForAccount.isEmpty() && printsForAccount.isEmpty()) continue;
+            mobstatsForAccount.isEmpty() && printsForAccount.isEmpty()) continue;
 
-        // --- Archive entry ---
-        SummaryProcessedFile archiveEntry = new SummaryProcessedFile();
-        BeanUtils.copyProperties(customer, archiveEntry);
-        archiveEntry.setArchiveBlobUrl(archivesForAccount.isEmpty() ? null : archivesForAccount.values().iterator().next());
-        archiveEntry.setArchiveStatus(archiveEntry.getArchiveBlobUrl() != null ? "SUCCESS" : null);
+        // --- Main entry per customer+account ---
+        SummaryProcessedFile mainEntry = new SummaryProcessedFile();
+        BeanUtils.copyProperties(customer, mainEntry);
 
-        // --- Combine all email URLs into the same entry ---
+        // Archive
+        if (!archivesForAccount.isEmpty()) {
+            mainEntry.setArchiveBlobUrl(archivesForAccount.values().iterator().next());
+            mainEntry.setArchiveStatus("SUCCESS");
+        }
+
+        // Emails - combine PDF, HTML, TXT into same entry
         if (!emailsForAccount.isEmpty()) {
             for (Map.Entry<String, String> e : emailsForAccount.entrySet()) {
                 String fname = e.getKey();
                 String url = e.getValue();
-                if (fname.endsWith(".pdf")) archiveEntry.setPdfEmailFileUrl(url);
-                else if (fname.endsWith(".html")) archiveEntry.setHtmlEmailFileUrl(url);
-                else if (fname.endsWith(".txt") || fname.endsWith(".text")) archiveEntry.setTextEmailFileUrl(url);
+                if (fname.endsWith(".pdf")) mainEntry.setPdfEmailFileUrl(url);
+                else if (fname.endsWith(".html")) mainEntry.setHtmlEmailFileUrl(url);
+                else if (fname.endsWith(".txt") || fname.endsWith(".text")) mainEntry.setTextEmailFileUrl(url);
             }
-            archiveEntry.setEmailStatus("SUCCESS");
+            mainEntry.setEmailStatus("SUCCESS");
         }
 
-        // --- Mobstat URL ---
+        // Mobstat
         if (!mobstatsForAccount.isEmpty()) {
-            archiveEntry.setPdfMobstatFileUrl(mobstatsForAccount.values().iterator().next());
-            archiveEntry.setPdfMobstatStatus("SUCCESS");
+            mainEntry.setPdfMobstatFileUrl(mobstatsForAccount.values().iterator().next());
+            mainEntry.setPdfMobstatStatus("SUCCESS");
         }
 
-        archiveEntry.setOverallStatus("SUCCESS");
-        finalList.add(archiveEntry);
+        mainEntry.setOverallStatus("SUCCESS");
+        finalList.add(mainEntry);
 
         // --- Print entries (only .ps) ---
         for (Map.Entry<String, String> p : printsForAccount.entrySet()) {
@@ -114,9 +119,6 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             printFiles.add(pf);
         }
     }
-
-    // Attach printFiles to KafkaMessage for passing to buildPayload
-    msg.setPrintFiles(printFiles);
 
     logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
     return finalList;
