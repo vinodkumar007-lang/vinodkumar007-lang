@@ -204,3 +204,33 @@ CustomerCount	counter in FM?
             logger.error("❌ Failed to serialize audit message for batchId {}: {}", auditMessage.getBatchId(), e.getMessage(), e);
         }
     }
+
+package com.nedbank.kafka.filemanage.model;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class AuditMessage {
+    private String batchId;
+    private String serviceName;
+    private String systemEnv;
+    private String sourceSystem;
+    private String tenantCode;
+    private String channelID;
+    private String product;
+    private String jobName;
+    private String uniqueConsumerRef;
+    private String timestamp;
+    private String runPriority;
+    private String eventType;
+    private String startTime;
+    private String endTime;
+    private long customerCount;
+    private List<AuditBatchFile> batchFiles;
+}
