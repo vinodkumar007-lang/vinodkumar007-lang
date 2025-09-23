@@ -7,7 +7,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
     List<SummaryProcessedFile> finalList = new ArrayList<>();
     if (jobDir == null || customerList == null || msg == null) return finalList;
 
-    // Maps for each type per account
+    // Maps for each type
     Map<String, Map<String, String>> accountToArchiveFiles = new HashMap<>();
     Map<String, Map<String, String>> accountToEmailFiles = new HashMap<>();
     Map<String, Map<String, String>> accountToMobstatFiles = new HashMap<>();
@@ -53,72 +53,71 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         });
     }
 
-    // Grouped processed file per customer+account
-    Map<String, SummaryProcessedFile> groupedMap = new LinkedHashMap<>();
     List<PrintFile> printFiles = new ArrayList<>();
 
     for (SummaryProcessedFile customer : customerList) {
         if (customer == null || customer.getAccountNumber() == null) continue;
         String account = customer.getAccountNumber();
-        String key = customer.getCustomerId() + "|" + account;
 
-        SummaryProcessedFile grouped = groupedMap.getOrDefault(key, new SummaryProcessedFile());
-        BeanUtils.copyProperties(customer, grouped);
+        Map<String, String> archivesForAccount = accountToArchiveFiles.getOrDefault(account, Collections.emptyMap());
+        Map<String, String> emailsForAccount = accountToEmailFiles.getOrDefault(account, Collections.emptyMap());
+        Map<String, String> mobstatsForAccount = accountToMobstatFiles.getOrDefault(account, Collections.emptyMap());
+        Map<String, String> printsForAccount = accountToPrintFiles.getOrDefault(account, Collections.emptyMap());
 
-        // --- Archive ---
-        Map<String, String> archives = accountToArchiveFiles.getOrDefault(account, Collections.emptyMap());
-        if (!archives.isEmpty()) {
-            grouped.setArchiveBlobUrl(archives.values().iterator().next());
-            grouped.setArchiveStatus("SUCCESS");
+        // Skip if nothing exists
+        if (archivesForAccount.isEmpty() && emailsForAccount.isEmpty() &&
+                mobstatsForAccount.isEmpty() && printsForAccount.isEmpty()) continue;
+
+        // --- Archive entry ---
+        SummaryProcessedFile archiveEntry = new SummaryProcessedFile();
+        BeanUtils.copyProperties(customer, archiveEntry);
+        archiveEntry.setArchiveBlobUrl(archivesForAccount.isEmpty() ? null : archivesForAccount.values().iterator().next());
+        archiveEntry.setArchiveStatus(archiveEntry.getArchiveBlobUrl() != null ? "SUCCESS" : null);
+
+        // --- Combine all email URLs into the same entry ---
+        if (!emailsForAccount.isEmpty()) {
+            for (Map.Entry<String, String> e : emailsForAccount.entrySet()) {
+                String fname = e.getKey();
+                String url = e.getValue();
+                if (fname.endsWith(".pdf")) archiveEntry.setPdfEmailFileUrl(url);
+                else if (fname.endsWith(".html")) archiveEntry.setHtmlEmailFileUrl(url);
+                else if (fname.endsWith(".txt") || fname.endsWith(".text")) archiveEntry.setTextEmailFileUrl(url);
+            }
+            archiveEntry.setEmailStatus("SUCCESS");
         }
 
-        // --- Email ---
-        Map<String, String> emails = accountToEmailFiles.getOrDefault(account, Collections.emptyMap());
-        for (Map.Entry<String, String> e : emails.entrySet()) {
-            String fname = e.getKey();
-            String url = e.getValue();
-            if (fname.endsWith(".pdf")) grouped.setPdfEmailFileUrl(url);
-            else if (fname.endsWith(".html")) grouped.setHtmlEmailFileUrl(url);
-            else if (fname.endsWith(".txt") || fname.endsWith(".text")) grouped.setTextEmailFileUrl(url);
+        // --- Mobstat URL ---
+        if (!mobstatsForAccount.isEmpty()) {
+            archiveEntry.setPdfMobstatFileUrl(mobstatsForAccount.values().iterator().next());
+            archiveEntry.setPdfMobstatStatus("SUCCESS");
         }
 
-        if (!emails.isEmpty()) grouped.setEmailStatus("SUCCESS");
+        archiveEntry.setOverallStatus("SUCCESS");
+        finalList.add(archiveEntry);
 
-        // --- Mobstat ---
-        Map<String, String> mobstats = accountToMobstatFiles.getOrDefault(account, Collections.emptyMap());
-        if (!mobstats.isEmpty()) {
-            grouped.setPdfMobstatFileUrl(mobstats.values().iterator().next());
-            grouped.setPdfMobstatStatus("SUCCESS");
-        }
-
-        // --- Print (.ps only) ---
-        Map<String, String> prints = accountToPrintFiles.getOrDefault(account, Collections.emptyMap());
-        for (Map.Entry<String, String> p : prints.entrySet()) {
+        // --- Print entries (only .ps) ---
+        for (Map.Entry<String, String> p : printsForAccount.entrySet()) {
             String fname = p.getKey();
             String url = p.getValue();
             if (!fname.toLowerCase().endsWith(".ps")) continue;
 
-            grouped.setPrintFileUrl(url);
-            grouped.setPrintStatus("SUCCESS");
+            SummaryProcessedFile printEntry = new SummaryProcessedFile();
+            BeanUtils.copyProperties(customer, printEntry);
+            printEntry.setPrintFileUrl(url);
+            printEntry.setPrintStatus("SUCCESS");
+            printEntry.setOverallStatus("SUCCESS");
+            finalList.add(printEntry);
 
             PrintFile pf = new PrintFile();
             pf.setPrintFileURL(url);
             pf.setPrintStatus("SUCCESS");
             printFiles.add(pf);
         }
-
-        // --- Overall status ---
-        if (grouped.getOverallStatus() == null) grouped.setOverallStatus("SUCCESS");
-
-        groupedMap.put(key, grouped);
     }
 
-    // Build final list
-    finalList.addAll(groupedMap.values());
-
-    // Attach printFiles to KafkaMessage for buildPayload
+    // Attach printFiles to KafkaMessage for passing to buildPayload
     msg.setPrintFiles(printFiles);
 
-    logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final grouped list size={}", msg.getBatchId(), finalList.size());
+    logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
     return finalList;
 }
