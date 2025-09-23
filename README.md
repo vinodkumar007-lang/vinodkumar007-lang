@@ -234,3 +234,33 @@ public class AuditMessage {
     private long customerCount;
     private List<AuditBatchFile> batchFiles;
 }
+
+private AuditMessage buildAuditMessage(KafkaMessage message,
+                                           Instant startTime,
+                                           Instant endTime,
+                                           String serviceName,
+                                           String eventType,
+                                           long customerCount) {
+        AuditMessage audit = new AuditMessage();
+        audit.setBatchId(message.getBatchId());
+        audit.setServiceName(serviceName);
+        audit.setSystemEnv(message.getSystemEnv()); // DEV/QA/PROD
+        audit.setSourceSystem(message.getSourceSystem());
+        audit.setTenantCode(message.getTenantCode());
+        audit.setChannelID(message.getChannelID());
+        audit.setProduct(message.getProduct());
+        audit.setJobName(message.getJobName());
+        audit.setUniqueConsumerRef(message.getUniqueConsumerRef());
+        audit.setTimestamp(Instant.now().toString());
+        audit.setRunPriority(message.getRunPriority());
+        audit.setEventType(eventType);
+        audit.setStartTime(startTime.toString());
+        audit.setEndTime(endTime.toString());
+        audit.setCustomerCount(customerCount);
+
+        List<AuditBatchFile> auditFiles = message.getBatchFiles().stream()
+                .map(f -> new AuditBatchFile(f.getBlobUrl(), f.getFilename(), f.getFileType()))
+                .toList();
+        audit.setBatchFiles(auditFiles);
+        return audit;
+    }
