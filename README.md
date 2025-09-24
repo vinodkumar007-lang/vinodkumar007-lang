@@ -7,6 +7,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
     List<SummaryProcessedFile> finalList = new ArrayList<>();
     if (jobDir == null || customerList == null || msg == null) return finalList;
 
+    // Maps for each type per account
     Map<String, Map<String, String>> accountToArchiveFiles = new HashMap<>();
     Map<String, Map<String, String>> accountToEmailPdf = new HashMap<>();
     Map<String, Map<String, String>> accountToEmailHtml = new HashMap<>();
@@ -14,6 +15,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
     Map<String, Map<String, String>> accountToMobstatFiles = new HashMap<>();
     Map<String, Map<String, String>> accountToPrintFiles = new HashMap<>();
 
+    // Walk all files in jobDir
     try (Stream<Path> stream = Files.walk(jobDir)) {
         stream.filter(Files::isRegularFile).forEach(file -> {
             if (!Files.exists(file)) return;
@@ -51,8 +53,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         });
     }
 
-    // Build final list (no duplicate skipping except identical full record)
-    Set<String> uniqueKeys = new HashSet<>();
+    // Build final list (NO uniqueKeys check now → allow duplicates per file)
     for (SummaryProcessedFile customer : customerList) {
         if (customer == null || customer.getAccountNumber() == null) continue;
         String account = customer.getAccountNumber();
@@ -64,32 +65,32 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         Map<String, String> mobstatMap = accountToMobstatFiles.getOrDefault(account, Collections.emptyMap());
         Map<String, String> printMap = accountToPrintFiles.getOrDefault(account, Collections.emptyMap());
 
-        List<String> archiveFiles = new ArrayList<>(archiveMap.keySet());
-        if (archiveFiles.isEmpty()) archiveFiles.add(null);
+        // Create one entry for each archive file
+        if (!archiveMap.isEmpty()) {
+            for (Map.Entry<String, String> archiveEntry : archiveMap.entrySet()) {
+                SummaryProcessedFile entry = new SummaryProcessedFile();
+                BeanUtils.copyProperties(customer, entry);
 
-        for (String archiveFileName : archiveFiles) {
-            String pdfUrl = emailPdfMap.values().stream().findFirst().orElse(null);
-            String htmlUrl = emailHtmlMap.values().stream().findFirst().orElse(null);
-            String txtUrl = emailTxtMap.values().stream().findFirst().orElse(null);
-            String mobstatUrl = mobstatMap.values().stream().findFirst().orElse(null);
-            String printUrl = printMap.values().stream().findFirst().orElse(null);
+                entry.setArchiveBlobUrl(archiveEntry.getValue());
+                entry.setEmailBlobUrlPdf(emailPdfMap.values().stream().findFirst().orElse(null));
+                entry.setEmailBlobUrlHtml(emailHtmlMap.values().stream().findFirst().orElse(null));
+                entry.setEmailBlobUrlText(emailTxtMap.values().stream().findFirst().orElse(null));
+                entry.setPdfMobstatFileUrl(mobstatMap.values().stream().findFirst().orElse(null));
+                entry.setPrintFileUrl(printMap.values().stream().findFirst().orElse(null));
 
-            String uniqueKey = customer.getCustomerId() + "|" + account + "|" +
-                    (archiveFileName != null ? archiveFileName : "noArchive") + "|" +
-                    pdfUrl + "|" + htmlUrl + "|" + txtUrl + "|" + mobstatUrl + "|" + printUrl;
-
-            if (uniqueKeys.contains(uniqueKey)) continue;
-            uniqueKeys.add(uniqueKey);
-
+                finalList.add(entry);
+            }
+        } else {
+            // Even if no archive, still add entry
             SummaryProcessedFile entry = new SummaryProcessedFile();
             BeanUtils.copyProperties(customer, entry);
 
-            entry.setArchiveBlobUrl(archiveFileName != null ? archiveMap.get(archiveFileName) : null);
-            entry.setEmailBlobUrlPdf(pdfUrl);
-            entry.setEmailBlobUrlHtml(htmlUrl);
-            entry.setEmailBlobUrlText(txtUrl);
-            entry.setPdfMobstatFileUrl(mobstatUrl);
-            entry.setPrintFileUrl(printUrl);
+            entry.setArchiveBlobUrl(null);
+            entry.setEmailBlobUrlPdf(emailPdfMap.values().stream().findFirst().orElse(null));
+            entry.setEmailBlobUrlHtml(emailHtmlMap.values().stream().findFirst().orElse(null));
+            entry.setEmailBlobUrlText(emailTxtMap.values().stream().findFirst().orElse(null));
+            entry.setPdfMobstatFileUrl(mobstatMap.values().stream().findFirst().orElse(null));
+            entry.setPrintFileUrl(printMap.values().stream().findFirst().orElse(null));
 
             finalList.add(entry);
         }
@@ -105,31 +106,24 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         List<PrintFile> ignoredPrintFiles) {
 
     List<ProcessedFileEntry> allEntries = new ArrayList<>();
-    Set<String> uniqueKeys = new HashSet<>();
 
     for (SummaryProcessedFile file : processedFiles) {
         if (file == null) continue;
 
-        // Unique key now includes all file URLs
-        String key = file.getCustomerId() + "|" + file.getAccountNumber() + "|" +
-                (file.getArchiveBlobUrl() != null ? new File(file.getArchiveBlobUrl()).getName() : "noArchive") + "|" +
-                file.getEmailBlobUrlPdf() + "|" + file.getEmailBlobUrlHtml() + "|" +
-                file.getEmailBlobUrlText() + "|" + file.getPdfMobstatFileUrl() + "|" + file.getPrintFileUrl();
-
-        if (uniqueKeys.contains(key)) continue;
-        uniqueKeys.add(key);
-
         ProcessedFileEntry entry = new ProcessedFileEntry();
         entry.setCustomerId(file.getCustomerId());
         entry.setAccountNumber(file.getAccountNumber());
+
+        // Separate email URLs
         entry.setEmailBlobUrlPdf(file.getEmailBlobUrlPdf());
         entry.setEmailBlobUrlHtml(file.getEmailBlobUrlHtml());
         entry.setEmailBlobUrlText(file.getEmailBlobUrlText());
+
         entry.setMobstatBlobUrl(file.getPdfMobstatFileUrl());
         entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
         entry.setPrintBlobUrl(file.getPrintFileUrl());
 
-        // --- Status logic stays same ---
+        // Ensure correct account number from filename if needed
         String account = file.getAccountNumber();
         if ((account == null || account.isBlank()) && isNonEmpty(file.getArchiveBlobUrl())) {
             account = extractAccountFromFileName(new File(file.getArchiveBlobUrl()).getName());
@@ -137,6 +131,7 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
 
         Map<String, String> errors = errorMap.getOrDefault(account, Collections.emptyMap());
 
+        // Individual statuses
         entry.setEmailStatus(
                 isNonEmpty(entry.getEmailBlobUrlPdf()) || isNonEmpty(entry.getEmailBlobUrlHtml()) || isNonEmpty(entry.getEmailBlobUrlText())
                         ? "SUCCESS"
@@ -149,6 +144,7 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
         entry.setArchiveStatus(isNonEmpty(entry.getArchiveBlobUrl()) ? "SUCCESS" :
                 "FAILED".equalsIgnoreCase(errors.getOrDefault("ARCHIVE", "")) ? "FAILED" : "");
 
+        // Overall status
         boolean emailSuccess = "SUCCESS".equals(entry.getEmailStatus());
         boolean mobstatSuccess = "SUCCESS".equals(entry.getMobstatStatus());
         boolean printSuccess = "SUCCESS".equals(entry.getPrintStatus());
@@ -173,3 +169,6 @@ private static List<ProcessedFileEntry> buildProcessedFileEntries(
 
     return allEntries;
 }
+
+
+
