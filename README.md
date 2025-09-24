@@ -1,7 +1,7 @@
 private static Metadata buildMetadata(List<ProcessedFileEntry> processedFileEntries, String batchId, String fileName, KafkaMessage kafkaMessage) {
     Metadata metadata = new Metadata();
 
-    // ✅ Count all customers who have at least one file OR even empty customer row
+    // ✅ Include all customers that have at least one file OR any row present
     Set<String> customersWithFiles = processedFileEntries.stream()
             .map(ProcessedFileEntry::getAccountNumber)
             .filter(Objects::nonNull)
@@ -9,6 +9,7 @@ private static Metadata buildMetadata(List<ProcessedFileEntry> processedFileEntr
 
     metadata.setTotalCustomersProcessed(customersWithFiles.size());
 
+    // Overall processing status
     Set<String> statuses = processedFileEntries.stream()
             .map(ProcessedFileEntry::getOverallStatus)
             .filter(Objects::nonNull)
@@ -93,61 +94,63 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 
     List<PrintFile> printFiles = new ArrayList<>();
 
-    // Step 2: Build final list — include every customer at least once
+    // Step 2: Build final list — include all uploaded files, avoid duplicates
     for (SummaryProcessedFile customer : customerList) {
         if (customer == null || customer.getAccountNumber() == null) continue;
         String account = customer.getAccountNumber();
 
-        SummaryProcessedFile entry = new SummaryProcessedFile();
-        BeanUtils.copyProperties(customer, entry);
-
         // Archive
-        Map<String, String> archivesForAccount = accountToArchiveFiles.getOrDefault(account, Collections.emptyMap());
-        if (!archivesForAccount.isEmpty()) {
-            entry.setArchiveBlobUrl(archivesForAccount.values().iterator().next());
-            entry.setArchiveStatus("SUCCESS");
-        }
+        accountToArchiveFiles.getOrDefault(account, Collections.emptyMap())
+                .forEach((fname, url) -> {
+                    SummaryProcessedFile entry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, entry);
+                    entry.setArchiveBlobUrl(url);
+                    entry.setArchiveStatus("SUCCESS");
+                    entry.setOverallStatus("SUCCESS");
+                    finalList.add(entry);
+                });
 
         // Email
-        Map<String, String> emailsForAccount = accountToEmailFiles.getOrDefault(account, Collections.emptyMap());
-        for (Map.Entry<String, String> e : emailsForAccount.entrySet()) {
-            String fname = e.getKey();
-            String url = e.getValue();
-            if (fname.toLowerCase().endsWith(".pdf")) entry.setEmailBlobUrlPdf(url);
-            else if (fname.toLowerCase().endsWith(".html")) entry.setEmailBlobUrlHtml(url);
-            else if (fname.toLowerCase().endsWith(".txt") || fname.toLowerCase().endsWith(".text"))
-                entry.setEmailBlobUrlText(url);
-        }
-        if (!emailsForAccount.isEmpty()) entry.setEmailStatus("SUCCESS");
+        accountToEmailFiles.getOrDefault(account, Collections.emptyMap())
+                .forEach((fname, url) -> {
+                    SummaryProcessedFile entry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, entry);
+                    if (fname.toLowerCase().endsWith(".pdf")) entry.setEmailBlobUrlPdf(url);
+                    else if (fname.toLowerCase().endsWith(".html")) entry.setEmailBlobUrlHtml(url);
+                    else if (fname.toLowerCase().endsWith(".txt") || fname.toLowerCase().endsWith(".text"))
+                        entry.setEmailBlobUrlText(url);
+                    entry.setEmailStatus("SUCCESS");
+                    entry.setOverallStatus("SUCCESS");
+                    finalList.add(entry);
+                });
 
         // Mobstat
-        Map<String, String> mobstatsForAccount = accountToMobstatFiles.getOrDefault(account, Collections.emptyMap());
-        if (!mobstatsForAccount.isEmpty()) {
-            entry.setPdfMobstatFileUrl(mobstatsForAccount.values().iterator().next());
-            entry.setPdfMobstatStatus("SUCCESS");
-        }
-
-        entry.setOverallStatus("SUCCESS");
-        finalList.add(entry);
+        accountToMobstatFiles.getOrDefault(account, Collections.emptyMap())
+                .forEach((fname, url) -> {
+                    SummaryProcessedFile entry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, entry);
+                    entry.setPdfMobstatFileUrl(url);
+                    entry.setPdfMobstatStatus("SUCCESS");
+                    entry.setOverallStatus("SUCCESS");
+                    finalList.add(entry);
+                });
 
         // Print (.ps only)
-        Map<String, String> printsForAccount = accountToPrintFiles.getOrDefault(account, Collections.emptyMap());
-        for (Map.Entry<String, String> p : printsForAccount.entrySet()) {
-            String fname = p.getKey();
-            if (!fname.toLowerCase().endsWith(".ps")) continue;
+        accountToPrintFiles.getOrDefault(account, Collections.emptyMap())
+                .forEach((fname, url) -> {
+                    if (!fname.toLowerCase().endsWith(".ps")) return;
+                    SummaryProcessedFile printEntry = new SummaryProcessedFile();
+                    BeanUtils.copyProperties(customer, printEntry);
+                    printEntry.setPrintFileUrl(url);
+                    printEntry.setPrintStatus("SUCCESS");
+                    printEntry.setOverallStatus("SUCCESS");
+                    finalList.add(printEntry);
 
-            SummaryProcessedFile printEntry = new SummaryProcessedFile();
-            BeanUtils.copyProperties(customer, printEntry);
-            printEntry.setPrintFileUrl(p.getValue());
-            printEntry.setPrintStatus("SUCCESS");
-            printEntry.setOverallStatus("SUCCESS");
-            finalList.add(printEntry);
-
-            PrintFile pf = new PrintFile();
-            pf.setPrintFileURL(p.getValue());
-            pf.setPrintStatus("SUCCESS");
-            printFiles.add(pf);
-        }
+                    PrintFile pf = new PrintFile();
+                    pf.setPrintFileURL(url);
+                    pf.setPrintStatus("SUCCESS");
+                    printFiles.add(pf);
+                });
     }
 
     logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
