@@ -1,10 +1,5 @@
-long totalCustomersProcessed = processedFileEntries.stream()
-        .filter(pf -> isNonEmpty(pf.getArchiveBlobUrl()) 
-                   || isNonEmpty(pf.getEmailBlobUrlPdf())
-                   || isNonEmpty(pf.getEmailBlobUrlHtml())
-                   || isNonEmpty(pf.getEmailBlobUrlText())
-                   || isNonEmpty(pf.getMobstatBlobUrl()))
-        .map(pf -> pf.getCustomerId() + "|" + pf.getAccountNumber())
-        .distinct()
-        .count();
-metadata.setTotalCustomersProcessed((int) totalCustomersProcessed);
+// Count total customers based on archive entries only
+        long totalArchiveEntries = processedFileEntries.stream()
+                .filter(pf -> isNonEmpty(pf.getArchiveBlobUrl())).distinct()
+                .count();
+        metadata.setTotalCustomersProcessed((int) totalArchiveEntries);
