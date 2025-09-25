@@ -137,13 +137,21 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
 }
 
 
-int totalUniqueFiles = (int) finalList.stream()
-        .flatMap(entry -> Stream.of(
-                entry.getPdfEmailFileUrl(),    // PDF emails
-                entry.getEmailBlobUrlHtml(),   // HTML emails
-                entry.getEmailBlobUrlText(),   // TXT emails
-                entry.getPdfMobstatFileUrl(),  // Mobstat
-                entry.getArchiveBlobUrl()      // Archive
-        ))
-        .filter(url -> url != null && !url.isBlank()) // ✅ only include available files
-        .count(); // no distinct → count all actual URLs including duplicates
+2025-09-25T11:30:55.659+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2Fa4aff1c2-f726-481b-bcff-41f4851d9c59%2F19ef9d68-b114-4803-b09b-95a6c5fa4644%2Fprint%2FPRODDebtmanNormal_HL_20250906.ps'
+2025-09-25T11:30:55.814+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.BlobStorageService       : 📤 Uploaded file to 'https://nsndvextr01.blob.core.windows.net/nsndevextrm01/DEBTMAN%2Fa4aff1c2-f726-481b-bcff-41f4851d9c59%2F19ef9d68-b114-4803-b09b-95a6c5fa4644%2Fprint%2FPRODDebtmanRegistered_RB_20250906.ps'
+2025-09-25T11:30:55.815+02:00 ERROR 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : [a4aff1c2-f726-481b-bcff-41f4851d9c59] ❌ Error post-OT summary generation: null
+java.lang.NullPointerException: null
+ at java.base/java.util.Objects.requireNonNull(Objects.java:209) ~[na:na]
+ at java.base/java.util.ImmutableCollections$List12.<init>(ImmutableCollections.java:556) ~[na:na]
+ at java.base/java.util.List.of(List.java:812) ~[na:na]
+ at com.nedbank.kafka.filemanage.service.KafkaListenerService.buildDetailedProcessedFiles(KafkaListenerService.java:796) ~[classes!/:na]
+ at com.nedbank.kafka.filemanage.service.KafkaListenerService.processAfterOT(KafkaListenerService.java:362) ~[classes!/:na]
+ at com.nedbank.kafka.filemanage.service.KafkaListenerService.lambda$onKafkaMessage$2(KafkaListenerService.java:223) ~[classes!/:na]
+ at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539) ~[na:na]
+ at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264) ~[na:na]
+ at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136) ~[na:na]
+ at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635) ~[na:na]
+ at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
+2025-09-25T11:30:55.862+02:00  INFO 1 --- [ad | producer-1] org.apache.kafka.clients.Metadata        : [Producer clientId=producer-1] Resetting the last seen epoch of partition log-ecp-batch-audit-0 to 0 since the associated topicId changed from null to LQT4uTbBRtSuzkoLLTIsJA
+2025-09-25T11:30:55.862+02:00  INFO 1 --- [ad | producer-1] org.apache.kafka.clients.Metadata        : [Producer clientId=producer-1] Resetting the last seen epoch of partition log-ecp-batch-audit-1 to 0 since the associated topicId changed from null to LQT4uTbBRtSuzkoLLTIsJA
+2025-09-25T11:30:55.862+02:00  INFO 1 --- [ad | producer-1] org.apache.kafka.clients.Metadata        : [Producer clientId=producer-1] Resetting the last seen epoch of partition log-ecp-batch-audit-2 to 0 since the associated topicId changed from null to LQT4uTbBRtSuzkoLLTIsJA
