@@ -7,13 +7,13 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
     List<SummaryProcessedFile> finalList = new ArrayList<>();
     if (jobDir == null || customerList == null || msg == null) return finalList;
 
-    // ✅ Maps for each type
+    // Maps for each type
     Map<String, Map<String, String>> accountToArchiveFiles = new HashMap<>();
-    Map<String, Map<String, String>> accountToEmailFiles = new HashMap<>();
+    Map<String, Map<String, List<String>>> accountToEmailFiles = new HashMap<>(); // updated to List<String>
     Map<String, Map<String, String>> accountToMobstatFiles = new HashMap<>();
     Map<String, Map<String, String>> accountToPrintFiles = new HashMap<>();
 
-    // -------- 🔍 Walk ALL folders inside jobDir --------
+    // Walk ALL folders inside jobDir
     try (Stream<Path> stream = Files.walk(jobDir)) {
         stream.filter(Files::isRegularFile).forEach(file -> {
             if (!Files.exists(file)) {
@@ -24,9 +24,9 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             String fileName = file.getFileName().toString().toLowerCase();
             String parentFolder = file.getParent().getFileName().toString().toLowerCase();
 
-            // ✅ Only allow PDF, PS, HTML, TXT for processing
+            // Only allow PDF, PS, HTML, TXT
             if (!(fileName.endsWith(".pdf") || fileName.endsWith(".ps") ||
-                    fileName.endsWith(".html") || fileName.endsWith(".txt"))) {
+                  fileName.endsWith(".html") || fileName.endsWith(".txt"))) {
                 logger.debug("[{}] ⏩ Skipping unsupported file: {}", msg.getBatchId(), fileName);
                 return;
             }
@@ -34,7 +34,7 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             try {
                 String url = decodeUrl(blobStorageService.uploadFileByMessage(file.toFile(), parentFolder, msg));
 
-                // ✅ Match file to customers by account number
+                // Match file to customers by account number
                 for (SummaryProcessedFile customer : customerList) {
                     if (customer == null || customer.getAccountNumber() == null) continue;
                     String account = customer.getAccountNumber();
@@ -45,16 +45,15 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
                         logger.info("[{}] 📦 Uploaded archive file={} for account={}, url={}", msg.getBatchId(), fileName, account, url);
 
                     } else if (parentFolder.contains("email")) {
-                        Map<String, String> fileMap = accountToEmailFiles.computeIfAbsent(account, k -> new HashMap<>());
-
+                        Map<String, List<String>> fileMap = accountToEmailFiles.computeIfAbsent(account, k -> new HashMap<>());
                         if (fileName.endsWith(".pdf")) {
-                            fileMap.put("PDF", url);
+                            fileMap.computeIfAbsent("PDF", k -> new ArrayList<>()).add(url);
                         } else if (fileName.endsWith(".html")) {
-                            fileMap.put("HTML", url);
+                            fileMap.computeIfAbsent("HTML", k -> new ArrayList<>()).add(url);
                         } else if (fileName.endsWith(".txt")) {
-                            fileMap.put("TEXT", url);
+                            fileMap.computeIfAbsent("TEXT", k -> new ArrayList<>()).add(url);
                         } else {
-                            fileMap.put(fileName, url); // fallback
+                            fileMap.computeIfAbsent(fileName, k -> new ArrayList<>()).add(url);
                         }
                         logger.info("[{}] 📧 Uploaded email file={} for account={}, url={}", msg.getBatchId(), fileName, account, url);
 
@@ -77,14 +76,14 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         });
     }
 
-    // -------- Build final list (fixed combinations) --------
+    // Build final list with fixed combinations
     Set<String> uniqueKeys = new HashSet<>();
     for (SummaryProcessedFile customer : customerList) {
         if (customer == null || customer.getAccountNumber() == null) continue;
         String account = customer.getAccountNumber();
 
         Map<String, String> archivesForAccount = accountToArchiveFiles.getOrDefault(account, Collections.emptyMap());
-        Map<String, String> emailsForAccount = accountToEmailFiles.getOrDefault(account, Collections.emptyMap());
+        Map<String, List<String>> emailsForAccount = accountToEmailFiles.getOrDefault(account, Collections.emptyMap());
         Map<String, String> mobstatsForAccount = accountToMobstatFiles.getOrDefault(account, Collections.emptyMap());
 
         // Skip if nothing exists
@@ -93,39 +92,42 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         List<String> archiveFiles = new ArrayList<>(archivesForAccount.keySet());
         if (archiveFiles.isEmpty()) archiveFiles.add(null);
 
-        // ✅ Email handled separately (pdf/html/text) → no need to expand here
         List<String> mobstatFiles = new ArrayList<>(mobstatsForAccount.values());
         if (mobstatFiles.isEmpty()) mobstatFiles.add(null);
 
+        List<String> pdfEmails = emailsForAccount.getOrDefault("PDF", List.of((String) null));
+        List<String> htmlEmails = emailsForAccount.getOrDefault("HTML", List.of((String) null));
+        List<String> txtEmails = emailsForAccount.getOrDefault("TEXT", List.of((String) null));
+
         for (String archiveFileName : archiveFiles) {
             for (String mobstatUrl : mobstatFiles) {
+                for (String pdfEmail : pdfEmails) {
+                    for (String htmlEmail : htmlEmails) {
+                        for (String txtEmail : txtEmails) {
 
-                // build email lists
-                String pdfEmail = emailsForAccount.get("PDF");
-                String htmlEmail = emailsForAccount.get("HTML");
-                String txtEmail = emailsForAccount.get("TEXT");
+                            String key = customer.getCustomerId() + "|" + account + "|" +
+                                    (archiveFileName != null ? archiveFileName : "noArchive") + "|" +
+                                    (mobstatUrl != null ? mobstatUrl : "noMobstat") + "|" +
+                                    (pdfEmail != null ? pdfEmail : "noPdf") + "|" +
+                                    (htmlEmail != null ? htmlEmail : "noHtml") + "|" +
+                                    (txtEmail != null ? txtEmail : "noTxt");
 
-                // ✅ include emails in unique key to allow duplicates per email type
-                String key = customer.getCustomerId() + "|" + account + "|" +
-                        (archiveFileName != null ? archiveFileName : "noArchive") + "|" +
-                        (mobstatUrl != null ? mobstatUrl : "noMobstat") + "|" +
-                        (pdfEmail != null ? pdfEmail : "noPdf") + "|" +
-                        (htmlEmail != null ? htmlEmail : "noHtml") + "|" +
-                        (txtEmail != null ? txtEmail : "noTxt");
+                            if (uniqueKeys.contains(key)) continue;
+                            uniqueKeys.add(key);
 
-                if (uniqueKeys.contains(key)) continue;
-                uniqueKeys.add(key);
+                            SummaryProcessedFile entry = new SummaryProcessedFile();
+                            BeanUtils.copyProperties(customer, entry);
 
-                SummaryProcessedFile entry = new SummaryProcessedFile();
-                BeanUtils.copyProperties(customer, entry);
+                            entry.setArchiveBlobUrl(archiveFileName != null ? archivesForAccount.get(archiveFileName) : null);
+                            entry.setPdfMobstatFileUrl(mobstatUrl);
+                            entry.setEmailBlobUrlPdf(pdfEmail);
+                            entry.setEmailBlobUrlHtml(htmlEmail);
+                            entry.setEmailBlobUrlText(txtEmail);
 
-                entry.setArchiveBlobUrl(archiveFileName != null ? archivesForAccount.get(archiveFileName) : null);
-                entry.setPdfMobstatFileUrl(mobstatUrl);
-                entry.setEmailBlobUrlPdf(pdfEmail);
-                entry.setEmailBlobUrlHtml(htmlEmail);
-                entry.setEmailBlobUrlText(txtEmail);
-
-                finalList.add(entry);
+                            finalList.add(entry);
+                        }
+                    }
+                }
             }
         }
     }
@@ -133,3 +135,15 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
     logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
     return finalList;
 }
+
+
+int totalUniqueFiles = (int) finalList.stream()
+        .flatMap(entry -> Stream.of(
+                entry.getPdfEmailFileUrl(),    // PDF emails
+                entry.getEmailBlobUrlHtml(),   // HTML emails
+                entry.getEmailBlobUrlText(),   // TXT emails
+                entry.getPdfMobstatFileUrl(),  // Mobstat
+                entry.getArchiveBlobUrl()      // Archive
+        ))
+        .filter(url -> url != null && !url.isBlank()) // ✅ only include available files
+        .count(); // no distinct → count all actual URLs including duplicates
