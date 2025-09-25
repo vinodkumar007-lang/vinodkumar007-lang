@@ -1,137 +1,75 @@
-package com.nedbank.kafka.filemanage.model;
+private static List<ProcessedFileEntry> buildProcessedFileEntries(
+        List<SummaryProcessedFile> processedFiles,
+        Map<String, Map<String, String>> errorMap,
+        List<PrintFile> ignoredPrintFiles) {
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.Data;
-import java.util.Map;
+    List<ProcessedFileEntry> allEntries = new ArrayList<>();
+    Set<String> uniqueKeys = new HashSet<>();
 
-@Data
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class ProcessedFileEntry {
-    private String customerId;
-    private String accountNumber;
+    for (SummaryProcessedFile file : processedFiles) {
+        if (file == null) continue;
 
-    private String pdfArchiveFileUrl;
-    private String pdfArchiveFileUrlStatus;
+        String key = file.getCustomerId() + "|" + file.getAccountNumber() + "|" +
+                (file.getArchiveBlobUrl() != null ? new File(file.getArchiveBlobUrl()).getName() : "");
+        if (uniqueKeys.contains(key)) continue;
+        uniqueKeys.add(key);
 
-    private String pdfEmailFileUrl;
-    private String pdfEmailFileUrlStatus;
+        ProcessedFileEntry entry = new ProcessedFileEntry();
+        entry.setCustomerId(file.getCustomerId());
+        entry.setAccountNumber(file.getAccountNumber());
 
-    //private String printFileUrl;
-    private String printFileUrlStatus;
+        entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
+        entry.setPrintBlobUrl(file.getPrintFileUrl());
+        entry.setMobstatBlobUrl(file.getPdfMobstatFileUrl());
 
-    private String pdfMobstatFileUrl;
-    private String pdfMobstatFileUrlStatus;
+        // --- Email blob URLs first ---
+        entry.setEmailBlobUrlPdf(file.getEmailBlobUrlPdf());
+        entry.setEmailBlobUrlHtml(file.getEmailBlobUrlHtml());
+        entry.setEmailBlobUrlText(file.getEmailBlobUrlText());
 
-    private String overAllStatusCode;
-    private String reason;
+        // --- Email status immediately after email URLs ---
+        String account = file.getAccountNumber();
+        if ((account == null || account.isBlank()) && isNonEmpty(file.getArchiveBlobUrl())) {
+            account = extractAccountFromFileName(new File(file.getArchiveBlobUrl()).getName());
+        }
+        Map<String, String> errors = errorMap.getOrDefault(account, Collections.emptyMap());
+        entry.setEmailStatus(
+                isNonEmpty(file.getEmailBlobUrlPdf()) ||
+                isNonEmpty(file.getEmailBlobUrlHtml()) ||
+                isNonEmpty(file.getEmailBlobUrlText()) ? "SUCCESS" :
+                "FAILED".equalsIgnoreCase(errors.getOrDefault("EMAIL", "")) ? "FAILED" : ""
+        );
 
-    private String finalStatus;
+        // --- Other statuses ---
+        entry.setMobstatStatus(isNonEmpty(file.getPdfMobstatFileUrl()) ? "SUCCESS" :
+                "FAILED".equalsIgnoreCase(errors.getOrDefault("MOBSTAT", "")) ? "FAILED" : "");
+        entry.setPrintStatus(isNonEmpty(file.getPrintFileUrl()) ? "SUCCESS" :
+                "FAILED".equalsIgnoreCase(errors.getOrDefault("PRINT", "")) ? "FAILED" : "");
+        entry.setArchiveStatus(isNonEmpty(file.getArchiveBlobUrl()) ? "SUCCESS" :
+                "FAILED".equalsIgnoreCase(errors.getOrDefault("ARCHIVE", "")) ? "FAILED" : "");
 
-    private String type;
-    private String blobUrl;
-    private String outputType;
-    private String status;
+        // --- Determine overall status (always last) ---
+        boolean emailSuccess = "SUCCESS".equals(entry.getEmailStatus());
+        boolean mobstatSuccess = "SUCCESS".equals(entry.getMobstatStatus());
+        boolean printSuccess = "SUCCESS".equals(entry.getPrintStatus());
+        boolean archiveSuccess = "SUCCESS".equals(entry.getArchiveStatus());
 
-    private String outputMethod;       // e.g., EMAIL, MOBSTAT, PRINT
+        if ((emailSuccess && archiveSuccess) ||
+                (mobstatSuccess && archiveSuccess && !emailSuccess && !printSuccess) ||
+                (printSuccess && archiveSuccess && !emailSuccess && !mobstatSuccess)) {
+            entry.setOverallStatus("SUCCESS");
+        } else if (archiveSuccess) {
+            entry.setOverallStatus("PARTIAL");
+        } else {
+            entry.setOverallStatus("FAILED");
+        }
 
-    private String outputBlobUrl;      // URL for EMAIL/MOBSTAT/PRINT file
-    private String outputStatus;       // SUCCESS / FAILED / NOT-FOUND
+        if (errorMap.containsKey(account) && !"FAILED".equals(entry.getOverallStatus())) {
+            entry.setOverallStatus("PARTIAL");
+        }
 
-    private String archiveBlobUrl;     // Always expected to be present if found
-    private String archiveStatus;      // SUCCESS / FAILED / NOT-FOUND
+        allEntries.add(entry);
+    }
 
-    private String archiveOutputType;
-
-    private String fileUrl;
-
-    private String  emailBlobUrl;
-    private String  emailStatus;
-    private String  printBlobUrl;
-
-    private String  printStatus;
-    private String  mobstatBlobUrl;
-    private String  mobstatStatus;
-    private String overallStatus;      // SUCCESS / PARTIAL / FAILED
-
-    private Map <String, FileStatus> fileDetails;
-
-    private String requestedMethod;
-
-    private String emailBlobUrlPdf;
-    private String emailBlobUrlHtml;
-    private String emailBlobUrlText;
-    //private String statusDescription;
-}
-
-package com.nedbank.kafka.filemanage.model;
-
-import com.fasterxml.jackson.annotation.JsonInclude;
-import lombok.Data;
-
-import java.util.Map;
-
-@Data
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class SummaryProcessedFile {
-    private String customerId;
-    private String accountNumber;
-    private String firstName;
-    private String lastName;
-    private String email;
-    private String mobileNumber;
-    private String addressLine1;
-    private String addressLine2;
-    private String addressLine3;
-    private String postalCode;
-    private String contactNumber;
-    private String product;
-    private String templateCode;
-    private String templateName;
-    private String balance;
-    private String creditLimit;
-    private String interestRate;
-    private String dueAmount;
-    private String arrears;
-    private String dueDate;
-    private String idNumber;
-    private String accountReference;
-    private String pdfArchiveFileUrl;
-    private String pdfArchiveStatus;
-    private String pdfEmailFileUrl;
-    private String pdfEmailStatus;
-    private String pdfMobstatFileUrl;
-    private String pdfMobstatStatus;
-    private String printFileUrl;
-    private String printStatus;
-    private String statusCode;
-    private String statusDescription;
-    private String fullName;
-    private String status; // SUCCESS / FAILED / null
-    private String fileType; // for trigger file
-    //private String fileURL;  // for trigger file
-    private String outputMethod;
-    private String reason;
-    private String linkedDeliveryType;
-    private String linkedOutputMethod;
-    private String archiveBlobUrl;
-    private String archiveStatus;
-    private String queueName;
-    private String fileUrl;
-    private String type;
-    private String url;
-    private String errorCode;
-    private String errorMessage;
-    private String outputType;
-    private String errorReportEntry;
-    private String  archiveOutputType;
-    private String blobUrl;
-    private String overallStatus;
-    private String method;
-    private String fileName;
-    private Map<String, String> emailBlobUrls; // keys: pdf, html, text
-    private String emailStatus;
-    private String emailBlobUrlPdf;
-    private String emailBlobUrlHtml;
-    private String emailBlobUrlText;
-
+    return allEntries;
 }
