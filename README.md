@@ -86,21 +86,26 @@ private List<SummaryProcessedFile> buildDetailedProcessedFiles(
         Map<String, List<String>> emailsForAccount = accountToEmailFiles.getOrDefault(account, Collections.emptyMap());
         Map<String, String> mobstatsForAccount = accountToMobstatFiles.getOrDefault(account, Collections.emptyMap());
 
-        // --- smooth fix: skip customer if no files exist ---
+        // Smooth fix: skip customer if no files exist
         if (archivesForAccount.isEmpty() && emailsForAccount.isEmpty() && mobstatsForAccount.isEmpty()) continue;
 
-        List<String> archiveFiles = new ArrayList<>(archivesForAccount.keySet());
-        List<String> mobstatFiles = new ArrayList<>(mobstatsForAccount.values());
-        List<String> pdfEmails = emailsForAccount.getOrDefault("PDF", Collections.emptyList());
-        List<String> htmlEmails = emailsForAccount.getOrDefault("HTML", Collections.emptyList());
-        List<String> txtEmails = emailsForAccount.getOrDefault("TEXT", Collections.emptyList());
+        List<Object> archiveFiles = archivesForAccount.isEmpty() ? Collections.singletonList(null) : new ArrayList<>(archivesForAccount.keySet());
+        List<Object> mobstatFiles = mobstatsForAccount.isEmpty() ? Collections.singletonList(null) : new ArrayList<>(mobstatsForAccount.values());
+        List<Object> pdfEmails = emailsForAccount.getOrDefault("PDF", Collections.emptyList()).isEmpty() ? Collections.singletonList(null) : new ArrayList<>(emailsForAccount.get("PDF"));
+        List<Object> htmlEmails = emailsForAccount.getOrDefault("HTML", Collections.emptyList()).isEmpty() ? Collections.singletonList(null) : new ArrayList<>(emailsForAccount.get("HTML"));
+        List<Object> txtEmails = emailsForAccount.getOrDefault("TEXT", Collections.emptyList()).isEmpty() ? Collections.singletonList(null) : new ArrayList<>(emailsForAccount.get("TEXT"));
 
-        // --- iterate existing lists; use null only if list is empty for combinations ---
-        for (String archiveFileName : archiveFiles.isEmpty() ? Collections.singletonList(null) : archiveFiles) {
-            for (String mobstatUrl : mobstatFiles.isEmpty() ? Collections.singletonList(null) : mobstatFiles) {
-                for (String pdfEmail : pdfEmails.isEmpty() ? Collections.singletonList(null) : pdfEmails) {
-                    for (String htmlEmail : htmlEmails.isEmpty() ? Collections.singletonList(null) : htmlEmails) {
-                        for (String txtEmail : txtEmails.isEmpty() ? Collections.singletonList(null) : txtEmails) {
+        for (Object archiveFileNameObj : archiveFiles) {
+            for (Object mobstatUrlObj : mobstatFiles) {
+                for (Object pdfEmailObj : pdfEmails) {
+                    for (Object htmlEmailObj : htmlEmails) {
+                        for (Object txtEmailObj : txtEmails) {
+
+                            String archiveFileName = archiveFileNameObj != null ? archiveFileNameObj.toString() : null;
+                            String mobstatUrl = mobstatUrlObj != null ? mobstatUrlObj.toString() : null;
+                            String pdfEmail = pdfEmailObj != null ? pdfEmailObj.toString() : null;
+                            String htmlEmail = htmlEmailObj != null ? htmlEmailObj.toString() : null;
+                            String txtEmail = txtEmailObj != null ? txtEmailObj.toString() : null;
 
                             String key = customer.getCustomerId() + "|" + account + "|" +
                                     (archiveFileName != null ? archiveFileName : "noArchive") + "|" +
