@@ -1,12 +1,17 @@
-long totalCustomersProcessed = processedFileEntries.stream()
-        .filter(pf -> isNonEmpty(pf.getArchiveBlobUrl()) 
-                   || isNonEmpty(pf.getEmailBlobUrlPdf())
-                   || isNonEmpty(pf.getEmailBlobUrlHtml())
-                   || isNonEmpty(pf.getEmailBlobUrlText())
-                   || isNonEmpty(pf.getPdfMobstatFileUrl())
-                   || isNonEmpty(pf.getPrintFileUrl()))
-        .map(pf -> pf.getCustomerId() + "|" + pf.getAccountNumber())
-        .distinct()
-        .count();
-
-metadata.setTotalCustomersProcessed((int) totalCustomersProcessed);
+},
+  "metadata" : {
+    "totalCustomersProcessed" : 1529,
+    "processingStatus" : "PARTIAL",
+    "eventOutcomeCode" : "0",
+    "eventOutcomeDescription" : "partial",
+    "customerCount" : 1573
+  },
+  "payload" : {
+    "uniqueConsumerRef" : null,
+    "uniqueECPBatchRef" : null,
+    "runPriority" : null,
+    "eventID" : null,
+    "eventType" : null,
+    "restartKey" : null,
+    "fileCount" : 3112
+  },
