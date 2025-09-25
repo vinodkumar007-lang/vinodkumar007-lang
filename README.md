@@ -1,3 +1,4 @@
+
     private List<SummaryProcessedFile> buildDetailedProcessedFiles(
             Path jobDir,
             List<SummaryProcessedFile> customerList,
@@ -7,97 +8,108 @@
         List<SummaryProcessedFile> finalList = new ArrayList<>();
         if (jobDir == null || customerList == null || msg == null) return finalList;
 
-        // Maps for each type per account
+        // ✅ Maps for each type
         Map<String, Map<String, String>> accountToArchiveFiles = new HashMap<>();
-        Map<String, Map<String, String>> accountToEmailPdf = new HashMap<>();
-        Map<String, Map<String, String>> accountToEmailHtml = new HashMap<>();
-        Map<String, Map<String, String>> accountToEmailTxt = new HashMap<>();
+        Map<String, Map<String, String>> accountToEmailFiles = new HashMap<>();
         Map<String, Map<String, String>> accountToMobstatFiles = new HashMap<>();
         Map<String, Map<String, String>> accountToPrintFiles = new HashMap<>();
 
-        // Walk all files in jobDir
+        // -------- 🔍 Walk ALL folders inside jobDir --------
         try (Stream<Path> stream = Files.walk(jobDir)) {
             stream.filter(Files::isRegularFile).forEach(file -> {
-                if (!Files.exists(file)) return;
+                if (!Files.exists(file)) {
+                    logger.warn("[{}] ⏩ Skipping missing file: {}", msg.getBatchId(), file);
+                    return;
+                }
 
                 String fileName = file.getFileName().toString().toLowerCase();
                 String parentFolder = file.getParent().getFileName().toString().toLowerCase();
 
+                // ✅ Only allow PDF and PS files
+                if (!(fileName.endsWith(".pdf") || fileName.endsWith(".ps"))) {
+                    logger.debug("[{}] ⏩ Skipping non-pdf/ps file: {}", msg.getBatchId(), fileName);
+                    return;
+                }
+
                 try {
                     String url = decodeUrl(blobStorageService.uploadFileByMessage(file.toFile(), parentFolder, msg));
 
+                    // ✅ Match file to customers by account number
                     for (SummaryProcessedFile customer : customerList) {
                         if (customer == null || customer.getAccountNumber() == null) continue;
                         String account = customer.getAccountNumber();
                         if (!fileName.contains(account)) continue;
 
-                        if (parentFolder.contains("archive") && fileName.endsWith(".pdf")) {
+                        if (parentFolder.contains("archive")) {
                             accountToArchiveFiles.computeIfAbsent(account, k -> new HashMap<>()).put(fileName, url);
+                            logger.info("[{}] 📦 Uploaded archive file={} for account={}, url={}", msg.getBatchId(), fileName, account, url);
                         } else if (parentFolder.contains("email")) {
-                            if (fileName.endsWith(".pdf")) accountToEmailPdf.computeIfAbsent(account, k -> new HashMap<>()).put(fileName, url);
-                            else if (fileName.endsWith(".html")) accountToEmailHtml.computeIfAbsent(account, k -> new HashMap<>()).put(fileName, url);
-                            else if (fileName.endsWith(".txt")) accountToEmailTxt.computeIfAbsent(account, k -> new HashMap<>()).put(fileName, url);
-                        } else if (parentFolder.contains("mobstat") && fileName.endsWith(".pdf")) {
+                            accountToEmailFiles.computeIfAbsent(account, k -> new HashMap<>()).put(fileName, url);
+                            logger.info("[{}] 📧 Uploaded email file={} for account={}, url={}", msg.getBatchId(), fileName, account, url);
+                        } else if (parentFolder.contains("mobstat")) {
                             accountToMobstatFiles.computeIfAbsent(account, k -> new HashMap<>()).put(fileName, url);
-                        } else if (parentFolder.contains("print") && fileName.endsWith(".ps")) {
+                            logger.info("[{}] 📱 Uploaded mobstat file={} for account={}, url={}", msg.getBatchId(), fileName, account, url);
+                        } else if (parentFolder.contains("print")) {
                             accountToPrintFiles.computeIfAbsent(account, k -> new HashMap<>()).put(fileName, url);
+                            logger.info("[{}] 🖨 Uploaded print file={} for account={}, url={}", msg.getBatchId(), fileName, account, url);
+                        } else {
+                            logger.info("[{}] ℹ️ Ignoring file (unmapped folder) {} in {}", msg.getBatchId(), fileName, parentFolder);
                         }
                     }
+
                 } catch (Exception e) {
                     logger.error("[{}] ⚠️ Failed to upload file {}: {}", msg.getBatchId(), fileName, e.getMessage(), e);
                 }
             });
         }
 
-        // Build final list using full combinations
+        // -------- Build final list (fixed combinations) --------
+        Set<String> uniqueKeys = new HashSet<>();
         for (SummaryProcessedFile customer : customerList) {
             if (customer == null || customer.getAccountNumber() == null) continue;
             String account = customer.getAccountNumber();
 
-            Map<String, String> archiveMap = accountToArchiveFiles.getOrDefault(account, Collections.emptyMap());
-            Map<String, String> emailPdfMap = accountToEmailPdf.getOrDefault(account, Collections.emptyMap());
-            Map<String, String> emailHtmlMap = accountToEmailHtml.getOrDefault(account, Collections.emptyMap());
-            Map<String, String> emailTxtMap = accountToEmailTxt.getOrDefault(account, Collections.emptyMap());
-            Map<String, String> mobstatMap = accountToMobstatFiles.getOrDefault(account, Collections.emptyMap());
-            Map<String, String> printMap = accountToPrintFiles.getOrDefault(account, Collections.emptyMap());
+            Map<String, String> archivesForAccount = accountToArchiveFiles.getOrDefault(account, Collections.emptyMap());
+            Map<String, String> emailsForAccount = accountToEmailFiles.getOrDefault(account, Collections.emptyMap());
+            Map<String, String> mobstatsForAccount = accountToMobstatFiles.getOrDefault(account, Collections.emptyMap());
 
-            // If any map is empty, add a null placeholder to generate combinations
-            List<String> archiveFiles = archiveMap.isEmpty() ? Arrays.asList((String) null) : new ArrayList<>(archiveMap.keySet());
-            List<String> pdfFiles = emailPdfMap.isEmpty() ? Arrays.asList((String) null) : new ArrayList<>(emailPdfMap.values());
-            List<String> htmlFiles = emailHtmlMap.isEmpty() ? Arrays.asList((String) null) : new ArrayList<>(emailHtmlMap.values());
-            List<String> txtFiles = emailTxtMap.isEmpty() ? Arrays.asList((String) null) : new ArrayList<>(emailTxtMap.values());
-            List<String> mobstatFiles = mobstatMap.isEmpty() ? Arrays.asList((String) null) : new ArrayList<>(mobstatMap.values());
-            List<String> printFiles = printMap.isEmpty() ? Arrays.asList((String) null) : new ArrayList<>(printMap.values());
+            // Skip if nothing exists
+            if (archivesForAccount.isEmpty() && emailsForAccount.isEmpty() && mobstatsForAccount.isEmpty()) continue;
 
-            for (String archiveEntry : archiveFiles) {
-                for (String pdfUrl : pdfFiles) {
-                    for (String htmlUrl : htmlFiles) {
-                        for (String txtUrl : txtFiles) {
-                            for (String mobUrl : mobstatFiles) {
-                                for (String printUrl : printFiles) {
-                                    SummaryProcessedFile entry = new SummaryProcessedFile();
-                                    BeanUtils.copyProperties(customer, entry);
+            List<String> archiveFiles = new ArrayList<>(archivesForAccount.keySet());
+            if (archiveFiles.isEmpty()) archiveFiles.add(null);
 
-                                    entry.setArchiveBlobUrl(archiveEntry);
-                                    entry.setEmailBlobUrlPdf(pdfUrl);
-                                    entry.setEmailBlobUrlHtml(htmlUrl);
-                                    entry.setEmailBlobUrlText(txtUrl);
-                                    entry.setPdfMobstatFileUrl(mobUrl);
-                                    entry.setPrintFileUrl(printUrl);
+            List<String> emailFiles = new ArrayList<>(emailsForAccount.values());
+            if (emailFiles.isEmpty()) emailFiles.add(null);
 
-                                    finalList.add(entry);
-                                }
-                            }
-                        }
+            List<String> mobstatFiles = new ArrayList<>(mobstatsForAccount.values());
+            if (mobstatFiles.isEmpty()) mobstatFiles.add(null);
+
+            // ✅ Iterate over all combinations
+            for (String archiveFileName : archiveFiles) {
+                for (String emailUrl : emailFiles) {
+                    for (String mobstatUrl : mobstatFiles) {
+                        String key = customer.getCustomerId() + "|" + account + "|" +
+                                (archiveFileName != null ? archiveFileName : "noArchive") + "|" +
+                                (emailUrl != null ? emailUrl : "noEmail") + "|" +
+                                (mobstatUrl != null ? mobstatUrl : "noMobstat");
+                        if (uniqueKeys.contains(key)) continue;
+                        uniqueKeys.add(key);
+
+                        SummaryProcessedFile entry = new SummaryProcessedFile();
+                        BeanUtils.copyProperties(customer, entry);
+                        entry.setArchiveBlobUrl(archiveFileName != null ? archivesForAccount.get(archiveFileName) : null);
+                        entry.setPdfEmailFileUrl(emailUrl);
+                        entry.setPdfMobstatFileUrl(mobstatUrl);
+                        finalList.add(entry);
                     }
                 }
             }
         }
-
+        
         logger.info("[{}] ✅ buildDetailedProcessedFiles completed. Final processed list size={}", msg.getBatchId(), finalList.size());
         return finalList;
     }
-
 
     public static SummaryPayload buildPayload(
             KafkaMessage kafkaMessage,
@@ -113,7 +125,7 @@
         payload.setFileName(fileName);
         payload.setTimestamp(timestamp);
 
-        // --- Header ---
+        // Populate header metadata
         Header header = new Header();
         header.setTenantCode(kafkaMessage.getTenantCode());
         header.setChannelID(kafkaMessage.getChannelID());
@@ -124,16 +136,14 @@
         header.setJobName(kafkaMessage.getSourceSystem());
         payload.setHeader(header);
 
-        // --- Processed Files ---
+        // Build processed file entries from summary list
         List<ProcessedFileEntry> processedFileEntries = buildProcessedFileEntries(processedList, errorMap, printFiles);
         payload.setProcessedFileList(processedFileEntries);
 
-        // --- Total unique files ---
+        // Total unique file URLs (email, print, mobstat, archive)
         int totalUniqueFiles = (int) processedList.stream()
                 .flatMap(entry -> Stream.of(
-                        entry.getEmailBlobUrlPdf(),
-                        entry.getEmailBlobUrlHtml(),
-                        entry.getEmailBlobUrlText(),
+                        entry.getPdfEmailFileUrl(),
                         entry.getPdfMobstatFileUrl(),
                         entry.getArchiveBlobUrl()
                 ))
@@ -141,7 +151,7 @@
                 .distinct()
                 .count();
 
-        // --- Payload info ---
+        // Populate payload details from KafkaMessage
         Payload payloadInfo = new Payload();
         payloadInfo.setUniqueECPBatchRef(kafkaMessage.getUniqueECPBatchRef());
         payloadInfo.setRunPriority(kafkaMessage.getRunPriority());
@@ -151,10 +161,11 @@
         payloadInfo.setFileCount(totalUniqueFiles);
         payload.setPayload(payloadInfo);
 
-        // --- Metadata ---
+        // Metadata: count distinct customers and determine final status
         Metadata metadata = new Metadata();
+
         // Count total customers based on archive entries only
-        long totalArchiveEntries = processedList.stream()
+        long totalArchiveEntries = processedFileEntries.stream()
                 .filter(pf -> isNonEmpty(pf.getArchiveBlobUrl())).distinct()
                 .count();
         metadata.setTotalCustomersProcessed((int) totalArchiveEntries);
@@ -173,7 +184,6 @@
         } else {
             overallStatus = "FAILED";
         }
-
         int customerCount = kafkaMessage.getBatchFiles().stream()
                 .filter(f -> "DATA".equalsIgnoreCase(f.getFileType()))
                 .mapToInt(BatchFile::getCustomerCount)
@@ -184,19 +194,38 @@
         metadata.setEventOutcomeDescription(overallStatus.toLowerCase());
         payload.setMetadata(metadata);
 
-        // --- Print Files: only .ps ---
-        List<PrintFile> printFileList = new ArrayList<>();
+        // ✅ Step 1: Assign status based on conditions before decoding
         for (PrintFile pf : printFiles) {
             String psUrl = pf.getPrintFileURL();
+
             if (psUrl != null && psUrl.endsWith(".ps")) {
+                // .ps file exists, set SUCCESS
                 pf.setPrintStatus("SUCCESS");
-                String decodedUrl = URLDecoder.decode(psUrl, StandardCharsets.UTF_8);
+            } else if (psUrl != null && errorMap.containsKey(psUrl)) {
+                // Error found for this file
+                pf.setPrintStatus("FAILED");
+            } else {
+                // Not found or unclear
+                pf.setPrintStatus("");
+            }
+        }
+
+// ✅ Step 2: Decode and collect into final printFileList
+        List<PrintFile> printFileList = new ArrayList<>();
+
+        for (PrintFile pf : printFiles) {
+            if (pf.getPrintFileURL() != null) {
+                String decodedUrl = URLDecoder.decode(pf.getPrintFileURL(), StandardCharsets.UTF_8);
+
                 PrintFile printFile = new PrintFile();
                 printFile.setPrintFileURL(decodedUrl);
-                printFile.setPrintStatus(pf.getPrintStatus());
+                printFile.setPrintStatus(pf.getPrintStatus() != null ? pf.getPrintStatus() : "");
+
                 printFileList.add(printFile);
             }
         }
+
+// ✅ Step 3: Set in payload
         payload.setPrintFiles(printFileList);
 
         return payload;
@@ -216,22 +245,25 @@
             List<PrintFile> ignoredPrintFiles) {
 
         List<ProcessedFileEntry> allEntries = new ArrayList<>();
+        Set<String> uniqueKeys = new HashSet<>(); // customerId + accountNumber + archiveFilename
 
         for (SummaryProcessedFile file : processedFiles) {
             if (file == null) continue;
 
+            String key = file.getCustomerId() + "|" + file.getAccountNumber() + "|" +
+                    (file.getArchiveBlobUrl() != null ? new File(file.getArchiveBlobUrl()).getName() : "");
+            if (uniqueKeys.contains(key)) continue;
+            uniqueKeys.add(key);
+
             ProcessedFileEntry entry = new ProcessedFileEntry();
             entry.setCustomerId(file.getCustomerId());
             entry.setAccountNumber(file.getAccountNumber());
-
-            entry.setEmailBlobUrlPdf(file.getEmailBlobUrlPdf());
-            entry.setEmailBlobUrlHtml(file.getEmailBlobUrlHtml());
-            entry.setEmailBlobUrlText(file.getEmailBlobUrlText());
+            entry.setEmailBlobUrl(file.getPdfEmailFileUrl());
             entry.setMobstatBlobUrl(file.getPdfMobstatFileUrl());
-            entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
             entry.setPrintBlobUrl(file.getPrintFileUrl());
+            entry.setArchiveBlobUrl(file.getArchiveBlobUrl());
 
-            // Determine account
+            // --- Ensure we get the correct account number from filename if needed ---
             String account = file.getAccountNumber();
             if ((account == null || account.isBlank()) && isNonEmpty(file.getArchiveBlobUrl())) {
                 account = extractAccountFromFileName(new File(file.getArchiveBlobUrl()).getName());
@@ -239,18 +271,17 @@
 
             Map<String, String> errors = errorMap.getOrDefault(account, Collections.emptyMap());
 
-            // Individual statuses
-            entry.setEmailStatus(isNonEmpty(entry.getEmailBlobUrlPdf()) || isNonEmpty(entry.getEmailBlobUrlHtml()) || isNonEmpty(entry.getEmailBlobUrlText())
-                    ? "SUCCESS"
-                    : "FAILED".equalsIgnoreCase(errors.getOrDefault("EMAIL", "")) ? "FAILED" : "");
-            entry.setMobstatStatus(isNonEmpty(entry.getMobstatBlobUrl()) ? "SUCCESS" :
+            // --- Set individual statuses ---
+            entry.setEmailStatus(isNonEmpty(file.getPdfEmailFileUrl()) ? "SUCCESS" :
+                    "FAILED".equalsIgnoreCase(errors.getOrDefault("EMAIL", "")) ? "FAILED" : "");
+            entry.setMobstatStatus(isNonEmpty(file.getPdfMobstatFileUrl()) ? "SUCCESS" :
                     "FAILED".equalsIgnoreCase(errors.getOrDefault("MOBSTAT", "")) ? "FAILED" : "");
-            entry.setPrintStatus(isNonEmpty(entry.getPrintBlobUrl()) ? "SUCCESS" :
+            entry.setPrintStatus(isNonEmpty(file.getPrintFileUrl()) ? "SUCCESS" :
                     "FAILED".equalsIgnoreCase(errors.getOrDefault("PRINT", "")) ? "FAILED" : "");
-            entry.setArchiveStatus(isNonEmpty(entry.getArchiveBlobUrl()) ? "SUCCESS" :
+            entry.setArchiveStatus(isNonEmpty(file.getArchiveBlobUrl()) ? "SUCCESS" :
                     "FAILED".equalsIgnoreCase(errors.getOrDefault("ARCHIVE", "")) ? "FAILED" : "");
 
-            // Overall status
+            // --- Determine overall status ---
             boolean emailSuccess = "SUCCESS".equals(entry.getEmailStatus());
             boolean mobstatSuccess = "SUCCESS".equals(entry.getMobstatStatus());
             boolean printSuccess = "SUCCESS".equals(entry.getPrintStatus());
@@ -266,7 +297,7 @@
                 entry.setOverallStatus("FAILED");
             }
 
-            // ErrorMap partial handling
+            // --- If any errors exist for this account, mark as PARTIAL if not FAILED ---
             if (errorMap.containsKey(account) && !"FAILED".equals(entry.getOverallStatus())) {
                 entry.setOverallStatus("PARTIAL");
             }
