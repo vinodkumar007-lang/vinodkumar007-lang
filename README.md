@@ -14,3 +14,14 @@ this.objectMapper = new ObjectMapper();
 
 
 ](https://nsndvextr01.blob.core.windows.net/nsndevextrm01/CASHMAN/57c8aaa1-105d-41a0-8864-faeaaed89ba7/19ef9d68-b119-4806-b09b-95a6c5fa4644/summary_57c8aaa1-105d-41a0-8864-faeaaed89ba7.json")
+
+// Get filename after last "/"
+String filename = url.substring(url.lastIndexOf('/') + 1);
+
+// Get file extension after last "."
+String fileType = "";
+int dotIndex = filename.lastIndexOf('.');
+if (dotIndex != -1 && dotIndex < filename.length() - 1) {
+    fileType = filename.substring(dotIndex + 1);
+}
+
