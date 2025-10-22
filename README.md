@@ -1165,5 +1165,260 @@ Properties:
 	retryFlag				
 	retryCount				
 					
-					
+					===================================
+
+					package com.nedbank.kafka.filemanage.model;
+
+import lombok.*;
+import java.time.Instant;
+import java.util.List;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class ECPBatchAudit {
+    private String title = "ECPBatchAudit";
+    private String type = "object";
+    private String datastreamName;
+    private String datastreamType = "logs";
+    private String batchId;
+    private String serviceName;
+    private String systemEnv;
+    private String sourceSystem;
+    private String tenantCode;
+    private String channelId;
+    private String audienceId;
+    private String product;
+    private String jobName;
+    private String consumerRef;
+    private String timestamp;
+    private String eventType;
+    private Instant startTime;
+    private Instant endTime;
+    private long customerCount;
+    private List<BatchFileAudit> batchFiles;
+    private boolean success;
+    private String errorCode;
+    private String errorMessage;
+    private boolean retryFlag;
+    private int retryCount;
+
+    @Data
+    @AllArgsConstructor
+    @NoArgsConstructor
+    @Builder
+    public static class BatchFileAudit {
+        private String blobUrl;
+        private String fileName;
+        private String fileType;
+    }
+}
+=====
+package com.nedbank.kafka.filemanage.service;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nedbank.kafka.filemanage.model.*;
+import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.*;
+import org.springframework.http.*;
+import org.springframework.kafka.annotation.KafkaListener;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestTemplate;
+
+import java.io.*;
+import java.nio.file.*;
+import java.time.Instant;
+import java.util.*;
+import java.util.concurrent.*;
+import java.util.stream.*;
+import static com.nedbank.kafka.filemanage.constants.AppConstants.*;
+
+@Service
+public class KafkaListenerService {
+
+    private static final Logger logger = LoggerFactory.getLogger(KafkaListenerService.class);
+
+    @Value("${mount.path}")
+    private String mountPath;
+
+    @Value("${kafka.topic.output}")
+    private String kafkaOutputTopic;
+
+    @Value("${kafka.topic.audit}")
+    private String auditTopic;
+
+    @Value("${rpt.max.wait.seconds}")
+    private int rptMaxWaitSeconds;
+
+    @Value("${rpt.poll.interval.millis}")
+    private int rptPollIntervalMillis;
+
+    @Value("${ot.runtime.url}")
+    private String runtimeBaseUrl;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final BlobStorageService blobStorageService;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final SourceSystemProperties sourceSystemProperties;
+    private final RestTemplate restTemplate = new RestTemplate();
+    private final ExecutorService executor = Executors.newFixedThreadPool(5);
+
+    @Autowired
+    public KafkaListenerService(
+            BlobStorageService blobStorageService,
+            @Qualifier("kafkaTemplate") KafkaTemplate<String, String> kafkaTemplate,
+            SourceSystemProperties sourceSystemProperties) {
+        this.blobStorageService = blobStorageService;
+        this.kafkaTemplate = kafkaTemplate;
+        this.sourceSystemProperties = sourceSystemProperties;
+    }
+
+    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
+    public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
+        String batchId = "";
+        try {
+            KafkaMessage message = objectMapper.readValue(rawMessage, KafkaMessage.class);
+            batchId = message.getBatchId();
+            Instant startTime = Instant.now();
+
+            logger.info("📩 Received Message for BatchId: {}", batchId);
+            ack.acknowledge();
+
+            // send Fmcompose audit
+            sendFmComposeAudit(message, startTime);
+
+            // Execute orchestration asynchronously with retry tracking
+            executor.submit(() -> {
+                Instant otStart = Instant.now();
+                OTResponse otResponse = null;
+                boolean retryFlag = false;
+                int retryCount = 0;
+                int maxRetries = 3;
+
+                while (retryCount <= maxRetries) {
+                    try {
+                        otResponse = callOrchestrationBatchApi("dummy-token", runtimeBaseUrl, message);
+                        if (otResponse.isSuccess()) break;
+                    } catch (Exception e) {
+                        logger.warn("Orchestration call failed (attempt {}): {}", retryCount + 1, e.getMessage());
+                    }
+                    retryCount++;
+                    if (retryCount > 0) retryFlag = true;
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+
+                if (otResponse == null) {
+                    otResponse = new OTResponse();
+                    otResponse.setSuccess(false);
+                    otResponse.setMessage("Failed after retries");
+                }
+
+                try {
+                    processAfterOT(message, otResponse);
+                    Instant otEnd = Instant.now();
+                    String summaryUrl = mountPath + "/summary/" + batchId + ".json";
+
+                    // send Fmcomplete audit with dynamic retry info
+                    sendFmCompleteAudit(message, summaryUrl, otStart, otEnd, otResponse.isSuccess(), retryFlag, retryCount);
+
+                } catch (Exception e) {
+                    logger.error("Error in async orchestration post-processing: {}", e.getMessage(), e);
+                    sendFmCompleteAudit(message, null, otStart, Instant.now(), false, retryFlag, retryCount);
+                }
+            });
+
+        } catch (Exception ex) {
+            logger.error("Kafka message processing failed. BatchId={}, Error={}", batchId, ex.getMessage(), ex);
+            ack.acknowledge();
+        }
+    }
+
+    // Audit sending methods with dynamic retry info
+
+    private void sendFmComposeAudit(KafkaMessage message, Instant startTime) {
+        ECPBatchAudit audit = ECPBatchAudit.builder()
+                .datastreamName("Fmcompose")
+                .serviceName("Fmcompose")
+                .systemEnv(System.getenv().getOrDefault("SYSTEM_ENV", "DEV"))
+                .batchId(message.getBatchId())
+                .sourceSystem(message.getSourceSystem())
+                .tenantCode(message.getTenantCode())
+                .channelId(message.getChannelId())
+                .audienceId(message.getAudienceId())
+                .product(message.getProduct())
+                .jobName(message.getJobName())
+                .consumerRef(message.getUniqueConsumerRef())
+                .timestamp(Instant.now().toString())
+                .eventType(message.getEventType())
+                .startTime(startTime)
+                .endTime(startTime)
+                .customerCount(
+                        Optional.ofNullable(message.getBatchFiles())
+                                .map(list -> list.stream().mapToLong(BatchFile::getCustomerCount).sum())
+                                .orElse(0))
+                .batchFiles(Optional.ofNullable(message.getBatchFiles()).orElse(Collections.emptyList())
+                        .stream()
+                        .map(f -> new ECPBatchAudit.BatchFileAudit(f.getBlobUrl(), f.getFilename(), f.getFileType()))
+                        .collect(Collectors.toList()))
+                .success(true)
+                .retryFlag(false)
+                .retryCount(0)
+                .build();
+        try {
+            kafkaTemplate.send(auditTopic, objectMapper.writeValueAsString(audit));
+            logger.info("📡 Published Fmcompose Audit for BatchId={}", message.getBatchId());
+        } catch (Exception e) {
+            logger.error("Error publishing Fmcompose audit: {}", e.getMessage(), e);
+        }
+    }
+
+    private void sendFmCompleteAudit(KafkaMessage message, String summaryUrl, Instant startTime, Instant endTime,
+                                    boolean success, boolean retryFlag, int retryCount) {
+        ECPBatchAudit.BatchFileAudit fileAudit = new ECPBatchAudit.BatchFileAudit(summaryUrl, "summary.json", "JSON");
+        ECPBatchAudit audit = ECPBatchAudit.builder()
+                .datastreamName("Fmcomplete")
+                .serviceName("Fmcomplete")
+                .systemEnv(System.getenv().getOrDefault("SYSTEM_ENV", "DEV"))
+                .batchId(message.getBatchId())
+                .sourceSystem(message.getSourceSystem())
+                .tenantCode(message.getTenantCode())
+                .channelId(message.getChannelId())
+                .audienceId(message.getAudienceId())
+                .product(message.getProduct())
+                .jobName(message.getJobName())
+                .consumerRef(message.getUniqueConsumerRef())
+                .timestamp(Instant.now().toString())
+                .eventType(message.getEventType())
+                .startTime(startTime)
+                .endTime(endTime)
+                .customerCount(
+                        Optional.ofNullable(message.getBatchFiles())
+                                .map(list -> list.stream().mapToLong(BatchFile::getCustomerCount).sum())
+                                .orElse(0))
+                .batchFiles(Collections.singletonList(fileAudit))
+                .success(success)
+                .retryFlag(retryFlag)
+                .retryCount(retryCount)
+                .build();
+        try {
+            kafkaTemplate.send(auditTopic, objectMapper.writeValueAsString(audit));
+            logger.info("📡 Published Fmcomplete Audit for BatchId={}, Success={}", message.getBatchId(), success);
+        } catch (Exception e) {
+            logger.error("Error publishing Fmcomplete audit: {}", e.getMessage(), e);
+        }
+    }
+
+    // Existing methods such as processAfterOT(), callOrchestrationBatchApi() etc. remain unchanged or need adaptation as per existing code
+}
+
+
 
