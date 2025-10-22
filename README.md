@@ -1,4 +1,6 @@
-2025-10-22T18:43:20.611+02:00  INFO 1 --- [pool-1-thread-4] c.n.k.f.service.KafkaListenerService     : 📡 Initiating OT orchestration call to URL: http://exstream-deployment-orchestration-service.dev-exstream.svc:8300/orchestration/api/v1/inputs/batch/dev-SA/ROALendingService for batchId: 1cfee462-4275-4302-a24a-a1038a603ca9 and sourceSystem: ROA-ACC-LEND
+[2025-10-22T18:43:20.611+02:00  INFO 1 --- [pool-1-thread-4] c.n.k.f.service.KafkaListenerService     : 📡 Initiating OT orchestration call to URL: http://exstream-deployment-orchestration-service.dev-exstream.svc:8300/orchestration/api/v1/inputs/batch/dev-SA/ROALendingService for batchId: 1cfee462-4275-4302-a24a-a1038a603ca9 and sourceSystem: ROA-ACC-LEND
 2025-10-22T18:43:20.755+02:00 ERROR 1 --- [pool-1-thread-4] c.n.k.f.service.KafkaListenerService     : ❌ Exception during OT orchestration call for batchId: 1cfee462-4275-4302-a24a-a1038a603ca9 - 404 : "{"timestamp":1761151400741,"status":404,"errorCode":310130,"message":"Not Found","details":"Could not find an input channel with name ROA Lending Input in any published flow model."}"
 
 org.springframework.web.client.HttpClientErrorException$NotFound: 404 : "{"timestamp":1761151400741,"status":404,"errorCode":310130,"message":"Not Found","details":"Could not find an input channel with name ROA Lending Input in any published flow model."}"
+
+](http://exstream-deployment-orchestration-service.dev-exstream.svc:8300/orchestration/api/v1/inputs/batch/dev-SA/ROALendingService)
