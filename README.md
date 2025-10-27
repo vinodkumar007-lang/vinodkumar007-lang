@@ -1,89 +1,13 @@
-package com.nedbank.kafka.filemanage.service;
-
-import lombok.Data;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.stereotype.Component;
-
-import java.util.List;
-import java.util.Optional;
-
-@Component
-@ConfigurationProperties(prefix = "source")
-@Data
-public class SourceSystemProperties {
-
-    /**
-     * List of source system configurations.
-     * Each entry can have a jobName (optional).
-     * The token is shared and always taken from index 0.
-     */
-    private List<SystemConfig> systems;
-
-    @Data
-    public static class SystemConfig {
-        private String name;      // e.g., NEDTRUST, DEBTMAN
-        private String url;       // Orchestration URL for this source system/job
-        private String token;     // Shared token (taken from index 0)
-        private String jobName;   // Optional jobName (for multiple jobs per source system)
-    }
-
-    /**
-     * Get configuration for a given source system and jobName.
-     * If job-specific config exists, returns that.
-     * Otherwise falls back to generic (jobName=null) config.
-     * Always attaches shared token from systems[0].
-     *
-     * @param sourceSystem the source system name from Kafka message
-     * @param jobName      the job name from Kafka message (optional)
-     * @return Optional<SystemConfig>
-     */
-    public Optional<SystemConfig> getConfigForSourceSystem(String sourceSystem, String jobName) {
-        if (systems == null || systems.isEmpty()) {
-            return Optional.empty();
-        }
-
-        // Always take token from first entry
-        String sharedToken = systems.get(0).getToken();
-
-        String src = sourceSystem != null ? sourceSystem.trim() : "";
-        String job = jobName != null ? jobName.trim() : "";
-
-        // 1️⃣ Exact match: sourceSystem + jobName
-        Optional<SystemConfig> match = systems.stream()
-                .filter(s -> s.getName().equalsIgnoreCase(src)
-                        && s.getJobName() != null
-                        && s.getJobName().equalsIgnoreCase(job))
-                .findFirst();
-
-        // 2️⃣ Fallback: sourceSystem only (jobName=null or blank)
-        if (match.isEmpty()) {
-            match = systems.stream()
-                    .filter(s -> s.getName().equalsIgnoreCase(src)
-                            && (s.getJobName() == null || s.getJobName().isBlank()))
-                    .findFirst();
-        }
-
-        // 3️⃣ Attach shared token from index 0
-        match.ifPresent(s -> s.setToken(sharedToken));
-
-        return match;
-    }
-}
-
-Optional<SourceSystemProperties.SystemConfig> configOpt =
-        sourceSystemProperties.getConfigForSourceSystem(
-            kafkaMessage.getSourceSystem(),
-            kafkaMessage.getJobName()
-        );
-
-if (configOpt.isPresent()) {
-    SourceSystemProperties.SystemConfig config = configOpt.get();
-    String url = config.getUrl();
-    String token = config.getToken(); // Always from index 0
-    log.info("Using URL={} for {}:{} with token={}",
-             url, kafkaMessage.getSourceSystem(),
-             kafkaMessage.getJobName(), token);
-} else {
-    log.warn("No config found for sourceSystem={} and jobName={}",
-             kafkaMessage.getSourceSystem(), kafkaMessage.getJobName());
-}
+2025-10-27T12:33:29.152+02:00  INFO 1 --- [ntainer#0-0-C-1] c.n.k.f.service.KafkaListenerService     : Using URL=http://exstream-deployment-orchestration-service.dev-exstream.svc:8300/orchestration/api/v1/inputs/batch/dev-SA/CADNT1Service for NEDTRUST:CADNT1 with token=otds-token-dev
+2025-10-27T12:33:29.156+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : 🚀 [batchId: 46cb192f-e3b0-4ced-87b7-722b6b20f58a] Calling Orchestration API attempt 1: http://exstream-deployment-orchestration-service.dev-exstream.svc:8300/orchestration/api/v1/inputs/batch/dev-SA/CADNT1Service
+2025-10-27T12:33:29.157+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : 📡 Initiating OT orchestration call to URL: http://exstream-deployment-orchestration-service.dev-exstream.svc:8300/orchestration/api/v1/inputs/batch/dev-SA/CADNT1Service for batchId: 46cb192f-e3b0-4ced-87b7-722b6b20f58a and sourceSystem: NEDTRUST
+2025-10-27T12:33:29.951+02:00 DEBUG 1 --- [ntainer#0-2-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
+2025-10-27T12:33:29.951+02:00 DEBUG 1 --- [ntainer#0-1-C-1] o.s.k.l.KafkaMessageListenerContainer    : Received: 0 records
+2025-10-27T12:33:30.262+02:00 ERROR 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : ❌ Exception during OT orchestration call for batchId: 46cb192f-e3b0-4ced-87b7-722b6b20f58a - 401 : [no body]
+org.springframework.web.client.HttpClientErrorException$Unauthorized: 401 : [no body]
+ at org.springframework.web.client.HttpClientErrorException.create(HttpClientErrorException.java:106) ~[spring-web-6.0.2.jar!/:6.0.2]
+ at org.springframework.web.client.DefaultResponseErrorHandler.handleError(DefaultResponseErrorHandler.java:183) ~[spring-web-6.0.2.jar!/:6.0.2]
+ at org.springframework.web.client.DefaultResponseErrorHandler.handleError(DefaultResponseErrorHandler.java:137) ~[spring-web-6.0.2.jar!/:6.0.2]
+ at org.springframework.web.client.ResponseErrorHandler.handleError(ResponseErrorHandler.java:63) ~[spring-web-6.0.2.jar!/:6.0.2]
+ at org.springframework.web.client.RestTemplate.handleResponse(RestTemplate.java:915) ~[spring-web-6.0.2.jar!/:6.0.2]
+ at org.springframework.web.client.RestTemplate.doExecute(RestTemplate.java:864) ~[spring-web-6.0.2.jar!/:6.0.2]
