@@ -1,267 +1,101 @@
-    @KafkaListener(topics = "${kafka.topic.input}", groupId = "${kafka.consumer.group.id}")
-    public void onKafkaMessage(String rawMessage, Acknowledgment ack) {
-        String batchId = "";
+ private OTResponse callOrchestrationBatchApi(String token, String url, KafkaMessage msg) {
+        OTResponse otResponse = new OTResponse();
         try {
-            logger.info("📩 [batchId: unknown] Received Kafka message: {}", rawMessage);
-            KafkaMessage message = objectMapper.readValue(rawMessage, KafkaMessage.class);
-            batchId = message.getBatchId();
-            List<BatchFile> batchFiles = message.getBatchFiles();
-            if (batchFiles == null || batchFiles.isEmpty()) {
-                logger.error("❌ [batchId: {}] Rejected - Empty BatchFiles", batchId);
-                ack.acknowledge();
-                return;
-            }
+            logger.info("📡 Initiating OT orchestration call to URL: {} for batchId: {} and sourceSystem: {}",
+                    url, msg.getBatchId(), msg.getSourceSystem());
 
-            long dataCount = batchFiles.stream()
-                    .filter(f -> FILE_TYPE_DATA.equalsIgnoreCase(f.getFileType()))
-                    .count();
-            long refCount = batchFiles.stream()
-                    .filter(f -> FILE_TYPE_REF.equalsIgnoreCase(f.getFileType()))
-                    .count();
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HEADER_AUTHORIZATION, BEARER_PREFIX + token);
+            headers.setContentType(MediaType.APPLICATION_JSON);
 
-            if (dataCount == 1 && refCount == 0) {
-                logger.info("✅ [batchId: {}] Valid with 1 DATA file", batchId);
-            } else if (dataCount > 1) {
-                logger.error("❌ [batchId: {}] Rejected - Multiple DATA files", batchId);
-                ack.acknowledge();
-                return;
-            } else if (dataCount == 0 && refCount > 0) {
-                logger.error("❌ [batchId: {}] Rejected - Only REF files", batchId);
-                ack.acknowledge();
-                return;
-            } else if (dataCount == 1 && refCount > 0) {
-                logger.info("✅ [batchId: {}] Valid with DATA + REF files (both will be passed to OT)", batchId);
-                message.setBatchFiles(batchFiles);
-            } else {
-                logger.error("❌ [batchId: {}] Rejected - Invalid or unsupported file type combination", batchId);
-                ack.acknowledge();
-                return;
-            }
+            HttpEntity<String> request = new HttpEntity<>(objectMapper.writeValueAsString(msg), headers);
+            logger.debug("📨 OT Request Payload: {}", objectMapper.writeValueAsString(msg));
 
-            String sanitizedBatchId = batchId.replaceAll(FILENAME_SANITIZE_REGEX, REPLACEMENT_UNDERSCORE);
-            String sanitizedSourceSystem = message.getSourceSystem().replaceAll(FILENAME_SANITIZE_REGEX, REPLACEMENT_UNDERSCORE);
+            ResponseEntity<Map> response = restTemplate.exchange(url, HttpMethod.POST, request, Map.class);
+            logger.info("✅ Received OT response with status: {} for batchId: {}",
+                    response.getStatusCode(), msg.getBatchId());
 
-            Path batchDir = Paths.get(mountPath, INPUT_FOLDER, sanitizedSourceSystem, sanitizedBatchId);
-            if (Files.exists(batchDir)) {
-                logger.warn("⚠️ [batchId: {}] Directory already exists at path: {}", batchId, batchDir);
-                try (Stream<Path> files = Files.walk(batchDir)) {
-                    files.sorted(Comparator.reverseOrder())
-                            .map(Path::toFile)
-                            .forEach(File::delete);
-                    logger.info("🧹 [batchId: {}] Cleaned existing input directory: {}", batchId, batchDir);
-                } catch (IOException e) {
-                    logger.error("❌ [batchId: {}] Failed to clean directory {} - {}", batchId, batchDir, e.getMessage(), e);
-                    throw e;
-                }
-            }
+            List<Map<String, Object>> data =
+                    (List<Map<String, Object>>) response.getBody().get(OT_RESPONSE_DATA_KEY);
 
-            Files.createDirectories(batchDir);
-            logger.info("📁 [batchId: {}] Created input directory: {}", batchId, batchDir);
+            if (data != null && !data.isEmpty()) {
+                Map<String, Object> item = data.get(0);
+                otResponse.setJobId((String) item.get(OT_JOB_ID_KEY));
+                otResponse.setId((String) item.get(OT_ID_KEY));
+                msg.setJobName(otResponse.getJobId());
 
-            // Send Fmcompose audit (INBOUND) with dynamic retryFlag and retryCount false/zero at start
-            Instant startTime = Instant.now();
-            long customerCount = message.getBatchFiles().stream().mapToLong(BatchFile::getCustomerCount).sum();
-            ECPBatchAudit fmcomposeAudit = ECPBatchAudit.builder()
-                    .title("ECPBatchAudit")
-                    .type("object")
-                    .datastreamName("Fmcompose")
-                    .datastreamType("logs")
-                    .batchId(message.getBatchId())
-                    .serviceName("Fmcompose")
-                    .systemEnv(systemEnv) // or supply from config
-                    .sourceSystem(message.getSourceSystem())
-                    .tenantCode(message.getTenantCode())
-                    .channelId(message.getChannelID())
-                    .audienceId(message.getAudienceID())
-                    .product(message.getProduct())
-                    .jobName(message.getJobName())
-                    .consumerRef(message.getConsumerRef())
-                    .timestamp(Instant.now().toString())
-                    .eventType(message.getEventType())
-                    .startTime(startTime)
-                    .endTime(startTime)
-                    .customerCount(customerCount)
-                    .batchFiles(message.getBatchFiles().stream()
-                            .map(f -> new ECPBatchAudit.BatchFileAudit(f.getBlobUrl(), f.getFileName(), f.getFileType()))
-                            .collect(Collectors.toList()))
-                    .success(true)
-                    .retryFlag(false)
-                    .retryCount(0)
-                    .build();
+                logger.info("🎯 OT Job created successfully - JobID: {}, ID: {}, BatchID: {}",
+                        otResponse.getJobId(), otResponse.getId(), msg.getBatchId());
 
-            sendToAuditTopic(fmcomposeAudit);
+                // 🔄 Poll runtime API until status=complete
+                String runtimeUrl = runtimeBaseUrl + otResponse.getJobId();
 
-            // Download files
-            for (BatchFile file : message.getBatchFiles()) {
-                String blobUrl = file.getBlobUrl();
-                Path localPath = batchDir.resolve(file.getFileName());
-
-                try {
-                    if (Files.exists(localPath)) {
-                        logger.warn("♻️ [batchId: {}] File already exists, overwriting: {}", batchId, localPath);
-                        Files.delete(localPath);
-                    }
-
-                    blobStorageService.downloadFileToLocal(blobUrl, localPath);
-
-                    if (!Files.exists(localPath)) {
-                        logger.error("❌ [batchId: {}] File missing after download: {}", batchId, localPath);
-                        throw new IOException("Download failed for: " + localPath);
-                    }
-
-                    file.setBlobUrl(localPath.toString());
-                    logger.info("⬇️ [batchId: {}] Downloaded file: {} to {}", batchId, blobUrl, localPath);
-
-                } catch (Exception e) {
-                    logger.error("❌ [batchId: {}] Failed to download file: {} - {}", batchId, file.getFileName(), e.getMessage(), e);
-                    throw e;
-                }
-            }
-
-            // ✅ Commit main topic early
-            ack.acknowledge();
-
-            Optional<SourceSystemProperties.SystemConfig> configOpt =
-                    sourceSystemProperties.getConfigForSourceSystem(
-                            message.getSourceSystem(),
-                            message.getJobName()
-                    );
-
-            String url;
-            String token;
-            if (configOpt.isPresent()) {
-                SourceSystemProperties.SystemConfig config = configOpt.get();
-                url = config.getUrl();
-                token = config.getToken(); // Always from index 0
-                logger.info("Using URL={} for {}:{} with token={}",
-                        url, message.getSourceSystem(),
-                        message.getJobName(), token);
-            } else {
-                token = "";
-                url = null;
-                logger.warn("No config found for sourceSystem={} and jobName={}",
-                        message.getSourceSystem(), message.getJobName());
-            }
-
-            if (url == null || url.isBlank()) {
-                logger.error("❌ [batchId: {}] Orchestration URL not configured for source system '{}'", batchId, sanitizedSourceSystem);
-                return;
-            }
-
-            String finalBatchId = batchId;
-            long finalCustomerCount = customerCount;
-            executor.submit(() -> {
-                Instant otStartTime = Instant.now();
-                boolean retryFlag = false;
+                boolean completed = false;
+                int maxRetries = 60;              // up to 30 minutes if poll interval = 30s
+                long pollIntervalMillis = 30_000; // 30 seconds
                 int retryCount = 0;
-                OTResponse otResponse = null;
-                int maxRetries = 3;
 
-                while (retryCount <= maxRetries) {
+                while (!completed && retryCount < maxRetries) {
                     try {
-                        logger.info("🚀 [batchId: {}] Calling Orchestration API attempt {}: {}", finalBatchId, retryCount + 1, url);
-                        otResponse = callOrchestrationBatchApi(token, url, message);
-                        if (otResponse.isSuccess()) {
-                            break;
+                        ResponseEntity<Map> runtimeResponse = restTemplate.exchange(
+                                runtimeUrl, HttpMethod.GET, new HttpEntity<>(headers), Map.class);
+
+                        Map<String, Object> runtimeBody = runtimeResponse.getBody();
+                        if (runtimeBody != null && "success".equals(runtimeBody.get("status"))) {
+                            Object dataObj = runtimeBody.get("data");
+
+                            if (dataObj instanceof Map) {
+                                Map<String, Object> runtimeData = (Map<String, Object>) dataObj;
+                                String jobStatus = (String) runtimeData.get("status");
+
+                                logger.info("🔎 Runtime check attempt {} for JobID {} => status={}",
+                                        retryCount + 1, otResponse.getJobId(), jobStatus);
+
+                                if ("complete".equalsIgnoreCase(jobStatus)) {
+                                    logger.info("✅ Runtime job completed for JobID: {} (BatchID: {})",
+                                            otResponse.getJobId(), msg.getBatchId());
+                                    completed = true;
+                                    otResponse.setSuccess(true);
+                                    break;
+                                }
+                            } else {
+                                logger.error("❌ Unexpected runtime response format: data is not a Map (JobID={})",
+                                        otResponse.getJobId());
+                            }
                         }
-                    } catch (Exception e) {
-                        logger.warn("⚠️ Orchestration call failed (attempt {}): {}", retryCount + 1, e.getMessage());
+                    } catch (Exception ex) {
+                        logger.warn("⚠️ Runtime status check failed for JobID {} - {}",
+                                otResponse.getJobId(), ex.getMessage());
                     }
+
                     retryCount++;
-                    if (retryCount > 0) retryFlag = true;
-                    try {
-                        Thread.sleep(1000);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                    }
+                    Thread.sleep(pollIntervalMillis);
                 }
 
-                if (otResponse == null) {
-                    otResponse = new OTResponse();
-                    otResponse.setSuccess(false);
-                    otResponse.setMessage("Failed after retries");
+                if (!completed) {
+                    String errMsg = String.format(
+                            "❌ Job did not complete within %d minutes (JobID=%s, BatchID=%s)",
+                            (maxRetries * pollIntervalMillis) / 60000,
+                            otResponse.getJobId(),
+                            msg.getBatchId()
+                    );
+                    logger.error(errMsg);
+                    throw new RuntimeException(errMsg); // 🚨 discard flow
                 }
 
-                try {
-                    SummaryResponse summaryResponse = processAfterOT(message, otResponse);
-                    Instant otEndTime = Instant.now();
-                    String summaryUrl = summaryResponse.getSummaryFileURL();
-                    // Get filename after last "/"
-                    String filename = summaryUrl.substring(summaryUrl.lastIndexOf('/') + 1);
+            } else {
+                logger.error("❌ No data found in OT orchestration response for batchId: {}", msg.getBatchId());
+                otResponse.setSuccess(false);
+                otResponse.setMessage(NO_OT_DATA_MESSAGE);
+            }
 
-                    // Get file extension after last "."
-                    String fileType = "";
-                    int dotIndex = filename.lastIndexOf('.');
-                    if (dotIndex != -1 && dotIndex < filename.length() - 1) {
-                        fileType = filename.substring(dotIndex + 1);
-                    }
+            return otResponse;
 
-                    // Send Fmcomplete audit with dynamic retry info
-                    ECPBatchAudit fmcompleteAudit = ECPBatchAudit.builder()
-                            .title("ECPBatchAudit")
-                            .type("object")
-                            .datastreamName("Fmcomplete")
-                            .datastreamType("logs")
-                            .batchId(message.getBatchId())
-                            .serviceName("Fmcomplete")
-                            .systemEnv(systemEnv)
-                            .sourceSystem(message.getSourceSystem())
-                            .tenantCode(message.getTenantCode())
-                            .channelId(message.getChannelID())
-                            .audienceId(message.getAudienceID())
-                            .product(message.getProduct())
-                            .jobName(message.getJobName())
-                            .consumerRef(message.getConsumerRef())
-                            .timestamp(Instant.now().toString())
-                            .eventType(message.getEventType())
-                            .startTime(otStartTime)
-                            .endTime(otEndTime)
-                            .customerCount(finalCustomerCount)
-                            .batchFiles(Collections.singletonList(new ECPBatchAudit.BatchFileAudit(summaryUrl, filename, fileType)))
-                            .success(otResponse.isSuccess())
-                            .retryFlag(retryFlag)
-                            .retryCount(retryCount)
-                            .build();
-
-                    sendToAuditTopic(fmcompleteAudit);
-
-                } catch (Exception ex) {
-                    logger.error("❌ [batchId: {}] Error during async OT or post-processing: {}", finalBatchId, ex.getMessage(), ex);
-                    // If error on post-processing send audit with failure info
-                    ECPBatchAudit fmcompleteAuditFail = ECPBatchAudit.builder()
-                            .title("ECPBatchAudit")
-                            .type("object")
-                            .datastreamName("Fmcomplete")
-                            .datastreamType("logs")
-                            .batchId(message.getBatchId())
-                            .serviceName("Fmcomplete")
-                            .systemEnv(systemEnv)
-                            .sourceSystem(message.getSourceSystem())
-                            .tenantCode(message.getTenantCode())
-                            .channelId(message.getChannelID())
-                            .audienceId(message.getAudienceID())
-                            .product(message.getProduct())
-                            .jobName(message.getJobName())
-                            .consumerRef(message.getConsumerRef())
-                            .timestamp(Instant.now().toString())
-                            .eventType(message.getEventType())
-                            .startTime(otStartTime)
-                            .endTime(Instant.now())
-                            .customerCount(finalCustomerCount)
-                            .batchFiles(Collections.emptyList())
-                            .success(false)
-                            .retryFlag(retryFlag)
-                            .retryCount(retryCount)
-                            .errorCode("POST_PROCESSING_ERROR")
-                            .errorMessage(ex.getMessage())
-                            .build();
-
-                    sendToAuditTopic(fmcompleteAuditFail);
-                }
-            });
-
-        } catch (Exception ex) {
-            logger.error("❌ [batchId: {}] Kafka message processing failed. Error: {}", batchId, ex.getMessage(), ex);
-            ack.acknowledge();
+        } catch (Exception e) {
+            logger.error("❌ Exception during OT orchestration call for batchId: {} - {}",
+                    msg.getBatchId(), e.getMessage(), e);
+            otResponse.setSuccess(false);
+            otResponse.setMessage(OT_CALL_FAILURE_PREFIX + e.getMessage());
+            return otResponse;
         }
     }
