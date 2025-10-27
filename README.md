@@ -1,20 +1,41 @@
-2025-10-27T13:45:57.107+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : 🚀 [batchId: 46cb192f-e3b0-4ced-87b7-722b6b20f58a] Calling Orchestration API attempt 1: http://exstream-deployment-orchestration-service.dev-exstream.svc:8300/orchestration/api/v1/inputs/batch/dev-SA/NEDTRUSTService
-2025-10-27T13:45:57.107+02:00  INFO 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : 📡 Initiating OT orchestration call to URL: http://exstream-deployment-orchestration-service.dev-exstream.svc:8300/orchestration/api/v1/inputs/batch/dev-SA/NEDTRUSTService for batchId: 46cb192f-e3b0-4ced-87b7-722b6b20f58a and sourceSystem: NEDTRUST
-2025-10-27T13:45:57.711+02:00 ERROR 1 --- [pool-1-thread-1] c.n.k.f.service.KafkaListenerService     : ❌ Exception during OT orchestration call for batchId: 46cb192f-e3b0-4ced-87b7-722b6b20f58a - 401 : [no body]
+ Optional<SourceSystemProperties.SystemConfig> configOpt =
+                    sourceSystemProperties.getConfigForSourceSystem(
+                            message.getSourceSystem(),
+                            message.getJobName()
+                    );
 
-org.springframework.web.client.HttpClientErrorException$Unauthorized: 401 : [no body]
-	at org.springframework.web.client.HttpClientErrorException.create(HttpClientErrorException.java:106) ~[spring-web-6.0.2.jar!/:6.0.2]
-	at org.springframework.web.client.DefaultResponseErrorHandler.handleError(DefaultResponseErrorHandler.java:183) ~[spring-web-6.0.2.jar!/:6.0.2]
-	at org.springframework.web.client.DefaultResponseErrorHandler.handleError(DefaultResponseErrorHandler.java:137) ~[spring-web-6.0.2.jar!/:6.0.2]
-	at org.springframework.web.client.ResponseErrorHandler.handleError(ResponseErrorHandler.java:63) ~[spring-web-6.0.2.jar!/:6.0.2]
-	at org.springframework.web.client.RestTemplate.handleResponse(RestTemplate.java:915) ~[spring-web-6.0.2.jar!/:6.0.2]
-	at org.springframework.web.client.RestTemplate.doExecute(RestTemplate.java:864) ~[spring-web-6.0.2.jar!/:6.0.2]
-	at org.springframework.web.client.RestTemplate.execute(RestTemplate.java:764) ~[spring-web-6.0.2.jar!/:6.0.2]
-	at org.springframework.web.client.RestTemplate.exchange(RestTemplate.java:646) ~[spring-web-6.0.2.jar!/:6.0.2]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.callOrchestrationBatchApi(KafkaListenerService.java:612) ~[classes!/:na]
-	at com.nedbank.kafka.filemanage.service.KafkaListenerService.lambda$onKafkaMessage$3(KafkaListenerService.java:263) ~[classes!/:na]
-	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:539) ~[na:na]
-	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:264) ~[na:na]
-	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1136) ~[na:na]
-	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:635) ~[na:na]
-	at java.base/java.lang.Thread.run(Thread.java:840) ~[na:na]
+            String url;
+            String token;
+            if (configOpt.isPresent()) {
+                SourceSystemProperties.SystemConfig config = configOpt.get();
+                url = config.getUrl();
+                token = config.getToken(); // Always from index 0
+                logger.info("Using URL={} for {}:{} with token={}",
+                        url, message.getSourceSystem(),
+                        message.getJobName(), token);
+            } else {
+                token = "";
+                url = null;
+                logger.warn("No config found for sourceSystem={} and jobName={}",
+                        message.getSourceSystem(), message.getJobName());
+            }
+
+            if (url == null || url.isBlank()) {
+                logger.error("❌ [batchId: {}] Orchestration URL not configured for source system '{}'", batchId, sanitizedSourceSystem);
+                return;
+            }
+
+
+			// Dynamic lookup for orchestration
+            Optional<SourceSystemProperties.SystemConfig> matchingConfig =
+                    sourceSystemProperties.getConfigForSourceSystem(sanitizedSourceSystem);
+
+            if (matchingConfig.isEmpty()) {
+                logger.error("❌ [batchId: {}] Unsupported or unconfigured source system '{}'", batchId, sanitizedSourceSystem);
+                return;
+            }
+
+            SourceSystemProperties.SystemConfig config = matchingConfig.get();
+            String url = config.getUrl();
+            String secretName = sourceSystemProperties.getSystems().get(0).getToken();
+            String token = blobStorageService.getSecret(secretName);
