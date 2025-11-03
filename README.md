@@ -1,63 +1,123 @@
-import lombok.*;
-import java.time.Instant;
-import java.util.List;
+Instant startTime = Instant.now();
+long customerCount = message.getBatchFiles().stream().mapToLong(BatchFile::getCustomerCount).sum();
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class ECPBatchAudit {
+ECPBatchAudit fmcomposeAudit = ECPBatchAudit.builder()
+        .title("ECPBatchAudit")
+        .type("object")
+        .properties(ECPBatchAudit.Properties.builder()
+                .datastreamName("Fmcompose")
+                .datastreamType("logs")
+                .batchId(message.getBatchId())
+                .serviceName("Fmcompose")
+                .systemEnv(systemEnv)
+                .sourceSystem(message.getSourceSystem())
+                .tenantCode(message.getTenantCode())
+                .channelId(message.getChannelID())
+                .audienceId(message.getAudienceID())
+                .product(message.getProduct())
+                .jobName(message.getJobName())
+                .consumerRef(message.getConsumerRef())
+                .timestamp(Instant.now().toString())
+                .eventType(message.getEventType())
+                .startTime(startTime)
+                .endTime(startTime)
+                .customerCount(customerCount)
+                .batchFiles(message.getBatchFiles().stream()
+                        .map(f -> ECPBatchAudit.BatchFileAudit.builder()
+                                .type("object")
+                                .properties(ECPBatchAudit.BatchFileAudit.FileProperties.builder()
+                                        .blobUrl(f.getBlobUrl())
+                                        .fileName(f.getFileName())
+                                        .fileType(f.getFileType())
+                                        .build())
+                                .build())
+                        .collect(Collectors.toList()))
+                .build())
+        .success(true)
+        .retryFlag(false)
+        .retryCount(0)
+        .build();
 
-    private String title;
-    private String type;
-    private Properties properties;
-    private boolean success;
-    private String errorCode;
-    private String errorMessage;
-    private boolean retryFlag;
-    private int retryCount;
+sendToAuditTopic(fmcomposeAudit);
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class Properties {
-        private String datastreamName;
-        private String datastreamType;
-        private String batchId;
-        private String serviceName;
-        private String systemEnv;
-        private String sourceSystem;
-        private String tenantCode;
-        private String channelId;
-        private String audienceId;
-        private String product;
-        private String jobName;
-        private String consumerRef;
-        private String timestamp;
-        private String eventType;
-        private Instant startTime;
-        private Instant endTime;
-        private long customerCount;
-        private List<BatchFileAudit> batchFiles;
-    }
+=================================
 
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class BatchFileAudit {
-        private String type;
-        private FileProperties properties;
+Instant otEndTime = Instant.now();
+String summaryUrl = summaryResponse.getSummaryFileURL();
+String filename = summaryUrl.substring(summaryUrl.lastIndexOf('/') + 1);
+String fileType = filename.contains(".") ? filename.substring(filename.lastIndexOf('.') + 1) : "";
 
-        @Data
-        @Builder
-        @NoArgsConstructor
-        @AllArgsConstructor
-        public static class FileProperties {
-            private String blobUrl;
-            private String fileName;
-            private String fileType;
-        }
-    }
-}
+ECPBatchAudit fmcompleteAudit = ECPBatchAudit.builder()
+        .title("ECPBatchAudit")
+        .type("object")
+        .properties(ECPBatchAudit.Properties.builder()
+                .datastreamName("Fmcomplete")
+                .datastreamType("logs")
+                .batchId(message.getBatchId())
+                .serviceName("Fmcomplete")
+                .systemEnv(systemEnv)
+                .sourceSystem(message.getSourceSystem())
+                .tenantCode(message.getTenantCode())
+                .channelId(message.getChannelID())
+                .audienceId(message.getAudienceID())
+                .product(message.getProduct())
+                .jobName(message.getJobName())
+                .consumerRef(message.getConsumerRef())
+                .timestamp(Instant.now().toString())
+                .eventType(message.getEventType())
+                .startTime(otStartTime)
+                .endTime(otEndTime)
+                .customerCount(finalCustomerCount)
+                .batchFiles(Collections.singletonList(
+                        ECPBatchAudit.BatchFileAudit.builder()
+                                .type("object")
+                                .properties(ECPBatchAudit.BatchFileAudit.FileProperties.builder()
+                                        .blobUrl(summaryUrl)
+                                        .fileName(filename)
+                                        .fileType(fileType)
+                                        .build())
+                                .build()))
+                .build())
+        .success(otResponse.isSuccess())
+        .errorCode(otResponse.isSuccess() ? null : "OT_FAILURE")
+        .errorMessage(otResponse.isSuccess() ? null : otResponse.getMessage())
+        .retryFlag(retryFlag)
+        .retryCount(retryCount)
+        .build();
+
+sendToAuditTopic(fmcompleteAudit);
+
+=============
+
+ECPBatchAudit fmcompleteAuditFail = ECPBatchAudit.builder()
+        .title("ECPBatchAudit")
+        .type("object")
+        .properties(ECPBatchAudit.Properties.builder()
+                .datastreamName("Fmcomplete")
+                .datastreamType("logs")
+                .batchId(message.getBatchId())
+                .serviceName("Fmcomplete")
+                .systemEnv(systemEnv)
+                .sourceSystem(message.getSourceSystem())
+                .tenantCode(message.getTenantCode())
+                .channelId(message.getChannelID())
+                .audienceId(message.getAudienceID())
+                .product(message.getProduct())
+                .jobName(message.getJobName())
+                .consumerRef(message.getConsumerRef())
+                .timestamp(Instant.now().toString())
+                .eventType(message.getEventType())
+                .startTime(otStartTime)
+                .endTime(Instant.now())
+                .customerCount(finalCustomerCount)
+                .batchFiles(Collections.emptyList())
+                .build())
+        .success(false)
+        .errorCode("POST_PROCESSING_ERROR")
+        .errorMessage(ex.getMessage())
+        .retryFlag(retryFlag)
+        .retryCount(retryCount)
+        .build();
+
+sendToAuditTopic(fmcompleteAuditFail);
+
